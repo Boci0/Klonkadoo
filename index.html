@@ -21,11 +21,14 @@
           <p class="game-tagline">&gt; TACTICAL BALLISTIC ROGUELIKE_</p>
           <div id="menu-stats" class="menu-stats px-frame"></div>
           <div class="difficulty-panel px-frame">
-            <div class="difficulty-header">
-              <span>RISK LEVEL <strong id="risk-level-val" class="accent">0</strong></span>
-              <span id="risk-level-bonus" class="dim-text">+0% Enemy Stats • +0% TP Bonus</span>
+            <div class="risk-row">
+              <span class="risk-title">RISK</span>
+              <button id="risk-down" class="btn btn-outline risk-step" aria-label="Lower risk">&minus;</button>
+              <strong id="risk-level-val" class="risk-value">0</strong>
+              <button id="risk-up" class="btn btn-outline risk-step" aria-label="Raise risk">+</button>
+              <button id="risk-rules" class="btn btn-outline risk-rules-btn">RULES</button>
             </div>
-            <input type="range" id="risk-slider" class="risk-slider" min="0" max="15" value="0" step="1" />
+            <p id="risk-level-bonus" class="risk-summary"></p>
           </div>
         </div>
         <div class="menu-buttons">

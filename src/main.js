@@ -1397,46 +1397,51 @@ function loop(now) {
 
 requestAnimationFrame(loop);
 
+/** Risk stepper: − / + buttons, one-line summary, full rule list in a pop-up. */
 function setupRiskSlider() {
-  const slider = document.getElementById('risk-slider');
-  if (!slider) return;
-  const max = saveSystem.getMaxRiskUnlocked();
-  slider.max = String(max);
-  slider.disabled = max === 0;
-  slider.value = String(saveSystem.getDifficultyLevel());
-  updateRiskDisplay(saveSystem.getDifficultyLevel());
-
-  slider.oninput = (e) => {
-    const val = Number(e.target.value);
-    saveSystem.setDifficultyLevel(val);
-    updateRiskDisplay(val);
+  const down = document.getElementById('risk-down');
+  const up = document.getElementById('risk-up');
+  const rulesBtn = document.getElementById('risk-rules');
+  if (!down || !up) return;
+  const change = (delta) => {
+    const next = saveSystem.getDifficultyLevel() + delta;
+    if (next < 0 || next > saveSystem.getMaxRiskUnlocked()) {
+      soundEngine.play('error');
+      return;
+    }
+    saveSystem.setDifficultyLevel(next);
+    soundEngine.playUI(delta > 0 ? 700 : 500);
     haptics.impact('light');
+    updateRiskDisplay(next);
   };
+  down.onclick = () => change(-1);
+  up.onclick = () => change(1);
+  rulesBtn.onclick = () => {
+    soundEngine.playUI();
+    ui.showRiskRules(saveSystem.getDifficultyLevel(), saveSystem.getMaxRiskUnlocked());
+  };
+  updateRiskDisplay(saveSystem.getDifficultyLevel());
 }
 
-/** Risk panel: selected level, its stacked rules, and how to unlock the next one. */
+/** Compact Risk panel: level, TP bonus, and only the newest rule (the rest are in RULES). */
 function updateRiskDisplay(val) {
-  const valEl = document.getElementById('risk-level-val');
-  const bonusEl = document.getElementById('risk-level-bonus');
   const max = saveSystem.getMaxRiskUnlocked();
   const levels = CONFIG.risk.levels;
+  const valEl = document.getElementById('risk-level-val');
+  const summary = document.getElementById('risk-level-bonus');
   if (valEl) valEl.textContent = max === 0 ? 'LOCKED' : `${val}/${levels.length}`;
-  if (!bonusEl) return;
-
-  const parts = [];
+  document.getElementById('risk-down').disabled = val <= 0;
+  document.getElementById('risk-up').disabled = val >= max;
+  if (!summary) return;
   if (max === 0) {
-    parts.push('<span class="risk-lock">Win a run to unlock Risk levels: harder rules for bonus Tech Points.</span>');
+    summary.textContent = 'Win a run to unlock Risk: harder rules for bonus Tech Points.';
+  } else if (val === 0) {
+    summary.textContent = max < levels.length ? `No extra rules. Win on Risk ${max} to unlock Risk ${max + 1}.` : 'No extra rules.';
   } else {
-    if (val === 0) parts.push('<span class="risk-rule dim-text">No extra rules.</span>');
-    levels.slice(0, val).forEach((rule, i) => {
-      parts.push(`<span class="risk-rule"><b>${i + 1}</b> ${rule.name}: ${rule.desc}</span>`);
-    });
-    if (val > 0) parts.push(`<span class="risk-badge risk-badge-tp">+${val * CONFIG.risk.tpPerLevel}% TECH POINTS</span>`);
-    if (max < levels.length) {
-      parts.push(`<span class="risk-lock">Win on Risk ${max} to unlock Risk ${max + 1}.</span>`);
-    }
+    const rule = levels[val - 1];
+    const more = val > 1 ? ` +${val - 1} more` : '';
+    summary.innerHTML = `<span class="risk-tp-inline">+${val * CONFIG.risk.tpPerLevel}% TP</span> <b>${rule.name}:</b> ${rule.desc}<span class="dim-text">${more}</span>`;
   }
-  bonusEl.innerHTML = parts.join('');
 }
 
 // ---------- Boot ----------

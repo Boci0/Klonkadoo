@@ -393,12 +393,6 @@ canvas {
   color: var(--accent-gold);
 }
 
-#risk-level-bonus {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-}
 
 .risk-badge {
   font-size: 11px;
@@ -415,50 +409,6 @@ canvas {
 .risk-badge-cost { color: var(--p-yellow); }
 .risk-badge-gold { color: var(--p-orange); }
 .risk-badge-tp { color: var(--p-lime); }
-
-/* Chunky pixel slider with a big touch target */
-.risk-slider {
-  width: 100%;
-  height: 28px;
-  appearance: none;
-  -webkit-appearance: none;
-  background: transparent;
-  outline: none;
-  cursor: pointer;
-  touch-action: pan-x;
-}
-
-.risk-slider::-webkit-slider-runnable-track {
-  height: 8px;
-  background: var(--p-steel);
-  box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.5);
-}
-
-.risk-slider::-moz-range-track {
-  height: 8px;
-  background: var(--p-steel);
-}
-
-.risk-slider::-webkit-slider-thumb {
-  appearance: none;
-  -webkit-appearance: none;
-  width: 22px;
-  height: 22px;
-  margin-top: -7px;
-  background: var(--p-yellow);
-  border: var(--px) solid var(--p-ink);
-  box-shadow: inset -3px -3px 0 var(--p-orange);
-  cursor: pointer;
-}
-
-.risk-slider::-moz-range-thumb {
-  width: 22px;
-  height: 22px;
-  border-radius: 0;
-  background: var(--p-yellow);
-  border: var(--px) solid var(--p-ink);
-  cursor: pointer;
-}
 
 /* ---------- Screen headers & footers ---------- */
 
@@ -1835,15 +1785,6 @@ canvas {
   color: var(--text-dim);
 }
 
-.risk-slider:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-#risk-level-bonus {
-  max-height: 96px;
-  overflow-y: auto;
-}
 
 .result-risk {
   padding: 6px 8px;
@@ -2167,4 +2108,147 @@ canvas {
 
 .skin-btn.locked img {
   filter: grayscale(1) brightness(0.5);
+}
+
+/* ---------- Risk stepper (replaces the slider) ---------- */
+
+.difficulty-panel {
+  padding: 8px 10px;
+}
+
+.risk-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.risk-title {
+  font-size: 13px;
+  letter-spacing: 2px;
+  margin-right: 2px;
+}
+
+.risk-step {
+  min-width: 38px;
+  min-height: 36px;
+  padding: 4px 0 calc(4px + var(--px));
+  font-size: 18px;
+}
+
+.risk-value {
+  min-width: 58px;
+  text-align: center;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--accent-gold);
+}
+
+.risk-rules-btn {
+  margin-left: auto;
+  min-height: 36px;
+  padding: 4px 10px calc(4px + var(--px));
+  font-size: 11px;
+}
+
+/* Two lines at most so the panel never grows off-screen */
+.risk-summary {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.3;
+  max-height: 2.6em;
+  overflow: hidden;
+  color: var(--text);
+}
+
+.risk-tp-inline {
+  color: var(--p-lime);
+  font-weight: 700;
+}
+
+/* Small / short phones: compact title, tighter spacing */
+@media (max-height: 380px) {
+  .game-title {
+    font-size: clamp(20px, 4.2vw, 34px);
+  }
+
+  .game-tagline {
+    display: none;
+  }
+
+  .menu-stats {
+    padding: 6px 10px;
+  }
+
+  .menu-stat strong {
+    font-size: 13px;
+  }
+
+  #screen-menu {
+    padding-top: calc(10px + var(--safe-top));
+    padding-bottom: calc(10px + var(--safe-bottom));
+  }
+}
+
+@media (max-width: 640px) {
+  .risk-title {
+    display: none;
+  }
+
+  .risk-step {
+    min-width: 34px;
+  }
+
+  .risk-value {
+    min-width: 50px;
+    font-size: 10px;
+  }
+}
+
+.risk-rule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.risk-rule-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 5px 8px;
+  font-size: 13px;
+  background: var(--bg-card);
+  border-left: var(--px) solid var(--p-steel);
+}
+
+.risk-rule-row b {
+  min-width: 18px;
+  text-align: center;
+  color: var(--p-ink);
+  background: var(--p-slate);
+}
+
+.risk-rule-row.on {
+  border-left-color: var(--p-orange);
+}
+
+.risk-rule-row.on b {
+  background: var(--p-orange);
+}
+
+.risk-rule-row.locked {
+  opacity: 0.4;
+}
+
+/* Landscape phones: title on one line so the menu column sits centred, not pinned to the top */
+@media (max-height: 480px) {
+  .game-title {
+    font-size: clamp(18px, 3.6vw, 30px);
+    white-space: nowrap;
+  }
+
+  .game-title span {
+    display: inline;
+    margin-left: 0.4em;
+  }
 }

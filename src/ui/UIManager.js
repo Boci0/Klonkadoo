@@ -1201,6 +1201,18 @@ export class UIManager {
     setTimeout(() => el.addEventListener('pointerdown', finish, { once: true }), 500);
   }
 
+  /** Every Risk rule: active ones highlighted, locked ones dimmed. */
+  showRiskRules(level, maxUnlocked) {
+    const rows = CONFIG.risk.levels.map((rule, i) => {
+      const n = i + 1;
+      const state = n <= level ? 'on' : n <= maxUnlocked ? '' : 'locked';
+      return `<div class="risk-rule-row ${state}"><b>${n}</b><span><strong>${rule.name}</strong> ${rule.desc}</span></div>`;
+    }).join('');
+    this.openModal('RISK RULES', `<p class="dim-text">Rules stack: Risk ${level || 'N'} applies rules 1 to ${level || 'N'}. Each level: +${CONFIG.risk.tpPerLevel}% Tech Points.</p><div class="risk-rule-list">${rows}</div>`,
+      `<div class="btn-row"><button class="btn btn-accent" data-act="close">CLOSE</button></div>`);
+    this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => this.closeModal());
+  }
+
   showRiskUnlocked(level, rule) {
     const el = document.getElementById('result-risk');
     if (!el) return;
