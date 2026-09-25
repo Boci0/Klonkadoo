@@ -30,7 +30,7 @@ export class DevTools {
     badge.innerHTML = '[DEV]';
     badge.style.cssText = `
       position: fixed;
-      top: 10px;
+      bottom: 10px;
       left: 10px;
       z-index: 99999;
       background: rgba(16, 22, 32, 0.85);

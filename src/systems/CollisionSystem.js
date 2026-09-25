@@ -51,8 +51,7 @@ export class CollisionSystem {
     }
 
     const base = speedAPre >= speedBPre ? speedAPre : speedBPre;
-    const maxCap = attacker.team === 'enemy' ? 60 : D.maxDamagePerHit;
-    baseDamage = Math.min(maxCap, base * D.damagePerSpeed) * attackerAtk;
+    baseDamage = Math.min(D.maxDamagePerHit, base * D.damagePerSpeed) * attackerAtk;
 
     if (attacker.team === 'player') {
       const bs = this.stats.battleStats;
@@ -107,36 +106,41 @@ export class CollisionSystem {
         baseDamage *= 1.35;
       }
 
+      if (rels.includes('rel_vector_engine') && bs && bs.lastLaunchPct >= 0.9) {
+        baseDamage *= 1.25;
+      }
+
       if (rels.includes('rel_echo') && bs && !bs.echoUsed) {
         baseDamage += 15;
         bs.echoUsed = true;
+        this.events.emit('proc', { ball: victim, text: 'ECHO +15', color: '#ffcd75' });
       }
 
       // Elemental Relic: Thermal Engine (Ignites target with 3 turns of Thermal Burn DOT)
       if (rels.includes('rel_pyro')) {
         victim.burnTicks = 3;
         victim.burnDmg = 6;
+        this.events.emit('proc', { ball: victim, text: 'BURN', color: '#ef7d57' });
       }
 
       // Elemental Relic: Cryo Coil (Freezes target, slows next turn launch)
       if (rels.includes('rel_cryo')) {
         victim.isFrozen = true;
+        this.events.emit('proc', { ball: victim, text: 'FROZEN', color: '#73eff7' });
       }
 
-      // Elemental Relic: Singularity Core (Pulls nearby enemies toward crash site)
+      // Singularity Core: nearby enemies slide in next to the one you hit
       if (rels.includes('rel_graviton') && allBalls) {
+        let pulled = false;
         for (const ball of allBalls) {
-          if (ball !== victim && ball.team === 'enemy' && ball.hp > 0) {
-            const dx = victim.x - ball.x;
-            const dy = victim.y - ball.y;
-            const dist = Math.hypot(dx, dy) || 1;
-            if (dist < 350) {
-              const pullForce = (1 - dist / 350) * 380;
-              ball.vx += (dx / dist) * pullForce;
-              ball.vy += (dy / dist) * pullForce;
-            }
-          }
+          if (ball === victim || ball.team !== 'enemy' || ball.hp <= 0) continue;
+          const dx = victim.x - ball.x;
+          if (Math.abs(dx) > 360) continue;
+          const gap = victim.radius + ball.radius + 6;
+          ball.pullTo = { x: victim.x - Math.sign(dx || 1) * gap, speed: 900, time: 0.5 };
+          pulled = true;
         }
+        if (pulled) this.events.emit('proc', { ball: victim, text: 'SINGULARITY', color: '#c46fd6', implode: true });
       }
     }
 
@@ -144,15 +148,30 @@ export class CollisionSystem {
     let finalDamage;
     if (victim.team === 'player' && attacker.team === 'enemy') {
       finalDamage = this.calculatePlayerDamage(baseDamage, { bypassDef: false });
+      const bs = this.stats.battleStats;
+      if (this.stats.relics?.includes('rel_shadow_cloak') && bs && (bs.cloakHits || 0) < 2) {
+        bs.cloakHits = (bs.cloakHits || 0) + 1;
+        finalDamage = Math.max(1, Math.round(finalDamage / 2));
+        this.events.emit('proc', { ball: victim, text: 'CLOAK -50%', color: '#94b0c2' });
+      }
     } else {
       let damageAfterDef = Math.max(1, baseDamage - victimDef);
       finalDamage = Math.max(1, Math.round(damageAfterDef * (1 - victimDmgReductionPct)));
     }
 
-    if (attacker.team === 'player' && this.stats.relics?.includes('rel_syndicate_blade') && victim.archetype !== 'boss' && victim.displayName !== 'SECTOR COMMANDER') {
+    // Aegis Drone shield: absorbs one whole hit
+    if (victim.team === 'enemy' && victim.shieldCharges > 0 && attacker.team === 'player') {
+      victim.shieldCharges -= 1;
+      attacker.hitCooldown = D.hitCooldown;
+      this.events.emit('proc', { ball: victim, text: 'BLOCKED', color: '#41a6f6' });
+      return;
+    }
+
+    if (attacker.team === 'player' && this.stats.relics?.includes('rel_syndicate_blade') && !victim.rank && victim.displayName !== 'SECTOR COMMANDER') {
       const remainingHp = victim.hp - finalDamage;
       if (remainingHp > 0 && remainingHp <= victim.maxHp * 0.15) {
         finalDamage = victim.hp;
+        this.events.emit('proc', { ball: victim, text: 'EXECUTE', color: '#ff5d73' });
       }
     }
 
@@ -201,7 +220,7 @@ export class CollisionSystem {
     if (this.stats.techStats?.kineticDampenerPct > 0) {
       redPct += this.stats.techStats.kineticDampenerPct;
     }
-    redPct = Math.max(0, Math.min(0.85, redPct));
+    redPct = Math.max(-0.5, Math.min(0.85, redPct)); // negative = extra damage taken
     damage = Math.max(1, Math.round(damage * (1 - redPct)));
 
     // 3. Risk Modifier (+X% DMG TAKEN)

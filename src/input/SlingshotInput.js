@@ -8,6 +8,7 @@ import { CONFIG } from '../config.js';
 import { clamp, length, normalize } from '../utils/math.js';
 
 const S = CONFIG.slingshot;
+const CANCEL_RADIUS = 55; // world units around the drag start that cancel the shot
 
 export class SlingshotInput {
   constructor(canvas, events) {
@@ -23,6 +24,7 @@ export class SlingshotInput {
     this.ballX = 0;
     this.ballY = 0;
 
+    this.powerMult = 1; // launch power bonus from boons / relics
     this.placementMode = null; // null | 'barrier'
     this.placementPos = { x: 0, y: 0 };
 
@@ -61,7 +63,13 @@ export class SlingshotInput {
     this.ballY = y;
   }
 
+  /** The renderer supplies the screen→world mapping for the full-bleed canvas. */
+  setCoordinateMapper(fn) {
+    this._toWorld = fn;
+  }
+
   _getMousePos(e) {
+    if (this._toWorld) return this._toWorld(e.clientX, e.clientY);
     const rect = this.canvas.getBoundingClientRect();
     const scaleX = (this.canvas.width || CONFIG.world.width) / (rect.width || 1);
     const scaleY = (this.canvas.height || CONFIG.world.height) / (rect.height || 1);
@@ -84,6 +92,8 @@ export class SlingshotInput {
       e.target?.setPointerCapture?.(e.pointerId);
     } catch (_) {}
     this.dragging = true;
+    this.cancelArmed = false;
+    this.inCancelZone = true;
     this.dragStart = pos;
     this.dragCurrent = pos;
     this.launchVelocity = null;
@@ -133,7 +143,10 @@ export class SlingshotInput {
     const dy = this.dragStart.y - this.dragCurrent.y;
     const dist = length(dx, dy);
 
-    if (dist < 5) {
+    // Dragging back to where you started cancels the shot
+    if (dist > CANCEL_RADIUS * 1.5) this.cancelArmed = true;
+    this.inCancelZone = dist < CANCEL_RADIUS;
+    if (this.inCancelZone) {
       this.launchVelocity = null;
       this.trajectory = [];
       return;
@@ -141,7 +154,8 @@ export class SlingshotInput {
 
     const dir = normalize(dx, dy);
     const clampedDist = clamp(dist, 0, S.maxDragDistance);
-    const power = clamp(clampedDist * S.powerScale, S.minPower, S.maxPower);
+    const maxPower = S.maxPower * this.powerMult;
+    const power = clamp(clampedDist * S.powerScale * this.powerMult, S.minPower, maxPower);
 
     this.launchVelocity = {
       x: dir.x * power,
@@ -173,6 +187,7 @@ export class SlingshotInput {
 
     for (let i = 0; i < S.trajectoryPoints; i++) {
       ball.vy += gravity * dt;
+      ball.vx += (CONFIG.world.wind || 0) * dt; // preview bends with the wind
       const drag = 1 - airDrag * dt;
       ball.vx *= drag;
       ball.vy *= drag;
@@ -198,43 +213,64 @@ export class SlingshotInput {
       const bx = this.placementPos.x - bw / 2;
       const by = Math.max(50, Math.min(CONFIG.world.groundY - bh, this.placementPos.y - bh / 2));
 
+      // Ghost wall (red while hovering the cancel zone); the hint text is drawn by the HUD
+      const col = this.placementCancel ? '255, 93, 115' : '115, 239, 247';
       ctx.save();
-      ctx.fillStyle = 'rgba(122, 162, 255, 0.25)';
+      ctx.fillStyle = `rgba(${col}, 0.3)`;
       ctx.fillRect(bx, by, bw, bh);
-      ctx.strokeStyle = '#7aa2ff';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = `rgb(${col})`;
+      ctx.lineWidth = 4;
+      ctx.setLineDash([10, 8]);
       ctx.strokeRect(bx, by, bw, bh);
-      ctx.setLineDash([]);
-
-      ctx.fillStyle = '#7aa2ff';
-      ctx.font = '600 12px "Segoe UI", sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('CLICK / RELEASE TO PLACE BARRIER', this.placementPos.x, by - 12);
       ctx.restore();
       return;
     }
 
     if (!this.active || !this.dragging) return;
 
+    // Cancel zone at the drag start: shown once you have pulled away from it
+    if (this.cancelArmed) {
+      const hot = this.inCancelZone;
+      ctx.save();
+      ctx.strokeStyle = hot ? '#ff5d73' : 'rgba(244, 244, 244, 0.5)';
+      ctx.fillStyle = hot ? 'rgba(255, 93, 115, 0.25)' : 'rgba(16, 17, 28, 0.35)';
+      ctx.lineWidth = 5;
+      ctx.setLineDash([10, 8]);
+      ctx.beginPath();
+      ctx.arc(this.dragStart.x, this.dragStart.y, CANCEL_RADIUS, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = hot ? '#ff5d73' : 'rgba(244, 244, 244, 0.7)';
+      ctx.font = '700 20px "Pixelify Sans", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(hot ? 'RELEASE TO CANCEL' : 'CANCEL', this.dragStart.x, this.dragStart.y + 7);
+      ctx.restore();
+    }
+
     if (this.ballX !== undefined && this.dragStart && this.dragCurrent) {
       const dx = this.dragStart.x - this.dragCurrent.x;
       const dy = this.dragStart.y - this.dragCurrent.y;
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.lineWidth = 6;
+      ctx.setLineDash([12, 8]);
       ctx.beginPath();
       ctx.moveTo(this.ballX, this.ballY);
       ctx.lineTo(this.ballX - dx, this.ballY - dy);
       ctx.stroke();
+      ctx.setLineDash([]);
     }
 
+    // Square pixel dots, sized to stay visible when the arena is scaled down on phones
     if (this.trajectory.length > 0) {
-      ctx.fillStyle = CONFIG.colors.trajectory;
-      for (const p of this.trajectory) {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      const n = this.trajectory.length;
+      this.trajectory.forEach((p, i) => {
+        const size = Math.round(10 - (i / n) * 4);
+        ctx.fillStyle = '#000';
+        ctx.fillRect(p.x - size / 2 + 2, p.y - size / 2 + 2, size, size);
+        ctx.fillStyle = i % 2 ? '#41a6f6' : '#73eff7';
+        ctx.fillRect(p.x - size / 2, p.y - size / 2, size, size);
+      });
     }
   }
 

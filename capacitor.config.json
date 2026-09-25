@@ -1,0 +1,14 @@
+{
+  "appId": "com.muhdboci.slingshotops",
+  "appName": "Slingshot Ops",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#10111c"
+  },
+  "plugins": {
+    "StatusBar": {
+      "overlaysWebView": true,
+      "backgroundColor": "#00000000"
+    }
+  }
+}

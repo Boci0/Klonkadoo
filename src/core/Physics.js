@@ -16,6 +16,8 @@ const B = CONFIG.ball;
  */
 export function applyForces(ball, dt) {
   ball.vy += W.gravity * dt;
+  // Arena wind pushes airborne balls sideways (W.wind is set per battle)
+  if (W.wind && ball.y + (ball.radius || B.radius) < W.groundY - 2) ball.vx += W.wind * dt;
   const drag = 1 - W.airDrag * dt;
   ball.vx *= drag;
   ball.vy *= drag;

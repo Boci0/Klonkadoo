@@ -6,18 +6,22 @@
 
 import { CONFIG } from '../config.js';
 import { saveSystem } from '../meta/SaveSystem.js';
+import { relicStats } from '../meta/Relics.js';
+import { getBall } from '../meta/Balls.js';
 
 const RUN = CONFIG.run;
 
 export class RunState {
-  constructor(permanentStats = {}) {
+  constructor(permanentStats = {}, ballType = 'vanguard') {
     // permanentStats: { atkBonus, hpBonus, defBonus } from the tech tree
-    this.reset(permanentStats);
+    this.reset(permanentStats, ballType);
   }
 
-  reset(permanentStats = {}) {
+  reset(permanentStats = {}, ballType = 'vanguard') {
     this.permanent = permanentStats;
-    this.maxHp = RUN.maxHpBase + (permanentStats.hpBonus || 0);
+    this.ballType = ballType;
+    this.ball = getBall(ballType);
+    this.maxHp = RUN.maxHpBase + (permanentStats.hpBonus || 0) + this.ball.hpBonus;
     this.hp = this.maxHp;
     this.baseAtk = 10 + (permanentStats.baseAtkBonus || 0);
     this.atkMult = 1.0 + (permanentStats.atkBonus || 0);
@@ -27,6 +31,8 @@ export class RunState {
     this.maxRestHealed = 0;
     this.boons = []; // array of boon ids
     this.relics = []; // array of relic ids (permanent run-scoped items)
+    this.curses = []; // curse ids from Curse Shrines
+    this.condition = null; // operation condition id for this run
     this.shopDiscount = 1 - (permanentStats.shopDiscountBonus || 0);
     this.floor = 0;
     this.baseFloorActions = CONFIG.map.baseFloorActions || 5;
@@ -43,7 +49,26 @@ export class RunState {
   }
 
   resetFloorActions(bonus = 0) {
-    this.floorActions = (CONFIG.map.baseFloorActions || 5) + bonus;
+    const scouted = this.condition === 'scouted' ? 1 : 0;
+    const lost = this.curseCount('curse_lost');
+    this.floorActions = Math.max(2, (CONFIG.map.baseFloorActions || 5) + bonus + scouted - lost);
+  }
+
+  curseCount(id) {
+    return this.curses.filter((c) => c === id).length;
+  }
+
+  addCurse(id) {
+    this.curses.push(id);
+    if (id === 'curse_frail') {
+      this.maxHp = Math.max(20, this.maxHp - 15);
+      this.hp = Math.min(this.hp, this.maxHp);
+    }
+  }
+
+  /** Healing multiplier from Risk and curses. */
+  get healMult() {
+    return saveSystem.getHealingMultiplier() * Math.max(0.2, 1 - 0.2 * this.curseCount('curse_wounds'));
   }
 
   spendFloorAction() {
@@ -60,8 +85,13 @@ export class RunState {
     return Math.max(0, this.atkMult - 1.0);
   }
 
+  /** Passive bonuses from all owned relics (see meta/Relics.js). */
+  get relicBonus() {
+    return relicStats(this.relics);
+  }
+
   get atk() {
-    let mult = this.atkMult;
+    let mult = this.atkMult + this.relicBonus.atkPct + (this.ball?.atkPct || 0);
     if (this.permanent?.relicAtkPctPerItem > 0) {
       mult += this.relics.length * this.permanent.relicAtkPctPerItem;
     }
@@ -69,55 +99,26 @@ export class RunState {
   }
 
   get totalDef() {
-    let base = this.def; // base def from tech tree & boons
+    let base = this.def + this.relicBonus.def; // tech tree, boons, relics
     if (this.permanent?.relicDefPerItem > 0) {
       base += this.relics.length * this.permanent.relicDefPerItem;
     }
-
-    // Base DEF Relics
-    if (this.relics.includes('rel_heavy_armor')) base += 8;
-    if (this.relics.includes('rel_calcifying_gel')) base += 5;
-    if (this.relics.includes('rel_victoria_crown')) base += 3;
-    if (this.relics.includes('rel_tactical_edge')) base += 2;
-    if (this.relics.includes('rel_plating')) base += 2;
-    if (this.relics.includes('rel_titan_plate')) base += 8;
-    if (this.relics.includes('rel_bulwark_core')) base += 12;
-    if (this.relics.includes('rel_bastion_shield')) base += 16;
-    if (this.relics.includes('rel_goliath_carapace')) base += 10;
-    if (this.relics.includes('rel_fortress_seal')) base += 15;
-    if (this.relics.includes('rel_apex_bulwark')) base += 20;
-    if (this.relics.includes('rel_originium_cube')) base += 5;
-
-    // DEF% Bonuses (Tech Tree & Relics)
-    let pct = this.permanent?.defPctBonus || 0;
-    if (this.relics.includes('rel_nanite_weave')) pct += 0.25;
-    if (this.relics.includes('rel_harmonic_barrier')) pct += 0.40;
-    if (this.relics.includes('rel_overcharged_plating')) pct += 0.60;
-    if (this.relics.includes('rel_goliath_carapace')) pct += 0.30;
-    if (this.relics.includes('rel_fortress_seal')) pct += 0.45;
-    if (this.relics.includes('rel_apex_bulwark')) pct += 0.60;
-
-    return Math.round(base * (1 + pct));
+    return Math.round(base * (1 + this.defPctBonus));
   }
 
   get defPctBonus() {
-    let pct = this.permanent?.defPctBonus || 0;
-    if (this.relics.includes('rel_nanite_weave')) pct += 0.25;
-    if (this.relics.includes('rel_harmonic_barrier')) pct += 0.40;
-    if (this.relics.includes('rel_overcharged_plating')) pct += 0.60;
-    if (this.relics.includes('rel_goliath_carapace')) pct += 0.30;
-    if (this.relics.includes('rel_fortress_seal')) pct += 0.45;
-    if (this.relics.includes('rel_apex_bulwark')) pct += 0.60;
-    return pct;
+    return (this.permanent?.defPctBonus || 0) + this.relicBonus.defPct;
   }
 
+  /** Net damage reduction; negative means you take extra damage (e.g. Grizzly Claw). */
   get damageReductionPct() {
-    let pct = 0;
-    if (this.relics.includes('rel_kinetic_absorber')) pct += 0.15;
-    if (this.relics.includes('rel_stasis_field')) pct += 0.25;
-    if (this.relics.includes('rel_calcifying_gel')) pct += 0.10;
-    if (this.relics.includes('rel_bear_claw')) pct -= 0.10;
-    return Math.max(0, Math.min(0.85, pct));
+    const r = this.relicBonus;
+    return Math.max(-0.5, Math.min(0.85, r.dmgRed - r.dmgTaken));
+  }
+
+  /** Multiplier on maximum launch power (boons + relics). */
+  get launchPowerMult() {
+    return 1 + (this.getBoonCount('boon_power') + this.getBoonCount('boon_swift')) * 0.15 + this.relicBonus.powerPct + (this.ball?.powerPct || 0);
   }
 
   get floorProgress() {
@@ -173,54 +174,13 @@ export class RunState {
   addRelic(relicId) {
     if (!this.relics.includes(relicId)) {
       this.relics.push(relicId);
-      // Instant relic effects upon acquisition
-      switch (relicId) {
-        case 'rel_pawn_ticket':
-          this.gold += 25;
-          break;
-        case 'rel_iron_ration':
-          this.maxHp += 50;
-          this.hp = Math.min(this.maxHp, this.hp + 50);
-          break;
-        case 'rel_rhodes_banner':
-          this.maxHp += 30;
-          this.hp += 30;
-          this.atkMult += 0.1;
-          break;
-        case 'rel_plating':
-          this.def += 2;
-          break;
-        case 'rel_calcifying_gel':
-          this.def += 5;
-          break;
-        case 'rel_bear_claw':
-          this.atkMult += 0.35;
-          break;
-        case 'rel_heavy_armor':
-          this.def += 8;
-          break;
-        case 'rel_victoria_crown':
-          this.atkMult += 0.2;
-          this.maxHp += 30;
-          this.hp += 30;
-          this.def += 3;
-          break;
-        case 'rel_originium_cube':
-          this.atkMult += 0.5;
-          this.maxHp += 100;
-          this.hp += 100;
-          this.def += 5;
-          this.gold += 100;
-          break;
-        case 'rel_waraxe':
-          this.baseAtk += 3;
-          break;
-        case 'rel_tactical_edge':
-          this.baseAtk += 2;
-          this.maxHp += 15;
-          this.hp += 15;
-          break;
+      // One-time effects on pickup (passive stats come from relicBonus)
+      const maxHp = relicStats([relicId]).maxHp;
+      if (maxHp) {
+        this.maxHp += maxHp;
+        this.hp += maxHp;
       }
+      if (relicId === 'rel_pawn_ticket') this.gold += 30;
       if (this.permanent?.relicHpPctPerItem > 0) {
         const hpGain = Math.round(RUN.maxHpBase * this.permanent.relicHpPctPerItem);
         this.maxHp += hpGain;
@@ -233,10 +193,16 @@ export class RunState {
     return this.relics.includes(relicId);
   }
 
+  /** Shop price for a relic after run discounts, Risk markup and Black-Market Pass. */
+  relicPrice(relic) {
+    const pass = this.hasRelic('rel_blackmarket_pass') ? 0.8 : 1;
+    return Math.round(relic.cost * (this.shopDiscount || 1) * saveSystem.getShopPriceMultiplier() * pass);
+  }
+
   /** Give gold, respecting Greed bonus and Risk Level Gold penalty. */
   gainGold(amount) {
     const greedCount = this.getBoonCount('boon_greed');
-    const greedMult = 1 + greedCount * 0.25;
+    const greedMult = 1 + greedCount * 0.25 + (this.hasRelic('rel_lucky_coin') ? 0.25 : 0) + (this.condition === 'gold_rush' ? 0.3 : 0);
     const riskMult = saveSystem.getGoldMultiplier();
     const gained = Math.round(amount * greedMult * riskMult);
     this.gold += gained;
@@ -258,7 +224,7 @@ export class RunState {
 
   /** Heal HP (respects rest cap formula, Risk penalty, and Overflow Shielding). */
   heal(amount, capPct = CONFIG.run.hpRegenMaxPct, techStats = {}) {
-    const effective = Math.round(amount * saveSystem.getHealingMultiplier());
+    const effective = Math.round(amount * this.healMult);
     const cap = this.maxHp * capPct;
     const targetHp = Math.min(this.maxHp, this.hp + effective, this.hp + cap);
 
@@ -274,7 +240,7 @@ export class RunState {
 
   /** Restore a flat amount up to max HP (respects Risk penalty and Overflow Shielding). */
   healFlat(amount, techStats = {}) {
-    const effective = Math.round(amount * saveSystem.getHealingMultiplier());
+    const effective = Math.round(amount * this.healMult);
     if (techStats.overflowShieldCapPct > 0 && (this.hp + effective) > this.maxHp) {
       const maxShieldCap = Math.round(this.maxHp * techStats.overflowShieldCapPct);
       const overflow = (this.hp + effective) - this.maxHp;

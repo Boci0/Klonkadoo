@@ -161,8 +161,10 @@ export class EnemyAI {
 
     let minDist = Infinity;
 
+    const wind = CONFIG.world.wind || 0;
     for (let i = 0; i < steps; i++) {
       vy += gravity * dt;
+      vx += wind * dt;
       const drag = 1 - airDrag * dt;
       vx *= drag;
       vy *= drag;

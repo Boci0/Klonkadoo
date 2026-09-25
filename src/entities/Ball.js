@@ -1,6 +1,6 @@
 // A ball entity — represents both the player and enemy characters.
 export class Ball {
-  constructor({ x, y, team, color, darkColor, maxHp, displayName, archetype, atk, def, aiDifficulty, thinkDelay }) {
+  constructor({ x, y, team, color, darkColor, maxHp, displayName, archetype, atk, def, aiDifficulty, thinkDelay, radius, ballType }) {
     this.x = x;
     this.y = y;
     this.vx = 0;
@@ -10,7 +10,8 @@ export class Ball {
     this.darkColor = darkColor;
     this.maxHp = maxHp;
     this.hp = maxHp;
-    this.radius = 24;
+    this.radius = radius ?? 24;
+    this.ballType = ballType ?? null; // player ball class (juggernaut, cluster, graviton...)
     this.hitCooldown = 0; // seconds until this ball can deal damage again
     this.flashTimer = 0; // visual hit flash
     this.displayName = displayName || null; // e.g. boss name shown in HUD

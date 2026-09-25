@@ -7,7 +7,7 @@
 import './styles.css';
 import { CONFIG } from './config.js';
 import { Game } from './core/Game.js';
-import { SaveSystem } from './meta/SaveSystem.js';
+import { saveSystem } from './meta/SaveSystem.js';
 import { UpgradeSystem } from './meta/UpgradeSystem.js';
 import { TechTree } from './meta/TechTree.js';
 import { QuestSystem } from './meta/QuestSystem.js';
@@ -16,13 +16,20 @@ import { RogueMap } from './rogue/RogueMap.js';
 import { RogueMapRenderer } from './rendering/RogueMapRenderer.js';
 import { Minigame } from './minigame/Minigame.js';
 import { UIManager } from './ui/UIManager.js';
+import { pickRelics } from './meta/Relics.js';
+import { pickArena } from './core/Arenas.js';
+import { getBall, skinColors } from './meta/Balls.js';
+import { MenuBackground } from './rendering/MenuBackground.js';
+import { soundEngine } from './utils/SoundEngine.js';
+import { haptics } from './platform/haptics.js';
 import { DevTools } from './dev/DevTools.js';
+import './platform/native.js';
 
 // ---------- Core systems ----------
 
 const canvas = document.getElementById('game-canvas');
 
-const saveSystem = new SaveSystem();
+// One shared save instance for the whole app (UI, run state and battle all read it)
 const upgradeSystem = new UpgradeSystem(saveSystem);
 upgradeSystem.applyUpgrades();
 
@@ -30,7 +37,8 @@ const techTree = new TechTree(saveSystem);
 const game = new Game(canvas);
 const minigame = new Minigame(canvas);
 let mapRenderer = null;
-const devTools = new DevTools(() => game, () => run, saveSystem, techTree);
+// Dev panel only exists on the Vite dev server, never in release builds
+const devTools = import.meta.env.DEV ? new DevTools(() => game, () => run, saveSystem, techTree) : null;
 
 // ---------- Run state ----------
 
@@ -43,8 +51,10 @@ let pendingBoon = null;
 let goldSpentTotal = 0;
 let lostAnyCombat = false;
 let activeNode = null; // node currently being resolved
+const BASE_GRAVITY = CONFIG.world.gravity; // operation conditions scale this per run
+let prevPosition = null; // where the player stood before selecting activeNode (for BACK / RETREAT)
+let battlePaused = false; // battle simulation frozen (e.g. retreat confirmation open)
 let minigameResultShown = false;
-let feedEntries = []; // combat feed log for the run map screen
 
 // ---------- App state machine ----------
 
@@ -64,12 +74,27 @@ function setState(next) {
   // Show the game canvas only during active gameplay screens
   const showCanvas = next === State.BATTLE || next === State.MINIGAME;
   canvas.classList.toggle('hidden', !showCanvas);
+
+  // Background music follows the screen
+  if (next === State.BATTLE) {
+    const t = activeNode?.type || run?.currentNode?.type;
+    soundEngine.playMusic(t === 'miniboss' || t === 'boss' || t === 'elite' ? 'boss' : 'battle');
+  } else if (next === State.RUN_MAP || next === State.MINIGAME) {
+    soundEngine.playMusic('map');
+  } else if (next === State.RESULT) {
+    soundEngine.playMusic(null);
+  } else {
+    soundEngine.playMusic('menu');
+  }
 }
+
+// Audio can only start after a user gesture; also give every button a click sound
+window.addEventListener('pointerdown', () => soundEngine.unlock(), { capture: true });
 
 // ---------- UI callbacks ----------
 
 const ui = new UIManager({
-  onPlay: startNewRun,
+  onPlay: () => ui.showBallSelect((ballType, skin) => startNewRun(ballType, skin)),
   onOpenTech: () => {
     setState(State.TECH);
     ui.showTech(techTree, saveSystem);
@@ -102,10 +127,10 @@ const ui = new UIManager({
   },
   onNodeFight: (node) => startCombat(node),
   onNodeRetreat: (node) => skipNode(node),
+  onNodeBack: () => cancelNodeSelection(),
   onNodeProceed: (node, leaveShop) => proceedFromNode(node, leaveShop),
   onBattleReportContinue: continueAfterCombatReport,
   onEncounterChoice: (idx) => resolveEncounterChoice(idx),
-  onShopBuy: (item) => buyShopItem(item),
   onRelicBuy: (relic) => buyRelicItem(relic),
   onShopRefresh: () => {
     const node = run.currentNode;
@@ -139,24 +164,15 @@ const ui = new UIManager({
   onMinigameDone: finishMinigame,
 });
 
-// ---------- Combat feed ----------
+// ---------- Run event toasts ----------
 
+/**
+ * Surface a run event. Outside battle it shows as a short toast; in battle,
+ * damage/heal already appears as floating numbers, so events are skipped.
+ */
 function addFeedEntry(html) {
-  feedEntries.unshift({ html, time: Date.now() });
-  if (feedEntries.length > 30) feedEntries.pop();
-  renderFeed();
-}
-
-function renderFeed() {
-  const container = document.getElementById('combat-feed');
-  if (!container) return;
-  if (feedEntries.length === 0) {
-    container.innerHTML = '<span class="dim-text">No engagements yet</span>';
-    return;
-  }
-  container.innerHTML = feedEntries
-    .map((e) => `<div class="feed-entry">${e.html}</div>`)
-    .join('');
+  if (state === State.BATTLE && game.running) return; // live combat → floating numbers instead
+  ui.toast(html);
 }
 
 // ---------- Battle ability HUD ----------
@@ -190,9 +206,17 @@ function bindAbilityButtons() {
   if (btnOverdrive) {
     btnOverdrive.addEventListener('click', triggerOverdrive);
   }
-  if (btnBarrier) {
-    btnBarrier.addEventListener('click', triggerBarrier);
-  }
+
+  document.getElementById('btn-retreat-battle')?.addEventListener('click', () => {
+    if (!canRetreatFromBattle()) return;
+    soundEngine.playUI();
+    battlePaused = true;
+    ui.showRetreatConfirm(retreatCost(), {
+      onConfirm: retreatFromBattle,
+      onCancel: () => { battlePaused = false; },
+    });
+  });
+  if (btnBarrier) bindBarrierDrag(btnBarrier);
 
   // Keyboard hotkeys [1] and [2]
   window.addEventListener('keydown', (e) => {
@@ -204,6 +228,77 @@ function bindAbilityButtons() {
       triggerBarrier(e);
     }
   });
+}
+
+/**
+ * BARRIER is drag-and-drop: press the button, drag onto the arena and release
+ * to place it. Dragging back onto the button (or releasing without moving)
+ * cancels. The ghost wall follows the finger.
+ */
+function bindBarrierDrag(btn) {
+  let drag = null;
+  const input = game.slingshotInput;
+  const overButton = (e) => {
+    const r = btn.getBoundingClientRect();
+    const m = 10; // generous cancel zone
+    return e.clientX >= r.left - m && e.clientX <= r.right + m && e.clientY >= r.top - m && e.clientY <= r.bottom + m;
+  };
+  const end = (e, cancelled) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const moved = drag.moved;
+    drag = null;
+    btn.classList.remove('dragging');
+    game.renderer.barrierCancelHover = false;
+    input.placementCancel = false;
+    input.cancelPlacement();
+    if (cancelled || !moved || overButton(e)) {
+      soundEngine.playUI(440);
+      if (!moved) game.renderer.showBanner('DRAG ONTO THE ARENA', '#73eff7');
+      return;
+    }
+    const pos = game.renderer.clientToWorld(e.clientX, e.clientY);
+    if (game.deployBarrierAt(pos.x, pos.y)) {
+      haptics.impact('medium');
+      updateAbilityHud();
+    }
+  };
+
+  btn.addEventListener('pointerdown', (e) => {
+    if (state !== State.BATTLE || drag) return;
+    const ab = game.abilities?.barrier;
+    const active = game.barriers.filter((b) => b.active).length;
+    if (!game.running || !ab?.ready || active >= CONFIG.abilities.barrier.maxActive) {
+      soundEngine.play('error');
+      return;
+    }
+    e.preventDefault();
+    btn.setPointerCapture?.(e.pointerId);
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+    btn.classList.add('dragging');
+    input.placementMode = 'barrier';
+    input.placementPos = game.renderer.clientToWorld(e.clientX, e.clientY);
+    haptics.impact('light');
+    soundEngine.playUI(660);
+  });
+  btn.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 12) drag.moved = true;
+    input.placementPos = game.renderer.clientToWorld(e.clientX, e.clientY);
+    const cancel = overButton(e);
+    input.placementCancel = cancel;
+    game.renderer.barrierCancelHover = cancel;
+    btn.classList.toggle('cancel-hover', cancel && drag.moved);
+  });
+  btn.addEventListener('pointerup', (e) => {
+    btn.classList.remove('cancel-hover');
+    end(e, false);
+  });
+  btn.addEventListener('pointercancel', (e) => {
+    btn.classList.remove('cancel-hover');
+    end(e, true);
+  });
+  // Keyboard [2] keeps the old tap-to-place flow on desktop
+  btn.addEventListener('click', (e) => e.preventDefault());
 }
 
 function updateAbilityHud() {
@@ -240,10 +335,14 @@ function updateAbilityHud() {
 
 // ---------- Run flow ----------
 
-function startNewRun(ballType = 'vanguard') {
+function startNewRun(ballType = 'vanguard', skin = 'default') {
   runSeed = Math.floor(Math.random() * 100000) + 1;
-  run = new RunState(techTree.getPermanentStats());
-  run.ballType = ballType;
+  run = new RunState(techTree.getPermanentStats(), ballType);
+  run.skin = skin;
+  // One random operation condition per run
+  const cond = CONFIG.runConditions[Math.floor(Math.random() * CONFIG.runConditions.length)];
+  run.condition = cond.id;
+  CONFIG.world.gravity = BASE_GRAVITY * (cond.id === 'heavy_gravity' ? 1.2 : cond.id === 'low_gravity' ? 0.8 : 1);
   map = new RogueMap(runSeed);
   questSystem = new QuestSystem(saveSystem, runSeed);
   currentFloorView = 0;
@@ -251,8 +350,6 @@ function startNewRun(ballType = 'vanguard') {
   goldSpentTotal = 0;
   lostAnyCombat = false;
   activeNode = null;
-  feedEntries = [];
-  renderFeed();
 
   // Enter floor 0
   run.floor = 0;
@@ -264,6 +361,9 @@ function startNewRun(ballType = 'vanguard') {
   setState(State.RUN_MAP);
   ui.showRunScreen(run, map, 0);
   buildFloorTabs();
+  if (cond.id === 'supplied') rewardRandomCollectible('SUPPLIES');
+  ui.updateRunHud(run);
+  ui.showCondition(cond);
 }
 
 function findEntryNode(floorIndex) {
@@ -301,23 +401,10 @@ function bindMapClicks() {
       mapRenderer.didDrag = false;
       return;
     }
-    const pt = mapRenderer ? mapRenderer.screenToMap(e.clientX, e.clientY) : null;
-    if (!pt) return;
-    const x = pt.x;
-    const y = pt.y;
-
+    if (!mapRenderer) return;
     const nextOptions = map.getNextOptions(run.floor, run.currentNodeId);
-    for (const node of nextOptions) {
-      const cardW = 86;
-      const cardH = 50;
-      const insideCard = Math.abs(x - node.x) <= cardW / 2 + 6 && Math.abs(y - node.y) <= cardH / 2 + 6;
-      const insideRadius = Math.hypot(x - node.x, y - node.y) <= (CONFIG.map.nodeRadius || 22) + 12;
-
-      if (insideCard || insideRadius) {
-        selectNode(node);
-        return;
-      }
-    }
+    const node = mapRenderer.hitNode(e.clientX, e.clientY, nextOptions);
+    if (node) selectNode(node);
   };
 
   const btnZoomIn = document.getElementById('btn-zoom-in');
@@ -330,6 +417,7 @@ function bindMapClicks() {
 }
 
 function selectNode(node) {
+  prevPosition = { id: run.currentNodeId, node: run.currentNode };
   activeNode = node;
   run.currentNodeId = node.id;
   run.currentNode = node;
@@ -381,12 +469,107 @@ function proceedFromNode(node, leaveShop) {
     case 'minigame':
       ui.showMinigameIntro();
       break;
+    case 'treasure': {
+      const offer = pickRelics(2, run.relics);
+      ui.showTreasure(offer, (id) => {
+        if (id) {
+          run.addRelic(id);
+          soundEngine.play('coin');
+          addFeedEntry(`<span class="feed-relic">+ RELIC: ${CONFIG.relics.find((r) => r.id === id).name}</span>`);
+        }
+        finishNode(node);
+      });
+      break;
+    }
+    case 'gamble':
+      ui.showGamble(run, 15, () => {
+        run.gold -= 15;
+        if (Math.random() < 0.5) {
+          soundEngine.play('confirm');
+          if (Math.random() < 0.5) {
+            const relic = rewardRandomCollectible('GAMBLE');
+            if (relic) return { won: true, text: `The dealer slides over a relic: <strong>${relic.name}</strong>.` };
+          }
+          const g = run.gainGold(45);
+          return { won: true, text: `The coin lands your way: +${g} gold.` };
+        }
+        soundEngine.play('error');
+        return { won: false, text: 'The coin lands wrong. Your 15 gold is gone.' };
+      }, () => finishNode(node));
+      break;
+    case 'shrine': {
+      const curse = CONFIG.curses[Math.floor(Math.random() * CONFIG.curses.length)];
+      const epic = pickRelics(1, run.relics.concat(CONFIG.relics.filter((r) => r.rarity !== 'epic').map((r) => r.id)))[0];
+      if (!epic) {
+        finishNode(node);
+        break;
+      }
+      ui.showShrine(curse, epic, () => {
+        run.addCurse(curse.id);
+        run.addRelic(epic.id);
+        soundEngine.play('alarm');
+        addFeedEntry(`<span class="feed-enemy-ability">CURSED: ${curse.name}</span> · <span class="feed-relic">+ ${epic.name}</span>`);
+        finishNode(node);
+      }, () => finishNode(node));
+      break;
+    }
     default:
       map.visitNode(run.floor, node.id);
       run.spendFloorAction();
       ui.updateRunHud(run);
       if (!advanceFloorIfNeeded()) returnToMap();
   }
+}
+
+/** BACK from a node pop-up: nothing happens, you stay where you were. */
+function cancelNodeSelection() {
+  if (prevPosition) {
+    run.currentNodeId = prevPosition.id;
+    run.currentNode = prevPosition.node;
+  }
+  activeNode = null;
+  prevPosition = null;
+  ui.updateRunHud(run);
+  ui.renderMap(run, map, run.floor);
+}
+
+/** Can the player flee the current battle? Bosses must be fought. */
+function canRetreatFromBattle() {
+  const type = activeNode?.type;
+  return state === State.BATTLE && type !== 'miniboss' && type !== 'boss' && !!prevPosition;
+}
+
+function retreatCost() {
+  return Math.max(5, Math.round(run.maxHp * 0.15));
+}
+
+/**
+ * RETREAT mid-battle: pay HP + 1 move, fall back to the previous tile.
+ * The hostile tile stays uncleared so it can be retried later.
+ */
+function retreatFromBattle() {
+  if (!canRetreatFromBattle()) return;
+  const cost = retreatCost();
+  game.abortBattle();
+  battlePaused = false;
+  run.hp = Math.max(1, Math.min(run.maxHp, game.player.hp) - cost);
+  run.currentNodeId = prevPosition.id;
+  run.currentNode = prevPosition.node;
+  activeNode = null;
+  prevPosition = null;
+  run.spendFloorAction();
+  addFeedEntry(`<span class="feed-enemy-ability">RETREATED — lost ${cost} HP. The hostile holds its position.</span>`);
+  soundEngine.play('retreat');
+  ui.updateRunHud(run);
+  if (!advanceFloorIfNeeded()) returnToMap();
+}
+
+/** Mark a non-combat node done: spend the move and return to the map. */
+function finishNode(node) {
+  map.visitNode(run.floor, node.id);
+  run.spendFloorAction();
+  ui.updateRunHud(run);
+  if (!advanceFloorIfNeeded()) returnToMap();
 }
 
 function skipNode(node) {
@@ -422,7 +605,7 @@ function advanceFloorIfNeeded() {
         };
         run.currentNode = minibossNode;
         run.currentNodeId = minibossNode.id;
-        addFeedEntry(`<span class="feed-enemy-ability">ACTION POINTS DEPLETED — ENGAGING FLOOR 3 MINI-BOSS!</span>`);
+        addFeedEntry(`<span class="feed-enemy-ability">OUT OF MOVES — THE FLOOR 3 MINI-BOSS ATTACKS!</span>`);
         startCombat(minibossNode);
         return true;
       }
@@ -443,7 +626,7 @@ function advanceFloorIfNeeded() {
         };
         run.currentNode = bossNode;
         run.currentNodeId = bossNode.id;
-        addFeedEntry(`<span class="feed-enemy-ability">ACTION POINTS DEPLETED — ENGAGING FINAL SECTOR COMMANDER!</span>`);
+        addFeedEntry(`<span class="feed-enemy-ability">OUT OF MOVES — THE FINAL BOSS ATTACKS!</span>`);
         startCombat(bossNode);
         return true;
       }
@@ -459,7 +642,7 @@ function advanceFloorIfNeeded() {
         run.currentNodeId = entry.id;
         run.currentNode = entry;
       }
-      addFeedEntry(`<span class="feed-heal">FLOOR ACTIONS DEPLETED — ADVANCING TO FLOOR ${run.floor + 1}!</span>`);
+      addFeedEntry(`<span class="feed-heal">FLOOR ${run.floor + 1} — enemies +${Math.round(CONFIG.floorScaling.hpPerFloor * run.floor * 100)}% HP, +${Math.round(CONFIG.floorScaling.atkPerFloor * run.floor * 100)}% ATK</span>`);
       returnToMap();
       return true;
     } else {
@@ -481,9 +664,8 @@ function startCombat(node) {
   // Ensure player HP carries over safely (at least 1 HP)
   if (run.hp <= 0) run.hp = 1;
 
-  const swiftCount = run.getBoonCount('boon_swift');
-  const powerCount = run.getBoonCount('boon_power');
-  const maxPowerMult = 1 + powerCount * 0.15 + swiftCount * 0.15;
+  if (run.hasRelic('rel_nanite')) run.healFlat(15);
+  const maxPowerMult = run.launchPowerMult;
   const thinkDelay = CONFIG.ai.thinkDelay;
   const riskLevel = saveSystem.getDifficultyLevel();
   const riskData = saveSystem.getRiskData();
@@ -491,12 +673,23 @@ function startCombat(node) {
   const tierKey = node.type === 'boss' ? 'boss' : node.type === 'miniboss' ? 'miniboss' : node.type === 'elite' ? 'elite' : String(run.floor + 1);
   const tier = CONFIG.enemyTiers[tierKey] || CONFIG.enemyTiers[1];
 
-  const hpMult = 1 + riskData.hpPct / 100;
-  const atkMult = 1 + riskData.atkPct / 100;
+  // Risk rules (elite/boss rules only hit elites, mini-bosses and bosses)
+  const isEliteTier = ['elite', 'miniboss', 'boss'].includes(node.type);
+  const cond = run.condition;
+  const condHp = cond === 'gold_rush' ? 1.1 : 1;
+  const condAtk = (cond === 'glass_war' ? 1.3 : 1) * (cond === 'blood_moon' ? 1.15 : 1) * (1 + 0.1 * run.curseCount('curse_hunted'));
+  const hpMult = (1 + (riskData.hpPct + (isEliteTier ? riskData.eliteHpPct : 0)) / 100) * condHp;
+  const atkMult = (1 + (riskData.atkPct + (isEliteTier ? riskData.eliteAtkPct : 0)) / 100) * condAtk;
   const defMult = 1 + riskData.defPct / 100;
+  // Visible floor scaling: +X% HP / +Y% ATK per floor above the first
+  const floorsAbove = run.floor;
+  const floorHp = 1 + CONFIG.floorScaling.hpPerFloor * floorsAbove;
+  const floorAtk = 1 + CONFIG.floorScaling.atkPerFloor * floorsAbove;
 
   const count = (CONFIG.enemyCounts[node.type] || {})[run.floor + 1] || 1;
-  const waveScale = count === 3 ? 0.65 : count === 2 ? 0.8 : 1.0;
+  // Every enemy fires each round, so multi-enemy waves trim ATK harder than HP.
+  const waveHpScale = count === 3 ? 0.65 : count === 2 ? 0.8 : 1.0;
+  const waveAtkScale = count === 3 ? 0.55 : count === 2 ? 0.7 : 1.0;
   const enemies = [];
   const devHp = devTools?.overrides?.enemyHpMult ?? 1.0;
   const devAtk = devTools?.overrides?.enemyAtkMult ?? 1.0;
@@ -507,16 +700,9 @@ function startCombat(node) {
     const arch = CONFIG.enemyArchetypes[archetype];
     const isBoss = node.type === 'boss';
 
-    // Base floor bonus applies at ALL risk levels; risk layer adds on top.
-    // Risk 0 floor 5: +30%. Risk 15 floor 5: +90%.
-    const currentFloor = run.floor + 1;
-    const baseFloor = currentFloor * 0.06;
-    const riskFloor = currentFloor * (riskLevel / 15) * 0.12;
-    const floorRiskBonus = 1 + baseFloor + riskFloor;
-
-    const finalHp = Math.round(tier.hp * arch.hpMult * hpMult * floorRiskBonus * devHp * waveScale);
-    const finalAtk = Math.round((tier.atk * arch.atkMult * atkMult * floorRiskBonus * devAtk * waveScale) * 100) / 100;
-    const finalDef = Math.max(0, Math.round((tier.def + arch.defBonus) * defMult * floorRiskBonus) + devDef);
+    const finalHp = Math.round(tier.hp * arch.hpMult * hpMult * floorHp * devHp * waveHpScale);
+    const finalAtk = Math.round((tier.atk * arch.atkMult * atkMult * floorAtk * devAtk * waveAtkScale) * 100) / 100;
+    const finalDef = Math.max(0, Math.round((tier.def + arch.defBonus) * defMult) + devDef);
 
     const xPct = count === 1 ? 0.75 : count === 2 ? 0.66 + i * 0.16 : 0.58 + i * 0.13;
 
@@ -525,8 +711,9 @@ function startCombat(node) {
       atk: finalAtk,
       def: finalDef,
       displayName: isBoss ? 'SECTOR COMMANDER' : arch.name,
+      rank: node.type === 'boss' || node.type === 'miniboss' ? node.type : null,
       archetype,
-      aiDifficulty: Math.min(0.95, tier.aiDifficulty + arch.aiShift + riskLevel * 0.005),
+      aiDifficulty: Math.min(0.95, tier.aiDifficulty + arch.aiShift + riskData.aiBonus),
       thinkDelay: arch.ability === 'aggressive' ? Math.max(0.3, thinkDelay - 0.2) : thinkDelay,
       xPct,
     });
@@ -536,7 +723,7 @@ function startCombat(node) {
     player: {
       maxHp: run.maxHp,
       hp: run.hp, // carry current run HP into battle
-      atk: run.atk,
+      atk: run.atk * (run.condition === 'glass_war' ? 1.3 : 1),
       def: run.def,
       totalDef: run.totalDef,
       damageReductionPct: run.damageReductionPct,
@@ -545,6 +732,7 @@ function startCombat(node) {
     relics: run.relics,
     nodeType: node.type,
     ballType: run.ballType || 'vanguard',
+    skinColors: skinColors(getBall(run.ballType), run.skin),
     techStats: techTree.getPermanentStats(),
     riskLevel: riskLevel,
     riskPlusDmgTaken: riskData.plusDmgTaken || 0,
@@ -575,15 +763,52 @@ function startCombat(node) {
   });
   game.events.on('battle-end', ({ won }) => onBattleEnd(won, node));
   game.events.on('battle-continue', () => continueAfterCombatReport());
-  game.events.on('ability-used', ({ name }) => {
-    addFeedEntry(`<span class="feed-boon">ABILITY: ${name}</span>`);
+  game.events.on('ability-used', ({ id, name }) => {
+    game.renderer.addCallout(game.player, id === 'barrier' ? 'BARRIER UP' : name, id === 'barrier' ? '#41a6f6' : '#ffcd75');
   });
-  game.events.on('enemy-ability', ({ ability, desc }) => {
-    addFeedEntry(`<span class="feed-enemy-ability">HOSTILE ABILITY: ${ability} — ${desc}</span>`);
+  // Enemy abilities: short label over whoever it affects (the caster, or you for status ticks)
+  const ABILITY_LABELS = {
+    'Overdrive Charge': ['CHARGING SHOT', '#ef7d57'],
+    'Fortify Shield': ['FORTIFY +3 DEF', '#41a6f6'],
+    'Graviton Tether Pull': ['TETHER PULL', '#c46fd6'],
+    'Graviton Tether (Blocked)': ['TETHER BLOCKED', '#94b0c2'],
+    'War Command': ['WAR COMMAND: ALLIES +20% ATK', '#ffcd75'],
+    'Corrosive Acid Splash': ['ACID: -4 DEF', '#a7f070'],
+    'Shockwave Pulse': ['SHOCKWAVE', '#ef7d57'],
+    'Thermal Burn': ['BURNING', '#ef7d57'],
+    'Corrosion Tick': ['CORRODED: -DEF', '#a7f070'],
+    'Siphon Drain': ['SIPHON: STEALS HP', '#ff5d73'],
+    'Thermal Flare Ignition': ['IGNITED!', '#ef7d57', 'player'],
+    'Corrosive Impact': ['CORRODED!', '#a7f070', 'player'],
+    'Vampiric Vitality': ['LIFESTEAL', '#a7f070'],
+  };
+  game.events.on('enemy-ability', ({ enemy, ability }) => {
+    const [text, color, target] = ABILITY_LABELS[ability] || [ability.toUpperCase(), '#ff5d73'];
+    game.renderer.addCallout(target === 'player' || !enemy ? game.player : enemy, text, color);
   });
 
   game.run = run;
+  if (run.condition === 'calm') {
+    battleConfig.arena = pickArena(run.floor + 1);
+    battleConfig.arena.wind = 0;
+  }
   game.startBattle(battleConfig);
+
+  // Bosses get an intro card; the fight is frozen until it is dismissed
+  if (node.type === 'miniboss' || node.type === 'boss') {
+    const boss = enemies[0];
+    const arch = CONFIG.enemyArchetypes[boss.archetype];
+    battlePaused = true;
+    ui.showBossIntro({
+      title: node.type === 'boss' ? 'FINAL BOSS' : `FLOOR ${run.floor + 1} MINI-BOSS`,
+      name: boss.displayName,
+      desc: node.type === 'boss' ? `Sends out a shockwave every turn. ${arch?.abilityDesc || ''}` : arch?.abilityDesc || '',
+      color: arch?.color,
+    }, () => {
+      battlePaused = false;
+      game.renderer.showBanner('FIGHT!', '#ff5d73');
+    });
+  }
 }
 
 /** Pick an enemy archetype based on floor weights. */
@@ -605,13 +830,12 @@ function pickArchetype(nodeType, floor, index) {
 
 function rewardRandomCollectible(sourceName = 'REWARD') {
   if (!run) return null;
-  const unowned = CONFIG.relics.filter((r) => !run.relics.includes(r.id));
-  if (unowned.length === 0) return null;
-  const relic = unowned[Math.floor(Math.random() * unowned.length)];
+  const [relic] = pickRelics(1, run.relics);
+  if (!relic) return null;
   run.addRelic(relic.id);
   ui.updateRunHud(run);
   ui.renderRelics(run);
-  addFeedEntry(`<span class="feed-relic">${sourceName}: + COLLECTIBLE ${relic.name}</span>`);
+  addFeedEntry(`<span class="feed-relic">${sourceName}: + RELIC ${relic.name}</span>`);
   return relic;
 }
 
@@ -649,12 +873,13 @@ function onBattleEnd(won, node) {
     let heal = 0;
 
     if (rewards.gold) {
-      gold = run.gainGold(rewards.gold);
+      gold = run.gainGold(rewards.gold + (run.hasRelic('rel_magnet') ? 6 : 0));
       addFeedEntry(`<span class="feed-gold">+${gold} GOLD</span>`);
     }
     if (rewards.tech) {
-      const riskBonusPct = 1 + saveSystem.getDifficultyLevel() * 0.05;
+      const riskBonusPct = saveSystem.getTpMultiplier() * (run.condition === 'blood_moon' ? 1.5 : 1);
       tech = Math.max(1, Math.round(rewards.tech * riskBonusPct));
+      if (run.hasRelic('rel_jade_pendant') && ['elite', 'miniboss', 'boss'].includes(node.type)) tech += 1;
       saveSystem.addTechPoints(tech);
       addFeedEntry(`<span class="feed-boon">+${tech} TECH PTS</span>`);
     }
@@ -683,6 +908,13 @@ function onBattleEnd(won, node) {
     }
 
     ui.updateRunHud(run);
+    // Final boss: let the VICTORY splash land, then go straight to the run summary
+    if (node.type === 'boss') {
+      run.floor5BossCleared = true;
+      pendingBoon = null;
+      setTimeout(() => endRun(true), 1400);
+      return;
+    }
     ui.showCombatResult(true, { gold, tech, heal, relic: rewardRelic, relics: rewardRelics }, run);
   } else {
     ui.updateRunHud(run);
@@ -751,6 +983,18 @@ function resolveEncounterChoice(idx) {
       run.gainGold(choice.gainGold);
       addFeedEntry(`<span class="feed-gold">+${choice.gainGold} GOLD</span>`);
     }
+    if (choice.loseMaxHp) {
+      run.maxHp = Math.max(20, run.maxHp - choice.loseMaxHp);
+      run.hp = Math.min(run.hp, run.maxHp);
+    }
+    if (choice.gambleGold) {
+      if (Math.random() < 0.5) {
+        const g = run.gainGold(choice.gambleGold);
+        addFeedEntry(`<span class="feed-gold">JACKPOT: +${g} GOLD</span>`);
+      } else {
+        addFeedEntry(`<span class="feed-dmg">NO LUCK THIS TIME</span>`);
+      }
+    }
     if (choice.gainBoon) run.applyBoon(choice.gainBoon);
     if (choice.gainMaxHp) run.addMaxHp(choice.gainMaxHp);
     if (choice.heal) {
@@ -762,11 +1006,15 @@ function resolveEncounterChoice(idx) {
       addFeedEntry(`<span class="feed-boon">+${choice.gainTech} TECH PTS</span>`);
     }
     if (choice.gainRelic) {
-      rewardRandomCollectible('ENCOUNTER DROP');
+      rewardRandomCollectible('ENCOUNTER');
     }
     if (choice.gainActions) {
       run.addFloorActions(choice.gainActions);
-      addFeedEntry(`<span class="feed-heal">+${choice.gainActions} FLOOR ACTIONS</span>`);
+      addFeedEntry(`<span class="feed-heal">+${choice.gainActions} MOVE${choice.gainActions > 1 ? 'S' : ''}</span>`);
+    }
+    if (run.hasRelic('rel_scavenger_pack')) {
+      const g = run.gainGold(10);
+      addFeedEntry(`<span class="feed-gold">SCAVENGER PACK: +${g} GOLD</span>`);
     }
     ui.updateRunHud(run);
   }
@@ -778,71 +1026,24 @@ function resolveEncounterChoice(idx) {
 
 // ---------- Shop ----------
 
-function buyShopItem(item) {
-  const node = activeNode || run.currentNode;
-  // One-time purchase per shop node (prevents Smuggler Cache spam exploit)
-  if (node && node.purchasedItems && node.purchasedItems.includes(item.id)) {
-    return false;
-  }
-
-  if (item.requireGold) {
-    run.gainGold(item.getGold || 0);
-    if (node) {
-      node.purchasedItems = node.purchasedItems || [];
-      node.purchasedItems.push(item.id);
-    }
-    ui.updateRunHud(run);
-    return true;
-  }
-  const cost = Math.round(item.cost * (run.shopDiscount || 1) * saveSystem.getShopPriceMultiplier());
-  if (run.gold < cost) return false;
-  run.gold -= cost;
-  goldSpentTotal += cost;
-  questSystem.reportCombatEvent('gold_spent', { totalSpent: goldSpentTotal });
-
-  switch (item.type) {
-    case 'atk':
-      run.atk += item.value;
-      break;
-    case 'def':
-      run.def += item.value;
-      break;
-    case 'maxhp':
-      run.addMaxHp(item.value);
-      break;
-    case 'heal':
-      run.healFlat(item.value);
-      break;
-    default:
-      break;
-  }
-  if (node) {
-    node.purchasedItems = node.purchasedItems || [];
-    node.purchasedItems.push(item.id);
-  }
-  ui.updateRunHud(run);
-  return true;
-}
-
 function rollShopCollectibles(run, count = 3) {
   if (!run) return [];
-  const unowned = CONFIG.relics.filter((r) => !run.relics.includes(r.id));
-  const shuffled = [...unowned].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, count);
+  return pickRelics(count, run.relics);
 }
 
 function buyRelicItem(relic) {
   if (!run || !relic) return false;
   if (run.hasRelic(relic.id)) return false;
-  const cost = Math.round(relic.cost * (run.shopDiscount || 1) * saveSystem.getShopPriceMultiplier());
+  const cost = run.relicPrice(relic);
   if (run.gold < cost) return false;
   run.gold -= cost;
   goldSpentTotal += cost;
   questSystem.reportCombatEvent('gold_spent', { totalSpent: goldSpentTotal });
   run.addRelic(relic.id);
+  soundEngine.play('coin');
   ui.updateRunHud(run);
   ui.renderRelics(run);
-  addFeedEntry(`<span class="feed-relic">+ COLLECTIBLE: ${relic.name}</span>`);
+  addFeedEntry(`<span class="feed-relic">+ RELIC: ${relic.name}</span>`);
   return true;
 }
 
@@ -859,17 +1060,16 @@ function resolveRest(choice) {
       maxHpBonus += (run.permanent.titanCoreMaxHpBonus || 0);
     }
 
-    // Relic collectible: Family Feast (+15 Max HP)
-    if (run.hasRelic('rel_family_feast')) {
-      maxHpBonus += 15;
-    }
+    if (run.hasRelic('rel_family_feast')) maxHpBonus += 10;
 
     if (maxHpBonus > 0) {
       run.addMaxHp(maxHpBonus);
       addFeedEntry(`<span class="feed-heal">SAFE ZONE BONUS: +${maxHpBonus} MAX HP</span>`);
     }
 
+    if (run.hasRelic('rel_golden_apple')) healAmount = run.maxHp; // heal to full
     run.healFlat(healAmount, run.permanent);
+    soundEngine.play('heal');
     questSystem.reportCombatEvent('rest', { healed: healAmount });
     addFeedEntry(`<span class="feed-heal">SAFE ZONE: +${healAmount} HP RECOVERED</span>`);
   }
@@ -911,7 +1111,7 @@ function calculateAndApplyMinigameRewards(result) {
     if (r1) relicsGained.push(r1);
     if (r2) relicsGained.push(r2);
 
-    addFeedEntry(`<span class="feed-heal">FLAWLESS DRILL: FULL HP RECOVERY & 2 COLLECTIBLES</span>`);
+    addFeedEntry(`<span class="feed-heal">FLAWLESS DRILL: FULL HP & 2 RELICS</span>`);
   } else if (perfects >= 3) {
     gold = run.gainGold(25);
     const effectiveHeal = Math.round(50 * saveSystem.getHealingMultiplier());
@@ -921,7 +1121,7 @@ function calculateAndApplyMinigameRewards(result) {
     const r1 = rewardRandomCollectible('PRECISION DRILL');
     if (r1) relicsGained.push(r1);
 
-    addFeedEntry(`<span class="feed-heal">PRECISION DRILL: +${effectiveHeal} HP RECOVERED & 1 COLLECTIBLE</span>`);
+    addFeedEntry(`<span class="feed-heal">PRECISION DRILL: +${effectiveHeal} HP & 1 RELIC</span>`);
   } else if (hits >= 3) {
     gold = run.gainGold(15);
     addFeedEntry(`<span class="feed-gold">DRILL PASSED: +${gold} GOLD</span>`);
@@ -957,10 +1157,19 @@ function endRun(victory) {
   run.runOver = true;
   run.runResult = victory ? 'victory' : 'defeat';
   saveSystem.recordRun(victory);
+  saveSystem.recordBallRun(run.ballType, victory, run.floor + 1);
   activeNode = null;
   ui.closeModal();
   setState(State.RESULT);
   ui.showRunResult(run, questSystem.getActiveQuests(), { ...saveSystem.getMeta(), techPoints: saveSystem.data.techPoints });
+
+  // Risk progression: a win on the highest unlocked level unlocks the next
+  const unlocked = victory ? saveSystem.recordRiskWin(saveSystem.getDifficultyLevel()) : null;
+  if (unlocked) {
+    const rule = CONFIG.risk.levels[unlocked - 1];
+    ui.showRiskUnlocked(unlocked, rule);
+    setupRiskSlider();
+  }
 }
 
 // ---------- Encounters (small pool, can expand) ----------
@@ -984,7 +1193,7 @@ const ENCOUNTERS = [
   },
   {
     title: 'DEFECTOR INTEL',
-    desc: 'A rogue enemy defector offers secret squad coordinates for a price.',
+    desc: 'A rogue enemy defector offers secret patrol coordinates for a price.',
     choices: [
       { label: 'Purchase Coordinates', loseGold: 12, gainTech: 2 },
       { label: 'Interrogate Defector', loseHp: 8, gainGold: 18 },
@@ -1087,6 +1296,70 @@ const ENCOUNTERS = [
     ],
   },
   {
+    title: 'CRASHED SUPPLY DRONE',
+    desc: 'A courier drone lies sparking in the rubble, its cargo bay half open.',
+    choices: [
+      { label: 'Salvage the Cargo', loseHp: 8, gainRelic: true },
+      { label: 'Siphon its Battery', heal: 20 },
+    ],
+  },
+  {
+    title: 'THE OLD SNIPER',
+    desc: 'A retired marksman squints at your slingshot and offers to share a trick.',
+    choices: [
+      { label: 'Pay for the Lesson', loseGold: 10, gainBoon: 'boon_power' },
+      { label: 'Trade War Stories', gainTech: 1 },
+    ],
+  },
+  {
+    title: 'ABANDONED ARMORY',
+    desc: 'Racks of dusty plating line the walls. Most of it has rusted through.',
+    choices: [
+      { label: 'Strap on the Heavy Plate', loseHp: 6, gainBoon: 'boon_def' },
+      { label: 'Sell the Scrap', gainGold: 18 },
+    ],
+  },
+  {
+    title: 'BLOOD CONTRACT',
+    desc: 'A hooded broker offers raw power. The ink looks suspiciously red.',
+    choices: [
+      { label: 'Sign the Contract', loseMaxHp: 10, gainBoon: 'boon_atk' },
+      { label: 'Refuse and Walk Away', heal: 5 },
+    ],
+  },
+  {
+    title: 'RUSTED SLOT MACHINE',
+    desc: 'It still takes coins. It might even pay out, if the gears remember how.',
+    choices: [
+      { label: 'Pull the Lever', loseGold: 10, gambleGold: 30 },
+      { label: 'Kick it for Loose Change', gainGold: 5 },
+    ],
+  },
+  {
+    title: 'ECHOING CAVE',
+    desc: 'Something in the dark repeats your footsteps, a half-second too late.',
+    choices: [
+      { label: 'Explore Deeper', loseHp: 14, gainRelic: true },
+      { label: 'Leave Quietly', heal: 10 },
+    ],
+  },
+  {
+    title: 'FIELD KITCHEN',
+    desc: 'A mobile kitchen still smells of stew. Nobody is around to stop you.',
+    choices: [
+      { label: 'Eat a Full Meal', heal: 35 },
+      { label: 'Pack Rations for Later', gainMaxHp: 8 },
+    ],
+  },
+  {
+    title: 'LOST RECRUIT',
+    desc: 'A lost recruit begs for directions back to base.',
+    choices: [
+      { label: 'Escort them Personally', loseHp: 5, gainTech: 2 },
+      { label: 'Point the Way', gainGold: 6 },
+    ],
+  },
+  {
     title: 'SYNDICATE TRADE DELEGATE',
     desc: 'A high-ranking trade official offers a high-yield investment.',
     choices: [
@@ -1105,7 +1378,7 @@ function loop(now) {
   lastTime = now;
 
   if (state === State.BATTLE) {
-    game.update(dt);
+    if (!battlePaused) game.update(dt);
     game.render();
     updateAbilityHud();
   } else if (state === State.MINIGAME) {
@@ -1127,57 +1400,54 @@ requestAnimationFrame(loop);
 function setupRiskSlider() {
   const slider = document.getElementById('risk-slider');
   if (!slider) return;
-  const current = saveSystem.getDifficultyLevel();
-  slider.value = current;
-  updateRiskDisplay(current);
+  const max = saveSystem.getMaxRiskUnlocked();
+  slider.max = String(max);
+  slider.disabled = max === 0;
+  slider.value = String(saveSystem.getDifficultyLevel());
+  updateRiskDisplay(saveSystem.getDifficultyLevel());
 
-  slider.addEventListener('input', (e) => {
+  slider.oninput = (e) => {
     const val = Number(e.target.value);
     saveSystem.setDifficultyLevel(val);
     updateRiskDisplay(val);
-  });
+    haptics.impact('light');
+  };
 }
 
+/** Risk panel: selected level, its stacked rules, and how to unlock the next one. */
 function updateRiskDisplay(val) {
   const valEl = document.getElementById('risk-level-val');
   const bonusEl = document.getElementById('risk-level-bonus');
-  if (valEl) valEl.textContent = val;
-  if (bonusEl) {
-    const risk = CONFIG.riskTable[val] || CONFIG.riskTable[0];
-    const tpBonus = val * 5;
+  const max = saveSystem.getMaxRiskUnlocked();
+  const levels = CONFIG.risk.levels;
+  if (valEl) valEl.textContent = max === 0 ? 'LOCKED' : `${val}/${levels.length}`;
+  if (!bonusEl) return;
 
-    const badges = [];
-    if (risk.hpPct > 0) badges.push(`<span class="risk-badge risk-badge-enemy">+${risk.hpPct}% ENEMY STATS</span>`);
-    if (risk.minusHeal > 0) badges.push(`<span class="risk-badge risk-badge-heal">-${risk.minusHeal}% HEAL</span>`);
-    if (risk.plusCost > 0) badges.push(`<span class="risk-badge risk-badge-cost">+${risk.plusCost}% SHOP COST</span>`);
-    if (risk.minusGold > 0) badges.push(`<span class="risk-badge risk-badge-gold">-${risk.minusGold}% GOLD</span>`);
-    if (risk.plusDmgTaken > 0) badges.push(`<span class="risk-badge risk-badge-enemy">+${risk.plusDmgTaken}% DMG TAKEN</span>`);
-    badges.push(`<span class="risk-badge risk-badge-tp">+${tpBonus}% TP</span>`);
-
-    bonusEl.innerHTML = badges.join('');
-  }
-}
-
-function bindResetButton() {
-  const btn = document.getElementById('btn-reset-data');
-  if (!btn) return;
-  btn.addEventListener('click', () => {
-    if (confirm('Are you sure you want to reset all save data, tech tree upgrades, and stats?')) {
-      saveSystem.reset();
-      setupRiskSlider();
-      ui.showMenu(saveSystem.getProfile(), saveSystem.getMeta());
-      alert('Save data reset successfully!');
+  const parts = [];
+  if (max === 0) {
+    parts.push('<span class="risk-lock">Win a run to unlock Risk levels: harder rules for bonus Tech Points.</span>');
+  } else {
+    if (val === 0) parts.push('<span class="risk-rule dim-text">No extra rules.</span>');
+    levels.slice(0, val).forEach((rule, i) => {
+      parts.push(`<span class="risk-rule"><b>${i + 1}</b> ${rule.name}: ${rule.desc}</span>`);
+    });
+    if (val > 0) parts.push(`<span class="risk-badge risk-badge-tp">+${val * CONFIG.risk.tpPerLevel}% TECH POINTS</span>`);
+    if (max < levels.length) {
+      parts.push(`<span class="risk-lock">Win on Risk ${max} to unlock Risk ${max + 1}.</span>`);
     }
-  });
+  }
+  bonusEl.innerHTML = parts.join('');
 }
 
 // ---------- Boot ----------
 
 ui.showMenu(saveSystem.getProfile(), saveSystem.getMeta());
+soundEngine.playMusic('menu'); // begins after the first tap
+new MenuBackground(document.getElementById('menu-bg'));
 setupRiskSlider();
 bindMapClicks();
 bindAbilityButtons();
-bindResetButton();
 
 // Expose for debugging
-window.__SLINGSHOT__ = { game, saveSystem, techTree, ui, run, map };
+// Debug handle for the dev server only; release builds don't expose game state
+if (import.meta.env.DEV) window.__SLINGSHOT__ = { game, saveSystem, techTree, ui, run, map };

@@ -15,3 +15,8 @@ dist-ssr/
 *.log
 .DS_Store
 Thumbs.db
+
+# Android signing keys (never commit these)
+*.jks
+*.keystore
+keystore.properties

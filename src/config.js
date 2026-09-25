@@ -4,6 +4,8 @@
 // perks, roguelike map rules) live here.
 // ============================================================
 
+import { RELICS } from './meta/Relics.js';
+
 export const CONFIG = {
   // --- World ---
   world: {
@@ -22,7 +24,7 @@ export const CONFIG = {
 
   // --- Ball / Character ---
   ball: {
-    radius: 32,
+    radius: 24, // base size; ball classes scale it (Balls.js radiusMult)
     maxHp: 100,
   },
 
@@ -58,110 +60,144 @@ export const CONFIG = {
     },
     tank: {
       name: 'WALL UNIT',
-      hpMult: 1.6, atkMult: 0.85, defBonus: 4, aiShift: -0.05,
+      hpMult: 1.6, atkMult: 0.85, defBonus: 4, aiShift: -0.025,
       ability: 'thorns',
       abilityDesc: 'Reflects 20% impact damage & deploys cover barriers',
       color: '#4a6572', darkColor: '#263238',
     },
     striker: {
       name: 'SNIPER UNIT',
-      hpMult: 1.1, atkMult: 1.3, defBonus: 0, aiShift: 0.15,
+      hpMult: 1.1, atkMult: 1.3, defBonus: 0, aiShift: 0.075,
       ability: 'aggressive',
       abilityDesc: 'Fires faster & charges Overdrive pulse shots (+50% velocity & ATK)',
       color: '#f57c00', darkColor: '#e65100',
     },
     vampire: {
       name: 'SIPHON DRONE',
-      hpMult: 1.25, atkMult: 1.1, defBonus: 2, aiShift: 0.05,
+      hpMult: 1.25, atkMult: 1.1, defBonus: 2, aiShift: 0.025,
       ability: 'vampire',
-      abilityDesc: 'Heals 40% of damage dealt to player and restores HP to squad',
+      abilityDesc: 'Heals 40% of damage dealt to player and heals nearby allies',
       color: '#d32f2f', darkColor: '#8b0000',
     },
     pyromancer: {
       name: 'BLAZE MORTAR',
-      hpMult: 1.2, atkMult: 1.25, defBonus: 1, aiShift: 0.1,
+      hpMult: 1.2, atkMult: 1.25, defBonus: 1, aiShift: 0.05,
       ability: 'pyro',
       abilityDesc: 'Ignites target with 2 turns of Thermal Burn (8 DMG/turn) and melts player barriers',
       color: '#ff5722', darkColor: '#bf360c',
     },
     disruptor: {
       name: 'GRAVITON WEAVER',
-      hpMult: 1.3, atkMult: 1.0, defBonus: 3, aiShift: 0.08,
+      hpMult: 1.3, atkMult: 1.0, defBonus: 3, aiShift: 0.04,
       ability: 'disrupt',
       abilityDesc: 'Emits a gravitic pulse pulling player ball toward obstacles on turn start',
       color: '#7b1fa2', darkColor: '#4a148c',
     },
     tactician: {
       name: 'FIELD COMMANDER',
-      hpMult: 1.4, atkMult: 1.15, defBonus: 3, aiShift: 0.12,
+      hpMult: 1.4, atkMult: 1.15, defBonus: 3, aiShift: 0.06,
       ability: 'command',
       abilityDesc: 'Rallies all hostiles on turn start granting +20% ATK and +3 DEF',
       color: '#ffb300', darkColor: '#ff8f00',
     },
     corroder: {
       name: 'ACID DRONE',
-      hpMult: 1.2, atkMult: 1.05, defBonus: 1, aiShift: 0.08,
+      hpMult: 1.2, atkMult: 1.05, defBonus: 1, aiShift: 0.04,
       ability: 'corrode',
       abilityDesc: 'Emits a corrosive acid splash reducing player DEF by -4 for the battle',
       color: '#aeea00', darkColor: '#33691e',
     },
+    splitter: {
+      name: 'SPLIT CELL',
+      hpMult: 1.1, atkMult: 0.9, defBonus: 0, aiShift: 0,
+      ability: 'split',
+      abilityDesc: 'Bursts into 2 smaller cells when destroyed',
+      color: '#a7f070', darkColor: '#38b764',
+    },
+    medic: {
+      name: 'FIELD MEDIC',
+      hpMult: 1.0, atkMult: 0.8, defBonus: 1, aiShift: -0.03,
+      ability: 'heal',
+      abilityDesc: 'Heals the most injured ally for 12% of its max HP each turn (4 heals per battle)',
+      color: '#f4f4f4', darkColor: '#94b0c2',
+    },
+    shielder: {
+      name: 'AEGIS DRONE',
+      hpMult: 1.2, atkMult: 0.85, defBonus: 2, aiShift: 0,
+      ability: 'shield',
+      abilityDesc: 'Shields another enemy each turn: the shield blocks the next hit',
+      color: '#41a6f6', darkColor: '#29366f',
+    },
+    minelayer: {
+      name: 'MINE LAYER',
+      hpMult: 1.1, atkMult: 0.9, defBonus: 1, aiShift: 0.02,
+      ability: 'mines',
+      abilityDesc: 'Drops a mine near you each turn: 15 damage if you roll onto it',
+      color: '#ef7d57', darkColor: '#5d275d',
+    },
   },
 
   // --- Enemy Tiers (Initial Base Enemy Stats per Floor) ---
+  // Floor scaling (floorScaling) is applied on top. Tuned so a Risk 0 player with modest upgrades finishes a normal
+  // combat with roughly 60-70% of their HP. aiDifficulty → approx. hit
+  // rate (maxErrorDegrees 14, radius 24): 0.4 ≈ 38%, 0.5 ≈ 43%, 0.6 ≈ 56%, 0.75 ≈ 71%.
   enemyTiers: {
-    1: { hp: 95, atk: 1.05, def: 0, aiDifficulty: 0.35 },
-    2: { hp: 120, atk: 1.25, def: 1, aiDifficulty: 0.45 },
-    3: { hp: 150, atk: 1.50, def: 2, aiDifficulty: 0.60 },
-    4: { hp: 185, atk: 1.80, def: 3, aiDifficulty: 0.72 },
-    5: { hp: 225, atk: 2.15, def: 4, aiDifficulty: 0.85 },
-    elite: { hp: 280, atk: 2.30, def: 5, aiDifficulty: 0.92 },
-    miniboss: { hp: 340, atk: 2.45, def: 5, aiDifficulty: 0.94 },
-    boss: { hp: 400, atk: 2.65, def: 6, aiDifficulty: 0.96 },
+    1: { hp: 58, atk: 0.80, def: 0, aiDifficulty: 0.40 },
+    2: { hp: 64, atk: 0.82, def: 0, aiDifficulty: 0.47 },
+    3: { hp: 73, atk: 0.84, def: 1, aiDifficulty: 0.52 },
+    4: { hp: 62, atk: 0.67, def: 2, aiDifficulty: 0.54 },
+    5: { hp: 69, atk: 0.71, def: 3, aiDifficulty: 0.57 },
+    elite: { hp: 79, atk: 0.82, def: 3, aiDifficulty: 0.62 },
+    miniboss: { hp: 102, atk: 0.79, def: 4, aiDifficulty: 0.66 },
+    boss: { hp: 118, atk: 0.82, def: 5, aiDifficulty: 0.71 },
   },
 
-  // --- Risk Level Scaling Table (1 to 15) ---
-  riskTable: {
-    0: { hpPct: 0, atkPct: 0, defPct: 0, minusHeal: 0, plusCost: 0, minusGold: 0 },
-    1: { hpPct: 1, atkPct: 1, defPct: 1, minusHeal: 0, plusCost: 0, minusGold: 0 },
-    2: { hpPct: 2, atkPct: 2, defPct: 2, minusHeal: 0, plusCost: 0, minusGold: 0 },
-    3: { hpPct: 3, atkPct: 3, defPct: 3, minusHeal: 0, plusCost: 0, minusGold: 0 },
-    4: { hpPct: 4, atkPct: 4, defPct: 4, minusHeal: 0, plusCost: 0, minusGold: 0 },
-    5: { hpPct: 5, atkPct: 5, defPct: 5, minusHeal: 2, plusCost: 0, minusGold: 0 },
-    6: { hpPct: 7, atkPct: 7, defPct: 7, minusHeal: 3, plusCost: 0, minusGold: 0 },
-    7: { hpPct: 9, atkPct: 9, defPct: 9, minusHeal: 5, plusCost: 0, minusGold: 0 },
-    8: { hpPct: 12, atkPct: 12, defPct: 12, minusHeal: 10, plusCost: 2, minusGold: 0 },
-    9: { hpPct: 15, atkPct: 15, defPct: 15, minusHeal: 15, plusCost: 4, minusGold: 0 },
-    10: { hpPct: 18, atkPct: 18, defPct: 18, minusHeal: 20, plusCost: 6, minusGold: 0, plusDmgTaken: 2 },
-    11: { hpPct: 21, atkPct: 21, defPct: 21, minusHeal: 25, plusCost: 8, minusGold: 0, plusDmgTaken: 3.5 },
-    12: { hpPct: 24, atkPct: 24, defPct: 24, minusHeal: 30, plusCost: 10, minusGold: 5, plusDmgTaken: 5 },
-    13: { hpPct: 27, atkPct: 27, defPct: 27, minusHeal: 35, plusCost: 13, minusGold: 10, plusDmgTaken: 6.5 },
-    14: { hpPct: 30, atkPct: 30, defPct: 30, minusHeal: 40, plusCost: 15, minusGold: 15, plusDmgTaken: 8 },
-    15: { hpPct: 35, atkPct: 35, defPct: 35, minusHeal: 50, plusCost: 20, minusGold: 20, plusDmgTaken: 10 },
+  // --- Floor scaling (applies to every enemy, shown to the player) ---
+  // Floor N enemies get +hp% and +atk% per floor above the first.
+  floorScaling: { hpPerFloor: 0.08, atkPerFloor: 0.06 },
+
+  // --- Risk levels: each level adds one rule on top of the ones below ---
+  // Unlocked one at a time by winning a run on the highest unlocked level.
+  // Each level also grants +tpPerLevel% Tech Points from battles.
+  risk: {
+    tpPerLevel: 15,
+    levels: [
+      { name: 'HARDENED', desc: 'Enemies +15% HP.', hpPct: 15 },
+      { name: 'SHARPSHOOTERS', desc: 'Enemies aim better.', aiBonus: 0.08 },
+      { name: 'SCARCITY', desc: '-20% gold.', minusGold: 20 },
+      { name: 'BRUTAL', desc: 'Enemies +15% ATK.', atkPct: 15 },
+      { name: 'THIN SUPPLIES', desc: 'Healing -25%.', minusHeal: 25 },
+      { name: 'INFLATION', desc: 'Shop prices +25%.', plusCost: 25 },
+      { name: 'ELITE GUARD', desc: 'Elites & bosses +25% HP.', eliteHpPct: 25 },
+      { name: 'GLASS ARMOR', desc: 'You take +15% damage.', plusDmgTaken: 15 },
+      { name: 'VETERANS', desc: 'Enemies +15% HP and ATK.', hpPct: 15, atkPct: 15 },
+      { name: 'NIGHTMARE', desc: 'Elites & bosses +25% ATK, enemies aim even better.', eliteAtkPct: 25, aiBonus: 0.08 },
+    ],
   },
   // Multi-enemy waves per node type + floor (1 to 3 enemies per stage)
   enemyCounts: {
-    combat: { 1: 1, 2: 1, 3: 2, 4: 2, 5: 3 },
-    elite: { 1: 1, 2: 1, 3: 2, 4: 2, 5: 3 },
+    combat: { 1: 1, 2: 1, 3: 1, 4: 2, 5: 2 },
+    elite: { 1: 1, 2: 1, 3: 1, 4: 2, 5: 2 },
     miniboss: { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1 },
     boss: { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1 },
   },
   // Archetype pick weights per floor (proportion of each type)
   archetypeWeights: {
-    1: { standard: 0.6, tank: 0.2, striker: 0.2 },
-    2: { standard: 0.3, tank: 0.2, striker: 0.2, vampire: 0.15, pyromancer: 0.15 },
-    3: { standard: 0.2, tank: 0.15, striker: 0.15, disruptor: 0.15, tactician: 0.15, corroder: 0.2 },
-    4: { standard: 0.1, tank: 0.15, striker: 0.15, vampire: 0.15, pyromancer: 0.15, disruptor: 0.1, tactician: 0.1, corroder: 0.1 },
-    5: { standard: 0.1, tank: 0.15, striker: 0.15, vampire: 0.15, pyromancer: 0.15, disruptor: 0.1, tactician: 0.1, corroder: 0.1 },
-    elite: { tank: 0.15, striker: 0.15, vampire: 0.15, pyromancer: 0.15, disruptor: 0.1, tactician: 0.15, corroder: 0.15 },
-    miniboss: { tank: 0.15, striker: 0.15, vampire: 0.15, pyromancer: 0.15, disruptor: 0.1, tactician: 0.15, corroder: 0.15 },
-    boss: { tank: 0.2, striker: 0.2, disruptor: 0.2, tactician: 0.2, pyromancer: 0.1, corroder: 0.1 },
+    1: { standard: 0.5, tank: 0.15, striker: 0.15, splitter: 0.2 },
+    2: { standard: 0.25, tank: 0.15, striker: 0.15, vampire: 0.1, pyromancer: 0.1, splitter: 0.15, minelayer: 0.1 },
+    3: { standard: 0.1, tank: 0.1, striker: 0.1, disruptor: 0.1, tactician: 0.1, corroder: 0.1, splitter: 0.1, medic: 0.1, shielder: 0.1, minelayer: 0.1 },
+    4: { standard: 0.05, tank: 0.1, striker: 0.1, vampire: 0.1, pyromancer: 0.1, disruptor: 0.1, tactician: 0.1, corroder: 0.05, medic: 0.1, shielder: 0.1, minelayer: 0.1 },
+    5: { standard: 0.05, tank: 0.1, striker: 0.1, vampire: 0.1, pyromancer: 0.1, disruptor: 0.1, tactician: 0.1, corroder: 0.05, medic: 0.1, shielder: 0.1, minelayer: 0.1 },
+    elite: { tank: 0.12, striker: 0.12, vampire: 0.1, pyromancer: 0.1, disruptor: 0.1, tactician: 0.1, corroder: 0.1, splitter: 0.12, minelayer: 0.14 },
+    miniboss: { tank: 0.15, vampire: 0.15, pyromancer: 0.15, disruptor: 0.1, splitter: 0.2, minelayer: 0.15, shielder: 0.1 },
+    boss: { tank: 0.2, striker: 0.15, disruptor: 0.2, tactician: 0.15, pyromancer: 0.1, minelayer: 0.2 },
   },
 
   // --- Enemy AI ---
   ai: {
     difficulty: 0.5, // 0 = easy, 1 = hard
-    maxErrorDegrees: 6,
-    maxPowerError: 0.12,
+    maxErrorDegrees: 14,
+    maxPowerError: 0.2,
     thinkDelay: 0.8,
     simulationSteps: 200,
     simulationDt: 1 / 60,
@@ -199,7 +235,7 @@ export const CONFIG = {
     atkBase: 1,
     defBase: 0,
     maxDefCap: 15, // DEF cap = 60% damage reduction
-    hpRegenPerRest: 30, // HP restored at a Rest node
+    hpRegenPerRest: 35, // HP restored at a Rest node
     hpRegenMaxPct: 0.5, // ... but capped at 50% of max HP
     shopDiscountPerVisit: 0.9, // ×0.9 gold cost per shop visit (stacks)
   },
@@ -217,40 +253,7 @@ export const CONFIG = {
     floorHeight: 750, // floor map canvas height
   },
 
-  // --- Arena Obstacles & Floating Platforms ---
-  arenaLayouts: {
-    1: { platforms: [], obstacles: [] },
-    2: {
-      platforms: [{ x: 540, y: 380, w: 200, h: 20, active: true }],
-      obstacles: [{ x: 620, y: 480, w: 40, h: 120, hp: 60, maxHp: 60, active: true }],
-    },
-    3: {
-      platforms: [
-        { x: 420, y: 340, w: 160, h: 20, active: true },
-        { x: 700, y: 340, w: 160, h: 20, active: true },
-      ],
-      obstacles: [{ x: 620, y: 450, w: 40, h: 150, hp: 90, maxHp: 90, active: true }],
-    },
-    4: {
-      platforms: [
-        { x: 380, y: 320, w: 140, h: 20, active: true },
-        { x: 760, y: 320, w: 140, h: 20, active: true },
-      ],
-      obstacles: [
-        { x: 520, y: 420, w: 35, h: 180, hp: 120, maxHp: 120, active: true },
-        { x: 720, y: 420, w: 35, h: 180, hp: 120, maxHp: 120, active: true },
-      ],
-    },
-    5: {
-      platforms: [
-        { x: 340, y: 280, w: 180, h: 20, active: true },
-        { x: 760, y: 280, w: 180, h: 20, active: true },
-      ],
-      obstacles: [
-        { x: 615, y: 360, w: 50, h: 240, hp: 200, maxHp: 200, active: true },
-      ],
-    },
-  },
+  // --- Arenas: see core/Arenas.js (random layout per battle) ---
 
   // --- Currency ---
   currency: {
@@ -259,30 +262,43 @@ export const CONFIG = {
     startGold: 30,
   },
 
-  // --- Relics (permanent run-scoped items bought at shops) ---
-  relics: [
-    { id: 'rel_family_feast', name: 'Family Feast', desc: 'Safe Zone nodes grant +15 Max HP in addition to healing', cost: 28 },
-    { id: 'rel_echo', name: 'Echo Core', desc: 'First hit each combat deals +15 damage', cost: 25 },
-    { id: 'rel_thorns', name: 'Thorns Sigil', desc: 'Reflect 25% of damage taken back to attackers', cost: 28 },
-    { id: 'rel_overcharge', name: 'Overcharge Cell', desc: 'Abilities recharge 1 turn faster', cost: 30 },
-    { id: 'rel_magnet', name: 'Gold Magnet', desc: '+5 gold after every combat', cost: 20 },
-    { id: 'rel_plating', name: 'Reactive Plating', desc: '+10% launch power', cost: 22 },
-    { id: 'rel_medic', name: 'Auto-Medic', desc: 'Restore 5 HP at the end of every turn', cost: 26 },
+
+  // --- Curses (taken at Curse Shrines in exchange for an epic relic) ---
+  curses: [
+    { id: 'curse_frail', name: 'FRAIL', desc: '-15 max HP.' },
+    { id: 'curse_hunted', name: 'HUNTED', desc: 'Enemies +10% ATK.' },
+    { id: 'curse_wounds', name: 'OPEN WOUNDS', desc: 'Healing -20%.' },
+    { id: 'curse_lost', name: 'LOST', desc: '-1 move on each new floor.' },
   ],
+
+  // --- Operation conditions: one random twist per run ---
+  runConditions: [
+    { id: 'gold_rush', name: 'GOLD RUSH', desc: '+30% gold, but enemies +10% HP.' },
+    { id: 'heavy_gravity', name: 'HEAVY GRAVITY', desc: 'Gravity +20%: shots drop faster.' },
+    { id: 'low_gravity', name: 'LOW GRAVITY', desc: 'Gravity -20%: shots fly further.' },
+    { id: 'supplied', name: 'WELL SUPPLIED', desc: 'Start with a random relic.' },
+    { id: 'glass_war', name: 'GLASS WAR', desc: 'Everyone deals +30% damage.' },
+    { id: 'scouted', name: 'SCOUTED', desc: '+1 move on every floor.' },
+    { id: 'blood_moon', name: 'BLOOD MOON', desc: 'Enemies +15% ATK, but +50% Tech Points from battles.' },
+    { id: 'calm', name: 'CALM SKIES', desc: 'No wind in any arena.' },
+  ],
+
+  // --- Relics (run-scoped collectibles): defined in meta/Relics.js ---
+  relics: RELICS,
 
   // --- Roguelike node definitions ---
   nodes: {
     // Appearance weights per floor
     floorWeights: {
-      1: { combat: 6, encounter: 3, shop: 1, rest: 1, minigame: 1, elite: 1 },
-      2: { combat: 4, encounter: 3, shop: 2, rest: 2, minigame: 2, elite: 2 },
-      3: { combat: 4, encounter: 2, shop: 2, rest: 2, minigame: 2, elite: 2 },
-      4: { combat: 3, encounter: 2, shop: 2, rest: 1, minigame: 2, elite: 3 },
-      5: { combat: 3, encounter: 2, shop: 2, rest: 2, minigame: 2, elite: 3 },
+      1: { combat: 6, encounter: 3, shop: 1, rest: 1, minigame: 1, elite: 1, treasure: 1, gamble: 1 },
+      2: { combat: 4, encounter: 3, shop: 2, rest: 2, minigame: 1, elite: 2, treasure: 1, gamble: 1, shrine: 1 },
+      3: { combat: 4, encounter: 2, shop: 2, rest: 2, minigame: 1, elite: 2, treasure: 1, gamble: 1, shrine: 1 },
+      4: { combat: 3, encounter: 2, shop: 2, rest: 1, minigame: 1, elite: 3, treasure: 1, gamble: 1, shrine: 1 },
+      5: { combat: 3, encounter: 2, shop: 2, rest: 2, minigame: 1, elite: 3, treasure: 1, gamble: 1, shrine: 1 },
     },
     rewards: {
-      combat: { gold: 12, tech: 1, healMax: 15 },
-      elite: { gold: 25, tech: 2, healMax: 25 },
+      combat: { gold: 12, tech: 1, healMax: 20 },
+      elite: { gold: 25, tech: 2, healMax: 30 },
       miniboss: { gold: 50, tech: 4, healMax: 30, relics: 2 },
       boss: { gold: 40, tech: 4, healMax: 50 },
       encounter: { gold: 8, tech: 1, minHpLoss: 5, maxHpLoss: 14 },
@@ -290,17 +306,6 @@ export const CONFIG = {
       shop: {},
       rest: {},
     },
-  },
-
-  // --- Shop content ---
-  shop: {
-    items: [
-      { id: 'atk_up', name: 'Refined Cores', desc: '+25% ATK for the rest of the run', cost: 20, type: 'atk', value: 0.25 },
-      { id: 'def_up', name: 'Plating Module', desc: '+3 DEF for the rest of the run', cost: 20, type: 'def', value: 3 },
-      { id: 'hp_up', name: 'Vitality Injector', desc: '+30 max HP for the rest of the run', cost: 18, type: 'maxhp', value: 30 },
-      { id: 'heal', name: 'Medkit', desc: 'Restore 40 HP', cost: 15, type: 'heal', value: 40 },
-      { id: 'gold_vault', name: 'Smuggler Cache', desc: 'Gain 18 Gold', cost: 0, type: 'gold', value: 18, requireGold: true, getGold: 18 },
-    ],
   },
 
   // --- AI-generated quests (complete during roguelike runs) ---
@@ -323,7 +328,7 @@ export const CONFIG = {
   techTree: {
     // ATK branch
     atk_sharpshooter: { id: 'atk_sharpshooter', label: 'Sharpshooter', desc: 'Increases damage dealt (+5% per rank)', maxLevel: 10, costs: [6, 10, 14, 18, 22, 28, 34, 40, 48, 56], branch: 'atk', icon: '[+]', requires: null },
-    atk_base_power: { id: 'atk_base_power', label: 'Base ATK Core', desc: 'Increases squad Base ATK (+0.5 Base ATK per rank)', maxLevel: 10, costs: [8, 12, 16, 20, 26, 32, 40, 48, 58, 70], branch: 'atk', icon: '[ATK]', requires: 'atk_sharpshooter' },
+    atk_base_power: { id: 'atk_base_power', label: 'Base ATK Core', desc: 'Increases Base ATK (+0.5 Base ATK per rank)', maxLevel: 10, costs: [8, 12, 16, 20, 26, 32, 40, 48, 58, 70], branch: 'atk', icon: '[ATK]', requires: 'atk_sharpshooter' },
     atk_armor_pen: { id: 'atk_armor_pen', label: 'Armor Penetration', desc: 'Direct ball impacts ignore enemy DEF (+5% per rank)', maxLevel: 10, costs: [10, 14, 18, 24, 30, 38, 46, 56, 68, 82], branch: 'atk', icon: '[PEN]', requires: 'atk_base_power' },
     atk_risk_resonance: { id: 'atk_risk_resonance', label: 'Risk Resonance', desc: 'Deals extra damage per Risk Level (+0.5% per rank)', maxLevel: 10, costs: [12, 16, 20, 26, 34, 42, 52, 64, 78, 94], branch: 'atk', icon: '[R]', requires: 'atk_armor_pen' },
     atk_ballistic_apex: { id: 'atk_ballistic_apex', label: 'Ballistic Apex', desc: 'Impact damage increases with launch distance (+0.2% per 30px per rank)', maxLevel: 10, costs: [14, 18, 24, 30, 38, 48, 60, 74, 90, 108], branch: 'atk', icon: '[^]', requires: 'atk_risk_resonance' },
@@ -346,99 +351,22 @@ export const CONFIG = {
     // TACTICS branch
     tac_war_chest: { id: 'tac_war_chest', label: 'War Chest', desc: 'Increases Starting Gold (+8 Gold per rank)', maxLevel: 10, costs: [6, 10, 14, 18, 22, 28, 34, 40, 48, 56], branch: 'tac', icon: '[GOLD]', requires: null },
     tac_merchant: { id: 'tac_merchant', label: 'Merchant Network', desc: 'Shop prices cost less (-2% per rank) & Rerolls cost less (-5% per rank)', maxLevel: 10, costs: [8, 12, 16, 20, 26, 32, 40, 48, 58, 70], branch: 'tac', icon: '[SHOP]', requires: 'tac_war_chest' },
-    tac_logistics: { id: 'tac_logistics', label: 'Field Logistics', desc: 'Squad ability cooldowns reduced (-0.2 turns per rank)', maxLevel: 10, costs: [10, 14, 18, 24, 30, 38, 46, 56, 68, 82], branch: 'tac', icon: '[LOG]', requires: 'tac_merchant' },
+    tac_logistics: { id: 'tac_logistics', label: 'Field Logistics', desc: 'Ability cooldowns reduced (-0.2 turns per rank)', maxLevel: 10, costs: [10, 14, 18, 24, 30, 38, 46, 56, 68, 82], branch: 'tac', icon: '[LOG]', requires: 'tac_merchant' },
     tac_intellect: { id: 'tac_intellect', label: 'Tactical Intellect', desc: 'Earn extra Tech Points from all sources (+3% per rank)', maxLevel: 10, costs: [12, 16, 20, 26, 34, 42, 52, 64, 78, 94], branch: 'tac', icon: '[TP]', requires: 'tac_logistics' },
     tac_relic_synergy: { id: 'tac_relic_synergy', label: 'Relic Synergy', desc: 'Grants +0.2% ATK, +0.2% Max HP, and +0.1 DEF per Collectible per rank', maxLevel: 10, costs: [14, 18, 24, 30, 38, 48, 60, 74, 90, 108], branch: 'tac', icon: '[SYN]', requires: 'tac_intellect' },
   },
 
   // --- Roguelike boons (collected as map rewards) ---
   boons: [
-    { id: 'boon_atk', name: 'Overcharge', desc: '+20% ATK this run', color: '#e8a94c' },
-    { id: 'boon_def', name: 'Hardened Shell', desc: '+4 DEF this run', color: '#7aa2ff' },
-    { id: 'boon_hp', name: 'Colossus', desc: '+40 max HP this run', color: '#5fd3a8' },
-    { id: 'boon_greed', name: 'Greed', desc: '+25% Gold from combat, but -5 max HP', color: '#ffd75e' },
-    { id: 'boon_swift', name: 'Swift Loader', desc: '+15% launch velocity and +15% ATK boost', color: '#c792ea' },
-    { id: 'boon_power', name: 'Overdrive', desc: '+15% launch max power', color: '#e0655c' },
-    { id: 'boon_regen', name: 'Regeneration', desc: '+10 HP after every combat', color: '#8fe3c1' },
+    { id: 'boon_atk', name: 'Overcharge', desc: '+20% ATK.', color: '#ffcd75' },
+    { id: 'boon_def', name: 'Hardened Shell', desc: '+4 DEF.', color: '#41a6f6' },
+    { id: 'boon_hp', name: 'Colossus', desc: '+40 max HP.', color: '#a7f070' },
+    { id: 'boon_greed', name: 'Greed', desc: '+25% gold, but -5 max HP.', color: '#ffcd75' },
+    { id: 'boon_swift', name: 'Swift Loader', desc: '+15% launch power, +15% ATK.', color: '#c46fd6' },
+    { id: 'boon_power', name: 'Long Draw', desc: '+15% launch power.', color: '#ef7d57' },
+    { id: 'boon_regen', name: 'Regeneration', desc: 'Heal 10 HP after each battle won.', color: '#a7f070' },
   ],
 
-  // --- 40 Collectibles / Relics Roster ---
-  relics: [
-    // Tactical & Recovery
-    { id: 'rel_echo', name: 'Echo Core', desc: 'First hit each combat deals +15 bonus damage', cost: 24, icon: '[!]', category: 'Tactical' },
-    { id: 'rel_medic', name: 'Emergency Kit', desc: 'Restore 6 HP at the end of your turn', cost: 26, icon: '[+]', category: 'Tactical' },
-    { id: 'rel_overcharge', name: 'Overcharge Cell', desc: 'Ability cooldowns reduced by 1 turn', cost: 30, icon: '[=]', category: 'Tactical' },
-    { id: 'rel_magnet', name: 'Gold Magnet', desc: 'Gain +6 extra Gold after every combat victory', cost: 22, icon: '[U]', category: 'Tactical' },
-    { id: 'rel_plating', name: 'Reactive Plating', desc: '+15% launch max power and +2 DEF', cost: 24, icon: '[#]', category: 'Tactical' },
-    { id: 'rel_thorns', name: 'Thorns Sigil', desc: 'Reflect 25% of impact damage taken back to attackers', cost: 28, icon: '[x]', category: 'Tactical' },
-    { id: 'rel_rhodes_banner', name: "Commander's Banner", desc: '+30 Max HP and +10% ATK', cost: 32, icon: '[>]', category: 'Tactical' },
-    { id: 'rel_blood_sample', name: 'Singularity Dust', desc: 'Deal +25% damage when your HP is below 50%', cost: 28, icon: '(o)', category: 'Tactical' },
-    { id: 'rel_adrenaline', name: 'Adrenaline Pump', desc: 'Launching at max power deals +20% damage', cost: 26, icon: '[i]', category: 'Tactical' },
-    { id: 'rel_nanite', name: 'Nanite Injector', desc: 'Restore 20 HP upon entering any Combat node', cost: 25, icon: '(s)', category: 'Tactical' },
-
-    // Trade & Economy
-    { id: 'rel_lungmen_coin', name: "Merchant's Lucky Coin", desc: '+30% Gold earned from all sources', cost: 28, icon: '[$]', category: 'Economy' },
-    { id: 'rel_blackmarket_pass', name: 'Black-Market Pass', desc: 'Collectible prices discounted by 20%', cost: 25, icon: '[=]', category: 'Economy' },
-    { id: 'rel_pawn_ticket', name: 'Pawnshop Ticket', desc: 'Gain +25 Gold immediately upon obtaining', cost: 20, icon: '[~]', category: 'Economy' },
-    { id: 'rel_golden_apple', name: 'Golden Apple', desc: 'Rest nodes heal to 100% max HP', cost: 30, icon: '(o)', category: 'Economy' },
-    { id: 'rel_jade_pendant', name: 'Jade Pendant', desc: 'Gain +1 Tech Point whenever you defeat an Elite node', cost: 35, icon: '(o)', category: 'Economy' },
-
-    // Gladiator Might & Critical Strikes
-    { id: 'rel_knight_lance', name: "Paladin's Lance", desc: '+35% damage on your first shot of every combat', cost: 28, icon: '[/]', category: 'Gladiator' },
-    { id: 'rel_pegasus_feather', name: 'Pegasus Feather', desc: 'Ball velocity dampening reduced by 40% (ball glides further)', cost: 26, icon: '[~]', category: 'Gladiator' },
-    { id: 'rel_radiant_crest', name: 'Radiant Crest', desc: 'Wall bounces boost your next impact damage by +35%', cost: 30, icon: '[*]', category: 'Gladiator' },
-    { id: 'rel_gladiator_glove', name: 'Gladiator Glove', desc: '+25% impact damage against high-HP enemies (>75% HP)', cost: 27, icon: '[x]', category: 'Gladiator' },
-    { id: 'rel_silver_shield', name: 'Silver Knight Shield', desc: 'Start every combat with 1 pre-deployed Barrier', cost: 32, icon: '[#]', category: 'Gladiator' },
-
-    // High-Tech & Energy
-    { id: 'rel_calcifying_gel', name: 'Calcifying Gel', desc: '+5 DEF and -10% damage taken from all impacts', cost: 30, icon: '(o)', category: 'High-Tech' },
-    { id: 'rel_energy_well', name: 'Energy Well', desc: 'Overdrive damage multiplier increased from 1.5x to 2.0x (+100% damage)', cost: 35, icon: '[!]', category: 'High-Tech' },
-    { id: 'rel_cluster', name: 'Cluster Splitter', desc: 'First wall bounce splits your shot into a micro-bullet cluster', cost: 32, icon: '[::]', category: 'High-Tech' },
-    { id: 'rel_graviton', name: 'Singularity Core', desc: 'Direct impacts create a gravity pull drawing nearby enemies in', cost: 34, icon: '(@)', category: 'High-Tech' },
-    { id: 'rel_pyro', name: 'Thermal Engine', desc: 'Impacts ignite targets, dealing +5 burn damage over time', cost: 30, icon: '(^)', category: 'Frontier' },
-    { id: 'rel_cryo', name: 'Cryo Coil', desc: 'Freezes target on hit, slowing enemy launch speed on next turn', cost: 30, icon: '[*]', category: 'High-Tech' },
-    { id: 'rel_chain_lightning', name: 'Chain Reactor', desc: 'Defeating an enemy discharges chain lightning dealing 25 damage to all hostiles', cost: 35, icon: '[Z]', category: 'High-Tech' },
-    { id: 'rel_time_warp', name: 'Flux Capacitor', desc: 'Overdrive ability cooldown reduced by 1 turn', cost: 30, icon: '[t]', category: 'High-Tech' },
-    { id: 'rel_vector_engine', name: 'Vector Amplifier', desc: 'Launching at maximum power deals +30% bonus impact damage', cost: 32, icon: '[>]', category: 'High-Tech' },
-    { id: 'rel_waraxe', name: 'Vanguard Waraxe', desc: '+3 Base ATK to squad', cost: 30, icon: '[x]', category: 'Frontier' },
-    { id: 'rel_graviton_lens', name: 'Graviton Lens', desc: 'Barrier HP increased from 60 to 120', cost: 28, icon: '[o]', category: 'High-Tech' },
-    { id: 'rel_drone_blueprint', name: 'Targeting Drone', desc: 'Enemy AI shot precision reduced (enemies miss more)', cost: 27, icon: '(^)', category: 'High-Tech' },
-    { id: 'rel_cryo_fluid', name: 'Cryo Fluid', desc: 'Impacting an enemy reduces their launch speed on next turn by 25%', cost: 29, icon: '[*]', category: 'High-Tech' },
-
-    // Frontier Force & Survival
-    { id: 'rel_bear_claw', name: 'Grizzly Bear Claw', desc: '+35% ATK, but take +10% impact damage', cost: 32, icon: '[m]', category: 'Frontier' },
-    { id: 'rel_iron_ration', name: 'Iron Ration', desc: '+50 Max HP and heal 50 HP immediately', cost: 34, icon: '[=]', category: 'Frontier' },
-    { id: 'rel_heavy_armor', name: 'Heavy Plating', desc: '+8 DEF, but max launch power reduced by 5%', cost: 28, icon: '[#]', category: 'Frontier' },
-    { id: 'rel_scavenger_pack', name: 'Scavenger Pack', desc: 'Encounter nodes yield +12 extra Gold', cost: 22, icon: '[=]', category: 'Frontier' },
-    { id: 'rel_combat_drug', name: 'Berserk Injection', desc: 'Gain +50% ATK when player HP drops below 30%', cost: 30, icon: '(o)', category: 'Frontier' },
-
-    // Sanctuary & Tactical Ordnance
-    { id: 'rel_laterano_cross', name: 'Aegis Cross', desc: 'Shots deal +20% damage to secondary targets', cost: 36, icon: '[+]', category: 'Sanctuary' },
-    { id: 'rel_tactical_edge', name: 'Tactical Edge', desc: '+2 Base ATK and +15 Max HP', cost: 28, icon: '[/]', category: 'Royal Guard' },
-    { id: 'rel_smoke_bomb', name: 'Smoke Canister', desc: 'Enemies have a 25% chance to miss their shot entirely', cost: 30, icon: '[~]', category: 'Royal Guard' },
-    { id: 'rel_victoria_crown', name: 'Royal Crest Seal', desc: '+20% ATK, +30 Max HP, +3 DEF', cost: 40, icon: '[^]', category: 'Royal Guard' },
-    { id: 'rel_artillery_shell', name: 'High-Explosive Shell', desc: 'Direct impacts deal +10 splash damage', cost: 34, icon: '(o)', category: 'Royal Guard' },
-
-    // Shadow Operatives & Ancient Relics
-    { id: 'rel_syndicate_blade', name: 'Shadow Stiletto', desc: 'Instantly execute non-boss enemies hit under 15% HP', cost: 35, icon: '[/]', category: 'Shadow' },
-    { id: 'rel_shadow_cloak', name: 'Shadow Cloak', desc: 'Take 50% reduced damage on the first turn of combat', cost: 28, icon: '[#]', category: 'Shadow' },
-    { id: 'rel_horn_of_war', name: 'Horn of Valor', desc: 'Defeating an enemy restores 15 HP to squad', cost: 32, icon: '[>]', category: 'Relics' },
-
-    // Defensive Citadel Relics (Flat DEF, DEF%, and Damage Reduction %)
-    { id: 'rel_titan_plate', name: 'Titanium Plating', desc: '+8 Base DEF', cost: 28, icon: '[#]', category: 'Citadel' },
-    { id: 'rel_bulwark_core', name: 'Bulwark Core', desc: '+12 Base DEF', cost: 34, icon: '[#]', category: 'Citadel' },
-    { id: 'rel_bastion_shield', name: 'Bastion Aegis', desc: '+16 Base DEF', cost: 40, icon: '[#]', category: 'Citadel' },
-    { id: 'rel_nanite_weave', name: 'Nanite Weave', desc: '+25% DEF bonus', cost: 30, icon: '[%]', category: 'Citadel' },
-    { id: 'rel_harmonic_barrier', name: 'Harmonic Field', desc: '+40% DEF bonus', cost: 36, icon: '[%]', category: 'Citadel' },
-    { id: 'rel_overcharged_plating', name: 'Overcharged Plating', desc: '+60% DEF bonus', cost: 44, icon: '[%]', category: 'Citadel' },
-    { id: 'rel_goliath_carapace', name: 'Goliath Carapace', desc: '+10 Base DEF and +30% DEF bonus', cost: 42, icon: '[M]', category: 'Citadel' },
-    { id: 'rel_fortress_seal', name: 'Fortress Seal', desc: '+15 Base DEF and +45% DEF bonus', cost: 48, icon: '[M]', category: 'Citadel' },
-    { id: 'rel_apex_bulwark', name: 'Apex Bulwark', desc: '+20 Base DEF and +60% DEF bonus', cost: 55, icon: '[M]', category: 'Citadel' },
-    { id: 'rel_kinetic_absorber', name: 'Kinetic Absorber', desc: 'Reduces all damage taken by 15%', cost: 32, icon: '[-]', category: 'Citadel' },
-    { id: 'rel_stasis_field', name: 'Stasis Barrier', desc: 'Reduces all damage taken by 25%', cost: 42, icon: '[-]', category: 'Citadel' },
-    { id: 'rel_spaghetti_plate', name: 'Family Feast', desc: 'Rest nodes grant +15 Max HP in addition to healing', cost: 26, icon: '(o)', category: 'Shadow' },
-    { id: 'rel_originium_cube', name: 'Apex Catalyst', desc: '+50% ATK, +100 Max HP, +5 DEF, +100 Starting Gold', cost: 50, icon: '<*>', category: 'Tactical' },
-  ],
 
   // --- Visuals: professional tactical palette ---
   colors: {

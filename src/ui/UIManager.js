@@ -13,6 +13,10 @@ const C = CONFIG.colors;
 
 import { saveSystem } from '../meta/SaveSystem.js';
 import { soundEngine } from '../utils/SoundEngine.js';
+import pkg from '../../package.json';
+import { haptics } from '../platform/haptics.js';
+import { RARITY } from '../meta/Relics.js';
+import { BALLS, SKINS, isSkinUnlocked, skinColors } from '../meta/Balls.js';
 
 export class UIManager {
   /**
@@ -47,42 +51,34 @@ export class UIManager {
     const btnImportSave = document.getElementById('btn-import-save');
     const btnResetData = document.getElementById('btn-reset-data');
 
-    if (btnExportSave) {
-      btnExportSave.addEventListener('click', () => {
-        soundEngine.playUI();
-        const json = saveSystem.exportSaveData();
-        navigator.clipboard?.writeText(json).then(() => {
-          alert('Save data copied to clipboard!');
-        }).catch(() => {
-          prompt('Copy save JSON manually:', json);
-        });
-      });
-    }
+    btnExportSave?.addEventListener('click', () => {
+      soundEngine.playUI();
+      this.showExportSave(saveSystem.exportSaveData());
+    });
 
-    if (btnImportSave) {
-      btnImportSave.addEventListener('click', () => {
-        soundEngine.playUI();
-        const input = prompt('Paste your save data JSON string:');
-        if (input) {
-          if (saveSystem.importSaveData(input)) {
-            alert('Save data successfully imported!');
-            location.reload();
-          } else {
-            alert('Invalid save data JSON!');
-          }
-        }
-      });
-    }
+    btnImportSave?.addEventListener('click', () => {
+      soundEngine.playUI();
+      this.showImportSave();
+    });
 
-    if (btnResetData) {
-      btnResetData.addEventListener('click', () => {
-        soundEngine.playUI();
-        if (confirm('Are you sure you want to reset ALL save data and tech tree progress?')) {
+    btnResetData?.addEventListener('click', () => {
+      soundEngine.playUI();
+      this.showConfirm({
+        title: 'RESET ALL DATA?',
+        text: 'This permanently deletes your Tech Points, upgrades and stats. Export your save first if you want a backup.',
+        confirmLabel: 'DELETE EVERYTHING',
+        danger: true,
+        onConfirm: () => {
           saveSystem.reset();
           location.reload();
-        }
+        },
       });
-    }
+    });
+
+    document.getElementById('btn-credits')?.addEventListener('click', () => {
+      soundEngine.playUI();
+      this.showCredits();
+    });
 
     // Audio Mute Toggle buttons (Menu + HUD)
     const handleAudioToggle = () => {
@@ -90,10 +86,11 @@ export class UIManager {
       this.updateAudioButtons();
     };
 
-    const btn1 = document.getElementById('btn-audio-toggle');
-    const btn2 = document.getElementById('btn-audio-menu');
-    if (btn1) btn1.addEventListener('click', handleAudioToggle);
-    if (btn2) btn2.addEventListener('click', handleAudioToggle);
+    document.getElementById('btn-audio-toggle')?.addEventListener('click', handleAudioToggle);
+    document.getElementById('btn-settings')?.addEventListener('click', () => {
+      soundEngine.playUI();
+      this.showSettings();
+    });
     this.updateAudioButtons();
 
     // Tech screen
@@ -105,12 +102,27 @@ export class UIManager {
     if (btnRetreat) {
       btnRetreat.addEventListener('click', () => {
         soundEngine.playUI();
-        if (confirm('Abandon current operation? All run progress will be lost.')) {
-          this.closeModal();
-          this.cb.onRetreat();
-        }
+        this.closeDrawers();
+        this.showConfirm({
+          title: 'ABANDON RUN?',
+          text: 'The current operation ends immediately. Tech Points from completed quests are kept.',
+          confirmLabel: 'ABANDON RUN',
+          danger: true,
+          onConfirm: () => this.cb.onRetreat(),
+        });
       });
     }
+
+    // Run screen drawer (Status)
+    document.querySelectorAll('[data-drawer]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        soundEngine.playUI();
+        this.toggleDrawer(btn.dataset.drawer);
+      });
+    });
+    document.querySelectorAll('[data-drawer-close]').forEach((el) => {
+      el.addEventListener('click', () => this.closeDrawers());
+    });
 
     // Result screen
     const btnRunEnd = document.getElementById('btn-run-end');
@@ -119,11 +131,378 @@ export class UIManager {
 
   updateAudioButtons() {
     const isMuted = soundEngine.muted;
-    const label = isMuted ? '[AUDIO: OFF]' : '[AUDIO: ON]';
     const btn1 = document.getElementById('btn-audio-toggle');
-    const btn2 = document.getElementById('btn-audio-menu');
-    if (btn1) btn1.textContent = label;
-    if (btn2) btn2.textContent = label;
+    if (btn1) btn1.textContent = isMuted ? 'SND OFF' : 'SND ON';
+  }
+
+  // ---------- New node types ----------
+
+  /** Treasure: pick one of the offered relics for free. */
+  showTreasure(relics, onPick) {
+    const cards = relics.map((r) => `
+      <button class="shop-item treasure-pick" data-relic="${r.id}">
+        <div class="shop-item-head">
+          <span class="shop-item-icon">${r.icon}</span>
+          <strong class="relic-name" style="color:${RARITY[r.rarity].color}">${r.name}</strong>
+          <span class="shop-item-cat" style="color:${RARITY[r.rarity].color}">${RARITY[r.rarity].label}</span>
+        </div>
+        <div class="shop-desc">${r.desc}</div>
+      </button>`).join('');
+    this.openModal('TREASURE CACHE', `<p>Choose one relic to keep.</p><div class="shop-grid">${cards}</div>`,
+      `<div class="btn-row"><button class="btn btn-outline" data-act="skip">LEAVE IT</button></div>`);
+    this.modalBody.querySelectorAll('[data-relic]').forEach((b) => b.addEventListener('click', () => {
+      this.closeModal();
+      onPick(b.dataset.relic);
+    }));
+    this.modalActions.querySelector('[data-act="skip"]').addEventListener('click', () => {
+      this.closeModal();
+      onPick(null);
+    });
+  }
+
+  /** Gamble: bet or walk away; `onBet` returns the outcome text to show. */
+  showGamble(run, cost, onBet, onLeave) {
+    const can = run.gold >= cost;
+    this.openModal('BACK-ALLEY GAMBLE', `<p>"Double or nothing, friend. Well... triple."</p>
+      <div class="encounter-tags"><span class="tag-pill tag-loss">-${cost} G</span><span class="tag-pill tag-gold">50%: +45 GOLD OR A RELIC</span></div>`,
+      `<div class="btn-row">
+        <button class="btn btn-outline" data-act="leave">WALK AWAY</button>
+        <button class="btn btn-accent" data-act="bet" ${can ? '' : 'disabled'}>${can ? `BET ${cost}G` : 'NOT ENOUGH GOLD'}</button>
+      </div>`);
+    this.modalActions.querySelector('[data-act="leave"]').addEventListener('click', () => {
+      this.closeModal();
+      onLeave();
+    });
+    this.modalActions.querySelector('[data-act="bet"]').addEventListener('click', () => {
+      const { won, text } = onBet();
+      this.openModal(won ? 'YOU WIN!' : 'YOU LOSE', `<p class="${won ? 'accent-green' : ''}">${text}</p>`,
+        `<div class="btn-row"><button class="btn btn-accent" data-act="ok">CONTINUE</button></div>`);
+      this.modalActions.querySelector('[data-act="ok"]').addEventListener('click', () => {
+        this.closeModal();
+        onLeave();
+      });
+    });
+  }
+
+  /** Curse Shrine: show the curse + the epic relic on offer. */
+  showShrine(curse, relic, onAccept, onLeave) {
+    this.openModal('CURSE SHRINE', `<p>The shrine offers power, for a price.</p>
+      <div class="shrine-deal">
+        <div class="shrine-side curse"><span>CURSE</span><strong>${curse.name}</strong><em>${curse.desc}</em></div>
+        <div class="shrine-side gift"><span>EPIC RELIC</span><strong>${relic.name}</strong><em>${relic.desc}</em></div>
+      </div>`,
+      `<div class="btn-row">
+        <button class="btn btn-outline" data-act="leave">REFUSE</button>
+        <button class="btn btn-danger" data-act="accept">ACCEPT THE DEAL</button>
+      </div>`);
+    this.modalActions.querySelector('[data-act="leave"]').addEventListener('click', () => {
+      this.closeModal();
+      onLeave();
+    });
+    this.modalActions.querySelector('[data-act="accept"]').addEventListener('click', () => {
+      this.closeModal();
+      onAccept();
+    });
+  }
+
+  /** Operation condition card shown when a run starts. */
+  showCondition(cond) {
+    this.openModal('OPERATION CONDITION', `<p class="condition-name">${cond.name}</p><p>${cond.desc}</p>`,
+      `<div class="btn-row"><button class="btn btn-accent" data-act="ok">DEPLOY</button></div>`);
+    this.modalActions.querySelector('[data-act="ok"]').addEventListener('click', () => this.closeModal());
+  }
+
+  // ---------- Ball select ----------
+
+  /** Pick a ball for the run. Remembers the last choice. */
+  showBallSelect(onStart) {
+    let selected = 'vanguard';
+    try {
+      selected = localStorage.getItem('slingshot-ball') || 'vanguard';
+    } catch (_) {}
+    if (!BALLS.some((b) => b.id === selected)) selected = 'vanguard';
+
+    const bars = (n) => Array.from({ length: 5 }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('');
+    const cards = BALLS.map((b) => `
+      <button class="ball-card" data-ball="${b.id}" style="--ball:${b.color}">
+        <img class="ball-sprite" src="${pixelBall(b.color, b.darkColor, b.radiusMult)}" alt="">
+        <strong>${b.name}</strong>
+        <span class="ball-role">${b.role}</span>
+        <span class="ball-stat">HP<em>${bars(b.rating.hp)}</em></span>
+        <span class="ball-stat">ATK<em>${bars(b.rating.atk)}</em></span>
+        <span class="ball-stat">PWR<em>${bars(b.rating.power)}</em></span>
+      </button>`).join('');
+
+    this.openModal('CHOOSE YOUR BALL', `
+      <div class="ball-grid">${cards}</div>
+      <p class="ball-trait" id="ball-trait"></p>
+      <div class="skin-row" id="skin-row"></div>`, `<div class="btn-row">
+        <button class="btn btn-outline" data-act="cancel">BACK</button>
+        <button class="btn btn-primary" data-act="start">&#9654; START</button>
+      </div>`);
+
+    const traitEl = document.getElementById('ball-trait');
+    const select = (id) => {
+      selected = id;
+      this.modalBody.querySelectorAll('.ball-card').forEach((c) => c.classList.toggle('selected', c.dataset.ball === id));
+      const b = BALLS.find((x) => x.id === id);
+      const mods = [
+        b.hpBonus ? `${b.hpBonus > 0 ? '+' : ''}${b.hpBonus} HP` : '',
+        b.atkPct ? `+${Math.round(b.atkPct * 100)}% ATK` : '',
+        b.powerPct ? `${b.powerPct > 0 ? '+' : ''}${Math.round(b.powerPct * 100)}% launch power` : '',
+      ].filter(Boolean).join(' · ');
+      traitEl.innerHTML = `<strong style="color:${b.color}">${b.name}:</strong> ${b.trait}${mods ? ` <span class="dim-text">(${mods})</span>` : ''}`;
+      renderSkins(b);
+    };
+
+    // Skins for the selected ball (locked ones show how to unlock them)
+    let skin = 'default';
+    const skinRow = document.getElementById('skin-row');
+    const renderSkins = (b) => {
+      const stats = saveSystem.getBallStats(b.id);
+      try {
+        skin = localStorage.getItem(`slingshot-skin-${b.id}`) || 'default';
+      } catch (_) {}
+      if (!isSkinUnlocked(SKINS.find((s) => s.id === skin) || SKINS[0], stats)) skin = 'default';
+      skinRow.innerHTML = '<span class="skin-label">SKIN</span>' + SKINS.map((s) => {
+        const open = isSkinUnlocked(s, stats);
+        const { color, darkColor } = skinColors(b, s.id);
+        return `<button class="skin-btn ${s.id === skin ? 'selected' : ''} ${open ? '' : 'locked'}" data-skin="${s.id}" ${open ? '' : 'disabled'} title="${open ? s.name : s.hint}">
+          <img src="${pixelBall(color, darkColor, b.radiusMult)}" alt=""><span>${open ? s.name : `LOCKED: ${s.hint}`}</span>
+        </button>`;
+      }).join('');
+      skinRow.querySelectorAll('[data-skin]:not([disabled])').forEach((btn) => btn.addEventListener('click', () => {
+        skin = btn.dataset.skin;
+        try {
+          localStorage.setItem(`slingshot-skin-${b.id}`, skin);
+        } catch (_) {}
+        soundEngine.play('select');
+        renderSkins(b);
+      }));
+    };
+    this.modalBody.querySelectorAll('.ball-card').forEach((c) => {
+      c.addEventListener('click', () => {
+        soundEngine.play('select');
+        haptics.impact('light');
+        select(c.dataset.ball);
+      });
+    });
+    select(selected);
+
+    this.modalActions.querySelector('[data-act="cancel"]').addEventListener('click', () => this.closeModal());
+    this.modalActions.querySelector('[data-act="start"]').addEventListener('click', () => {
+      try {
+        localStorage.setItem('slingshot-ball', selected);
+      } catch (_) {}
+      soundEngine.play('confirm');
+      this.closeModal();
+      onStart(selected, skin);
+    });
+  }
+
+  // ---------- Settings ----------
+
+  showSettings() {
+    const row = (key, label, on) => `
+      <button class="setting-row ${on ? 'on' : ''}" data-setting="${key}">
+        <span>${label}</span><strong>${on ? 'ON' : 'OFF'}</strong>
+      </button>`;
+    const render = () => {
+      this.openModal('SETTINGS', `
+        <div class="settings-list">
+          ${row('sfx', 'SOUND EFFECTS', soundEngine.sfxOn)}
+          ${row('music', 'MUSIC', soundEngine.musicOn)}
+          ${row('haptics', 'VIBRATION', haptics.enabled)}
+        </div>`, `<div class="btn-row">
+          <button class="btn btn-outline" data-act="credits">CREDITS</button>
+          <button class="btn btn-accent" data-act="close">DONE</button>
+        </div>`);
+      this.modalBody.querySelectorAll('[data-setting]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const key = btn.dataset.setting;
+          if (key === 'sfx') soundEngine.setSfx(!soundEngine.sfxOn);
+          if (key === 'music') soundEngine.setMusic(!soundEngine.musicOn);
+          if (key === 'haptics') {
+            haptics.setEnabled(!haptics.enabled);
+            haptics.impact('medium');
+          }
+          soundEngine.playUI();
+          this.updateAudioButtons();
+          render();
+        });
+      });
+      this.modalActions.querySelector('[data-act="credits"]').addEventListener('click', () => this.showCredits());
+      this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => this.closeModal());
+    };
+    render();
+  }
+
+  // ---------- Generic dialogs ----------
+
+  /** In-game replacement for window.confirm (styled, works the same on Android). */
+  showConfirm({ title, text, confirmLabel = 'CONFIRM', cancelLabel = 'CANCEL', danger = false, onConfirm, onCancel }) {
+    this.openModal(title, `<p>${text}</p>`, `<div class="btn-row">
+        <button class="btn btn-outline" data-act="cancel">${cancelLabel}</button>
+        <button class="btn ${danger ? 'btn-danger' : 'btn-accent'}" data-act="confirm">${confirmLabel}</button>
+      </div>`);
+    this.modalActions.querySelector('[data-act="cancel"]').addEventListener('click', () => {
+      soundEngine.playUI();
+      this.closeModal();
+      onCancel?.();
+    });
+    this.modalActions.querySelector('[data-act="confirm"]').addEventListener('click', () => {
+      this.closeModal();
+      onConfirm?.();
+    });
+  }
+
+  showRetreatConfirm(cost, { onConfirm, onCancel }) {
+    this.showConfirm({
+      title: 'RETREAT?',
+      text: `Fall back to your previous tile. You lose <strong class="accent">${cost} HP</strong> and 1 move, and get no rewards. The hostile stays on the map, so you can come back for it later.`,
+      confirmLabel: `RETREAT (-${cost} HP)`,
+      cancelLabel: 'KEEP FIGHTING',
+      danger: true,
+      onConfirm,
+      onCancel,
+    });
+  }
+
+  // ---------- Save transfer ----------
+
+  showExportSave(code) {
+    this.openModal('EXPORT SAVE', `
+      <p>Your save code is below. Keep it somewhere safe (notes app, a message to yourself) and use <strong>IMPORT SAVE</strong> on any device to restore it.</p>
+      <textarea class="save-code" readonly>${code}</textarea>
+      <p class="save-status" id="save-status"></p>
+    `, `<div class="btn-row">
+        <button class="btn btn-accent" data-act="copy">COPY CODE</button>
+        <button class="btn btn-outline" data-act="close">DONE</button>
+      </div>`);
+    const status = document.getElementById('save-status');
+    const box = this.modalBody.querySelector('.save-code');
+    const copy = async () => {
+      try {
+        await navigator.clipboard.writeText(code);
+        status.textContent = 'COPIED TO CLIPBOARD';
+        status.className = 'save-status ok';
+        soundEngine.play('confirm');
+      } catch {
+        box.focus();
+        box.select();
+        status.textContent = 'Could not copy automatically: long-press the code and choose Copy.';
+        status.className = 'save-status err';
+      }
+    };
+    this.modalActions.querySelector('[data-act="copy"]').addEventListener('click', copy);
+    this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => this.closeModal());
+    copy();
+  }
+
+  showImportSave() {
+    this.openModal('IMPORT SAVE', `
+      <p>Paste a save code (starts with <strong>SLING1-</strong>): long-press the box and choose Paste. <span class="accent">This replaces your current progress.</span></p>
+      <textarea class="save-code" placeholder="SLING1-..." spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+      <p class="save-status" id="save-status"></p>
+    `, `<div class="btn-row">
+        <button class="btn btn-outline" data-act="cancel">CANCEL</button>
+        <button class="btn btn-accent" data-act="import">IMPORT</button>
+      </div>`);
+    const status = document.getElementById('save-status');
+    const box = this.modalBody.querySelector('.save-code');
+    this.modalActions.querySelector('[data-act="cancel"]').addEventListener('click', () => this.closeModal());
+    this.modalActions.querySelector('[data-act="import"]').addEventListener('click', () => {
+      if (!box.value.trim()) {
+        status.textContent = 'Paste a save code first.';
+        status.className = 'save-status err';
+        return;
+      }
+      if (saveSystem.importSaveData(box.value)) {
+        status.textContent = 'SAVE RESTORED, RELOADING...';
+        status.className = 'save-status ok';
+        soundEngine.play('confirm');
+        setTimeout(() => location.reload(), 700);
+      } else {
+        status.textContent = 'That code is incomplete or damaged. Copy the whole code and try again.';
+        status.className = 'save-status err';
+        soundEngine.play('error');
+      }
+    });
+  }
+
+  // ---------- Credits / legal ----------
+
+  showCredits() {
+    this.openModal('CREDITS', `
+      <p><strong>SLINGSHOT OPS</strong> <span class="dim-text">v${pkg.version}</span><br>
+      Design &amp; code by Boci.</p>
+      <p class="dim-text">Fonts: Pixelify Sans &amp; Press Start 2P (SIL Open Font License 1.1).<br>
+      Built with Capacitor (MIT License). Sound effects are synthesized in-game.</p>
+      <p class="dim-text">This game collects no personal data and works fully offline.</p>
+      <div id="credits-doc" class="credits-doc hidden"></div>
+    `, `<div class="btn-row">
+        <button class="btn btn-outline" data-doc="privacy">PRIVACY POLICY</button>
+        <button class="btn btn-outline" data-doc="licenses">LICENSES</button>
+      </div>
+      <div class="btn-row"><button class="btn btn-accent" data-act="close">CLOSE</button></div>`);
+
+    const doc = document.getElementById('credits-doc');
+    this.modalActions.querySelectorAll('button[data-doc]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        soundEngine.playUI();
+        doc.classList.remove('hidden');
+        // Bundled with the app (Vite public/), so this works offline
+        if (btn.dataset.doc === 'privacy') {
+          doc.innerHTML = '<iframe src="./privacy.html" title="Privacy policy"></iframe>';
+        } else {
+          try {
+            const text = await (await fetch('./licenses.txt')).text();
+            doc.innerHTML = '';
+            const pre = document.createElement('pre');
+            pre.textContent = text;
+            doc.appendChild(pre);
+          } catch {
+            doc.textContent = 'Licenses unavailable.';
+          }
+        }
+      });
+    });
+    this.modalActions.querySelector('button[data-act="close"]').addEventListener('click', () => this.closeModal());
+  }
+
+  // ---------- Run screen drawers ----------
+
+  toggleDrawer(name) {
+    const drawer = document.getElementById(`drawer-${name}`);
+    if (!drawer) return;
+    const opening = !drawer.classList.contains('open');
+    this.closeDrawers();
+    if (!opening) return;
+    drawer.classList.add('open');
+    this.screens.run.classList.add('drawer-open');
+  }
+
+  closeDrawers() {
+    document.querySelectorAll('.run-drawer.open').forEach((d) => d.classList.remove('open'));
+    this.screens.run.classList.remove('drawer-open');
+  }
+
+  /** Short-lived notification on the map screen (floor advanced, retreated, relic found...). */
+  toast(html) {
+    const stack = document.getElementById('toast-stack');
+    if (!stack) return;
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.innerHTML = html;
+    stack.appendChild(el);
+    while (stack.children.length > 3) stack.firstChild.remove();
+    setTimeout(() => el.classList.add('out'), 2600);
+    setTimeout(() => el.remove(), 3000);
+  }
+
+  _setBattleMode(on) {
+    this.screens.run.classList.toggle('in-battle', on);
+    if (on) this.closeDrawers();
   }
 
   // ---------- Generic screen switching ----------
@@ -144,23 +523,45 @@ export class UIManager {
     this._setVisible('tech');
     document.getElementById('tech-points').textContent = this._tp();
     const container = document.getElementById('tech-tree');
+    const tabs = document.getElementById('tech-tabs');
     container.innerHTML = '';
+    tabs.innerHTML = '';
 
     const branches = [
-      { key: 'atk', title: 'ATTACK', color: '#e0655c' },
-      { key: 'vit', title: 'VITALITY', color: '#5fd3a8' },
-      { key: 'def', title: 'DEFENSE', color: '#7aa2ff' },
-      { key: 'tac', title: 'TACTICS', color: '#c792ea' },
+      { key: 'atk', title: 'ATTACK', color: 'var(--accent-red)' },
+      { key: 'vit', title: 'VITALITY', color: 'var(--accent-green)' },
+      { key: 'def', title: 'DEFENSE', color: 'var(--accent-blue)' },
+      { key: 'tac', title: 'TACTICS', color: 'var(--accent-purple)' },
     ];
+    // One branch at a time — remembered across re-renders (e.g. after a purchase)
+    if (!branches.some((b) => b.key === this._techBranch)) this._techBranch = 'atk';
 
     for (const branch of branches) {
-      const col = document.createElement('div');
-      col.className = 'tech-column';
-      col.innerHTML = `<h3 style="color:${branch.color}">${branch.title}</h3>`;
+      const nodes = techTree.getAllNodes().filter((n) => n.branch === branch.key);
+      const ranks = nodes.reduce((sum, n) => sum + techTree.getNodeLevel(n.id), 0);
+      const maxRanks = nodes.reduce((sum, n) => sum + (n.maxLevel || 1), 0);
+      const canBuy = nodes.some((n) => techTree.isUnlocked(n.id) && techTree.canPurchase(n.id));
 
-      const nodes = techTree
-        .getAllNodes()
-        .filter((n) => n.branch === branch.key);
+      const tab = document.createElement('button');
+      const active = branch.key === this._techBranch;
+      tab.className = `tech-tab ${active ? 'active' : ''}`;
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-selected', String(active));
+      tab.style.setProperty('--branch', branch.color);
+      tab.innerHTML = `
+        <span class="tech-tab-title">${branch.title}${canBuy ? '<i class="tech-tab-dot"></i>' : ''}</span>
+        <span class="tech-tab-count">${ranks}/${maxRanks}</span>
+      `;
+      tab.addEventListener('click', () => {
+        if (this._techBranch === branch.key) return;
+        soundEngine.playUI();
+        this._techBranch = branch.key;
+        this.showTech(techTree, saveSystem);
+      });
+      tabs.appendChild(tab);
+
+      if (!active) continue;
+      container.style.setProperty('--branch', branch.color);
 
       for (const node of nodes) {
         const lvl = techTree.getNodeLevel(node.id);
@@ -169,39 +570,39 @@ export class UIManager {
         const unlocked = techTree.isUnlocked(node.id);
         const affordable = techTree.canPurchase(node.id);
         const nextCost = techTree.getNodeNextCost(node.id);
+        const requires = node.requires ? techTree.getAllNodes().find((n) => n.id === node.requires) : null;
 
-        const rankDots = maxLvl > 1
-          ? `<div style="font-size:11px;color:var(--accent);margin:2px 0;">${'[#]'.repeat(lvl)}${'[-]'.repeat(maxLvl - lvl)} <span style="font-size:10px;color:var(--text-dim);">(Rank ${lvl}/${maxLvl})</span></div>`
-          : '';
+        const pips = Array.from({ length: maxLvl }, (_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('');
 
-        const row = document.createElement('div');
-        row.className = `tech-node ${isMaxed ? 'owned' : lvl > 0 ? 'part-owned' : ''} ${!unlocked ? 'locked' : ''}`;
-        row.innerHTML = `
+        const card = document.createElement('div');
+        card.className = `tech-node ${isMaxed ? 'owned' : lvl > 0 ? 'part-owned' : ''} ${!unlocked ? 'locked' : ''}`;
+        card.innerHTML = `
           <div class="tech-node-head">
             <span class="tech-icon">${node.icon || '[*]'}</span>
             <span class="tech-name">${node.label}</span>
-            ${isMaxed ? '<span class="tech-owned">MAXED</span>' : `<span class="tech-cost">${nextCost} TP</span>`}
           </div>
-          ${rankDots}
+          <div class="tech-rank"><div class="tech-pips">${pips}</div><span>${lvl}/${maxLvl}</span></div>
           <div class="tech-desc">${node.desc}</div>
         `;
 
-        if (!isMaxed && unlocked) {
-          const btn = document.createElement('button');
-          btn.className = `btn ${affordable ? 'btn-accent' : 'btn-disabled'}`;
-          btn.textContent = affordable ? (lvl > 0 ? `UPGRADE (${nextCost} TP)` : `UNLOCK (${nextCost} TP)`) : 'NOT ENOUGH TP';
-          btn.addEventListener('click', () => {
-            if (affordable) {
-              this.cb.onTechPurchase(node.id);
-            }
-          });
-          row.appendChild(btn);
+        const btn = document.createElement('button');
+        if (isMaxed) {
+          btn.className = 'btn btn-outline tech-buy';
+          btn.disabled = true;
+          btn.textContent = 'MAXED';
+        } else if (!unlocked) {
+          btn.className = 'btn btn-outline tech-buy';
+          btn.disabled = true;
+          btn.textContent = requires ? `NEEDS ${requires.label.toUpperCase()}` : 'LOCKED';
+        } else {
+          btn.className = `btn tech-buy ${affordable ? 'btn-accent' : 'btn-outline'}`;
+          btn.disabled = !affordable;
+          btn.innerHTML = `${lvl > 0 ? 'UPGRADE' : 'UNLOCK'} <span class="tech-price">${nextCost} TP</span>`;
+          btn.addEventListener('click', () => this.cb.onTechPurchase(node.id));
         }
-
-        col.appendChild(row);
+        card.appendChild(btn);
+        container.appendChild(card);
       }
-
-      container.appendChild(col);
     }
 
     // Refresh stats line
@@ -216,7 +617,7 @@ export class UIManager {
     if (stats.hasVampiricVitality) parts.push('25% Lifesteal');
     if (stats.hasRelicSynergy) parts.push('Relic Synergy');
 
-    document.getElementById('tech-apply').textContent = `Applied: ${parts.join(' - ')}`;
+    document.getElementById('tech-apply').textContent = `ACTIVE BONUSES: ${parts.join('  ·  ')}`;
   }
 
   // ---------- Run map screen ----------
@@ -228,6 +629,7 @@ export class UIManager {
     if (battleView) battleView.classList.add('hidden');
 
     this._setVisible('run');
+    this._setBattleMode(false);
     this.updateRunHud(run);
     this.renderMap(run, mapInstance, floor);
     this.renderQuests(run);
@@ -236,6 +638,12 @@ export class UIManager {
 
   updateRunHud(run) {
     document.getElementById('run-hp').textContent = `${Math.ceil(run.hp)}/${run.maxHp}`;
+    const hpBar = document.getElementById('run-hp-bar');
+    if (hpBar) {
+      const pct = Math.max(0, Math.min(1, run.hp / run.maxHp));
+      hpBar.style.width = `${Math.round(pct * 100)}%`;
+      hpBar.className = pct <= 0.3 ? 'low' : pct <= 0.6 ? 'mid' : '';
+    }
     const actEl = document.getElementById('run-actions');
     if (actEl) actEl.textContent = `${run.floorActions ?? 5}`;
     document.getElementById('run-gold').textContent = `${run.gold}G`;
@@ -267,12 +675,28 @@ export class UIManager {
       chip.className = 'boon-chip';
       chip.style.borderColor = def.color;
       chip.style.color = def.color;
-      chip.textContent = count > 1 ? `${def.name} x${count}` : def.name;
-      chip.title = `${def.desc} (Stack ${count})`;
+      chip.innerHTML = `<b style="color:${def.color}">${def.name}${count > 1 ? ` x${count}` : ''}</b> ${def.desc}`;
       container.appendChild(chip);
     }
     if (run.boons.length === 0) {
-      container.innerHTML = '<span class="dim-text">No boons</span>';
+      container.innerHTML = '<span class="dim-text">No buffs yet: encounters and battles can grant them.</span>';
+    }
+    const cond = CONFIG.runConditions.find((c) => c.id === run.condition);
+    if (cond) {
+      const chip = document.createElement('span');
+      chip.className = 'boon-chip';
+      chip.style.borderColor = '#73eff7';
+      chip.innerHTML = `<b style="color:#73eff7">${cond.name}</b> ${cond.desc}`;
+      container.prepend(chip);
+    }
+    for (const id of run.curses || []) {
+      const curse = CONFIG.curses.find((c) => c.id === id);
+      if (!curse) continue;
+      const chip = document.createElement('span');
+      chip.className = 'boon-chip';
+      chip.style.borderColor = '#ff5d73';
+      chip.innerHTML = `<b style="color:#ff5d73">CURSE: ${curse.name}</b> ${curse.desc}`;
+      container.appendChild(chip);
     }
 
     this.renderRelics(run);
@@ -362,6 +786,9 @@ export class UIManager {
       shop: 'SUPPLY DEPOT',
       rest: 'SAFE ZONE',
       minigame: 'PRECISION DRILL',
+      treasure: 'TREASURE CACHE',
+      gamble: 'BACK-ALLEY GAMBLE',
+      shrine: 'CURSE SHRINE',
       entry: 'START',
     };
     const title = labels[node.type] || node.type.toUpperCase();
@@ -375,10 +802,16 @@ export class UIManager {
     if (node.type === 'combat' || node.type === 'elite' || node.type === 'miniboss' || node.type === 'boss') {
       actions += `<div class="btn-row">
         <button class="btn btn-danger" data-act="fight">ENGAGE</button>
-        <button class="btn" data-act="retreat">RETREAT</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-outline" data-act="back">&#9664; BACK</button>
+        <button class="btn btn-outline" data-act="retreat" title="Slip past without fighting: no rewards, 1 move">SNEAK PAST · -10 HP</button>
       </div>`;
     } else {
-      actions = `<div class="btn-row"><button class="btn btn-accent" data-act="proceed">PROCEED</button></div>`;
+      actions = `<div class="btn-row">
+        <button class="btn btn-outline" data-act="back">&#9664; BACK</button>
+        <button class="btn btn-accent" data-act="proceed">PROCEED</button>
+      </div>`;
     }
 
     this.openModal(title, body, actions);
@@ -394,6 +827,7 @@ export class UIManager {
         if (act === 'fight') this.cb.onNodeFight(node);
         else if (act === 'retreat') this.cb.onNodeRetreat(node);
         else if (act === 'proceed') this.cb.onNodeProceed(node);
+        else if (act === 'back') this.cb.onNodeBack();
       });
     });
   }
@@ -405,7 +839,7 @@ export class UIManager {
       case 'elite':
         return 'A heavily armed elite unit. High risk, high reward.';
       case 'miniboss':
-        return 'A sector mini-boss! Defeat it for 2 Relic Collectibles and +50 Extra Gold.';
+        return 'A sector mini-boss. Defeat it for 2 relics and +50 gold.';
       case 'boss':
         return 'The sector commander. Eliminate it to complete the operation.';
       case 'encounter':
@@ -416,6 +850,12 @@ export class UIManager {
         return 'A safe zone. Restore HP before continuing.';
       case 'minigame':
         return 'A calibration drill. Precision yields bonus supplies.';
+      case 'treasure':
+        return 'An unguarded cache. Take one of two relics for free.';
+      case 'gamble':
+        return 'A shady dealer runs a coin game. Bet 15 gold: 50% to win 45 gold or a relic.';
+      case 'shrine':
+        return 'A shrine hums with bad energy. Accept a curse to claim an epic relic.';
       default:
         return 'Proceed.';
     }
@@ -432,10 +872,10 @@ export class UIManager {
       if (rewards.heal) parts.push(`+${rewards.heal} HP`);
       if (rewards.relics && rewards.relics.length) {
         for (const r of rewards.relics) {
-          parts.push(`<span style="color:var(--accent)">+ Collectible: ${r.name}</span>`);
+          parts.push(`<span style="color:var(--accent)">+ RELIC: ${r.name}</span>`);
         }
       } else if (rewards.relic) {
-        parts.push(`<span style="color:var(--accent)">+ Collectible: ${rewards.relic.name}</span>`);
+        parts.push(`<span style="color:var(--accent)">+ RELIC: ${rewards.relic.name}</span>`);
       }
       if (parts.length) body += `<p class="reward-line">${parts.join(' • ')}</p>`;
     }
@@ -452,17 +892,19 @@ export class UIManager {
   showEncounterOptions(encounter) {
     const getPreview = (c) => {
       const parts = [];
-      if (c.gainActions) parts.push(`<span class="tag-pill tag-action">+${c.gainActions} ACTION${c.gainActions > 1 ? 'S' : ''}</span>`);
+      if (c.gainActions) parts.push(`<span class="tag-pill tag-action">+${c.gainActions} MOVE${c.gainActions > 1 ? 'S' : ''}</span>`);
       if (c.loseHp) parts.push(`<span class="tag-pill tag-loss">-${c.loseHp} HP</span>`);
       if (c.loseGold) parts.push(`<span class="tag-pill tag-loss">-${c.loseGold} G</span>`);
+      if (c.loseMaxHp) parts.push(`<span class="tag-pill tag-loss">-${c.loseMaxHp} MAX HP</span>`);
+      if (c.gambleGold) parts.push(`<span class="tag-pill tag-gold">50%: +${c.gambleGold} GOLD</span>`);
       if (c.heal) parts.push(`<span class="tag-pill tag-gain">+${c.heal} HP</span>`);
       if (c.gainMaxHp) parts.push(`<span class="tag-pill tag-gain">+${c.gainMaxHp} MAX HP</span>`);
       if (c.gainGold) parts.push(`<span class="tag-pill tag-gold">+${c.gainGold} GOLD</span>`);
-      if (c.gainTech) parts.push(`<span class="tag-pill tag-tech">+${c.gainTech} TP</span>`);
-      if (c.gainRelic) parts.push(`<span class="tag-pill tag-gold">+ COLLECTIBLE</span>`);
+      if (c.gainTech) parts.push(`<span class="tag-pill tag-tech">+${c.gainTech} TECH PTS</span>`);
+      if (c.gainRelic) parts.push(`<span class="tag-pill tag-gold">+ RANDOM RELIC</span>`);
       if (c.gainBoon) {
         const boon = CONFIG.boons.find((b) => b.id === c.gainBoon);
-        if (boon) parts.push(`<span class="tag-pill tag-boon">+ BOON: ${boon.name}</span>`);
+        if (boon) parts.push(`<span class="tag-pill tag-boon">+ ${boon.name.toUpperCase()}: ${boon.desc}</span>`);
       }
       return parts.length ? `<div class="encounter-tags">${parts.join('')}</div>` : '';
     };
@@ -491,30 +933,24 @@ export class UIManager {
   }
 
   showShop(run, shopItems = [], refreshesLeft = 3, refreshCost = 8) {
-    let body = '<div class="shop-header-info"><span class="accent">AVAILABLE COLLECTIBLES</span> • Refresh inventory up to 3 times per visit</div>';
-    body += '<div class="shop-grid" style="margin-top: 14px;">';
+    let body = `<div class="shop-header-info"><span class="accent">YOUR GOLD: ${run.gold}G</span> · Refresh stock up to 3 times per visit</div>`;
+    body += '<div class="shop-grid">';
 
     for (const relic of shopItems) {
-      const cost = Math.round(relic.cost * (run.shopDiscount || 1) * saveSystem.getShopPriceMultiplier());
+      const cost = run.relicPrice(relic);
       const alreadyOwned = run.relics.includes(relic.id);
       const affordable = run.gold >= cost;
 
       body += `
-        <div class="shop-item" style="padding: 12px; margin-bottom: 10px; border: 1px solid var(--border); background: var(--bg-panel-2);">
-          <div style="display: flex; gap: 10px; align-items: flex-start; flex: 1;">
-            <div style="font-size: 16px; font-weight: 700; color: var(--accent-gold); font-family: var(--mono);">${relic.icon || '[*]'}</div>
-            <div style="flex: 1;">
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <strong class="relic-name">${relic.name}</strong>
-                <span class="dim-text" style="font-size: 10px; text-transform: uppercase;">[${relic.category || 'Rhodes'}]</span>
-              </div>
-              <div class="shop-desc" style="margin-top: 4px; font-size: 12px; color: var(--text-dim);">${relic.desc}</div>
-            </div>
+        <div class="shop-item">
+          <div class="shop-item-head">
+            <span class="shop-item-icon">${relic.icon || '[*]'}</span>
+            <strong class="relic-name">${relic.name}</strong>
+            <span class="shop-item-cat" style="color:${RARITY[relic.rarity]?.color || 'inherit'}">${relic.category || ''}</span>
           </div>
-          <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
-            <button class="btn ${alreadyOwned ? 'btn-disabled' : affordable ? 'btn-accent' : 'btn-disabled'}"
-              data-relic="${relic.id}" ${alreadyOwned ? 'disabled' : ''}>${alreadyOwned ? 'OWNED' : cost + ' G'}</button>
-          </div>
+          <div class="shop-desc">${relic.desc}</div>
+          <button class="btn ${alreadyOwned ? 'btn-outline' : affordable ? 'btn-accent' : 'btn-outline'}"
+            data-relic="${relic.id}" ${alreadyOwned || !affordable ? 'disabled' : ''}>${alreadyOwned ? 'OWNED' : cost + ' G'}</button>
         </div>
       `;
     }
@@ -537,8 +973,8 @@ export class UIManager {
     // Action buttons: Refresh & Leave
     const canRefresh = refreshesLeft > 0 && run.gold >= refreshCost;
     this.modalActions.innerHTML = `
-      <div class="btn-row" style="display: flex; gap: 12px; justify-content: flex-end; width: 100%;">
-        <button class="btn ${canRefresh ? 'btn-outline' : 'btn-disabled'}" data-act="refresh" ${canRefresh ? '' : 'disabled'}>
+      <div class="btn-row">
+        <button class="btn btn-outline" data-act="refresh" ${canRefresh ? '' : 'disabled'}>
           ${refreshesLeft > 0 ? `REFRESH (${refreshesLeft}/3 • ${refreshCost}G)` : 'NO REFRESHES LEFT'}
         </button>
         <button class="btn btn-primary" data-act="leave">LEAVE</button>
@@ -578,7 +1014,7 @@ export class UIManager {
       const item = document.createElement('div');
       item.className = 'relic-item';
       item.innerHTML = `
-        <div class="relic-name">◈ ${relic.name}</div>
+        <div class="relic-name" style="color:${RARITY[relic.rarity]?.color || 'inherit'}">${relic.name} <span class="relic-rarity">${RARITY[relic.rarity]?.label || ''}</span></div>
         <div class="relic-desc">${relic.desc}</div>
       `;
       container.appendChild(item);
@@ -597,14 +1033,18 @@ export class UIManager {
     }
 
     if (run.hasRelic?.('rel_family_feast')) {
-      maxHpVal += 15;
+      maxHpVal += 10;
       notes.push('Family Feast');
+    }
+    if (run.hasRelic?.('rel_golden_apple')) {
+      healVal = run.maxHp + maxHpVal;
+      notes.push('Golden Apple');
     }
 
     const healMultiplier = saveSystem.getHealingMultiplier();
     const effectiveHealVal = Math.round(healVal * healMultiplier);
 
-    let buttonText = `HEAL ${effectiveHealVal} HP`;
+    let buttonText = run.hasRelic?.('rel_golden_apple') ? 'HEAL TO FULL' : `HEAL ${effectiveHealVal} HP`;
     if (maxHpVal > 0) {
       buttonText += ` & +${maxHpVal} MAX HP`;
     }
@@ -679,7 +1119,7 @@ export class UIManager {
       if (rewards.healText || rewards.heal) parts.push(`<span style="color:#5fd3a8">${rewards.healText || ('+' + rewards.heal + ' HP Healed')}</span>`);
       if (rewards.relics && rewards.relics.length) {
         for (const r of rewards.relics) {
-          parts.push(`<span style="color:var(--accent)">+ Collectible: ${r.name}</span>`);
+          parts.push(`<span style="color:var(--accent)">+ RELIC: ${r.name}</span>`);
         }
       }
       if (parts.length) {
@@ -701,12 +1141,22 @@ export class UIManager {
 
   showRunResult(run, quests, meta) {
     this._setVisible('result');
+    document.getElementById('result-risk')?.classList.add('hidden');
     document.getElementById('result-title').textContent =
       run.runResult === 'victory' ? 'OPERATION COMPLETE' : 'OPERATION FAILED';
     document.getElementById('result-title').style.color =
       run.runResult === 'victory' ? '#5fd3a8' : '#e0655c';
-    document.getElementById('result-sub').textContent =
-      `Floors reached: ${run.floor + 1}/${CONFIG.map.floors} • Combats won: ${run.combatsWon}`;
+    const cond = CONFIG.runConditions.find((c) => c.id === run.condition);
+    document.getElementById('result-sub').textContent = run.runResult === 'victory' ? 'The sector is clear.' : run.hp > 0 ? 'Operation abandoned.' : 'Your ball was destroyed.';
+    const tile = (label, value) => `<div class="result-stat"><span>${label}</span><strong>${value}</strong></div>`;
+    document.getElementById('result-stats').innerHTML = [
+      tile('FLOOR', `${run.floor + 1}/${CONFIG.map.floors}`),
+      tile('BATTLES WON', run.combatsWon),
+      tile('BALL', run.ball?.name || 'VANGUARD'),
+      tile('RELICS', run.relics.length),
+      tile('RISK', saveSystem.getDifficultyLevel()),
+      tile('CONDITION', cond ? cond.name : '-'),
+    ].join('');
 
     const questList = document.getElementById('result-quests');
     questList.innerHTML = '';
@@ -719,11 +1169,49 @@ export class UIManager {
       `;
       questList.appendChild(item);
     }
+    if (!quests.length) questList.innerHTML = '<span class="dim-text">No quests this run.</span>';
     const tp = meta?.techPoints ?? (this.cb.getTechPoints ? this.cb.getTechPoints() : 0);
-    document.getElementById('result-tp').textContent = `Total Tech Points: ${tp}`;
+    document.getElementById('result-tp').textContent = `TECH POINTS: ${tp}`;
+  }
+
+  /** Full-screen warning card before mini-boss / boss fights. Tap (or wait) to begin. */
+  showBossIntro({ title, name, desc, color }, onDone) {
+    const el = document.getElementById('boss-intro');
+    if (!el) return onDone();
+    document.getElementById('boss-intro-sub').textContent = title;
+    const nameEl = document.getElementById('boss-intro-name');
+    nameEl.textContent = name;
+    nameEl.style.color = color || '';
+    document.getElementById('boss-intro-desc').textContent = desc;
+    el.classList.remove('hidden', 'out');
+    soundEngine.play('alarm');
+    haptics.impact('heavy');
+
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      el.classList.add('out');
+      setTimeout(() => el.classList.add('hidden'), 250);
+      onDone();
+    };
+    const timer = setTimeout(finish, 4000);
+    // Ignore taps for a moment so the tap that started the fight doesn't skip it
+    setTimeout(() => el.addEventListener('pointerdown', finish, { once: true }), 500);
+  }
+
+  showRiskUnlocked(level, rule) {
+    const el = document.getElementById('result-risk');
+    if (!el) return;
+    el.innerHTML = `RISK ${level} UNLOCKED<br><span>${rule.name}: ${rule.desc}</span>`;
+    el.classList.remove('hidden');
+    soundEngine.play('confirm');
   }
 
   showBattleHud(run, nodeType) {
+    // Bosses can't be fled; everything else can
+    document.getElementById('btn-retreat-battle')?.classList.toggle('hidden', nodeType === 'miniboss' || nodeType === 'boss');
     document.getElementById('battle-floor').textContent = `FLOOR ${run.floor + 1}`;
     document.getElementById('battle-node').textContent =
       nodeType === 'boss' ? 'BOSS' : nodeType === 'miniboss' ? 'MINI-BOSS' : nodeType === 'elite' ? 'ELITE' : 'COMBAT';
@@ -735,6 +1223,7 @@ export class UIManager {
     if (battleView) battleView.classList.remove('hidden');
 
     this._setVisible('battleHud', 'run');
+    this._setBattleMode(true);
   }
 
   showMinigameView() {
@@ -744,6 +1233,7 @@ export class UIManager {
     if (battleView) battleView.classList.remove('hidden');
 
     this._setVisible('run');
+    this._setBattleMode(true);
   }
 
   clearBattleHud() {
@@ -753,6 +1243,7 @@ export class UIManager {
     if (battleView) battleView.classList.add('hidden');
 
     this._setVisible('run');
+    this._setBattleMode(false);
   }
 
   // ---------- helpers ----------
@@ -772,4 +1263,26 @@ export class UIManager {
     // Tech points are read from the save via a callback.
     return this.cb.getTechPoints ? this.cb.getTechPoints() : 0;
   }
+}
+/** Tiny pixel-art ball (same shading as the battle sprites) as a data URL. */
+function pixelBall(color, dark, radiusMult = 1) {
+  const N = 16;
+  const c = document.createElement('canvas');
+  c.width = N;
+  c.height = N;
+  const g = c.getContext('2d');
+  const r = 7.6 * Math.min(1, 0.72 + radiusMult * 0.28);
+  const mid = (N - 1) / 2;
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const dx = x - mid;
+      const dy = y - mid;
+      const d = Math.hypot(dx, dy);
+      if (d > r) continue;
+      const shade = (dx + dy) / r;
+      g.fillStyle = d > r - 1 ? '#1a1c2c' : shade < -0.55 ? '#f4f4f4' : shade > 0.45 ? dark : color;
+      g.fillRect(x, y, 1, 1);
+    }
+  }
+  return c.toDataURL();
 }

@@ -6,6 +6,13 @@
 // granted (even a failed drill gives a small consolation).
 // ============================================================
 
+import { fitCanvas } from '../rendering/viewport.js';
+import { soundEngine } from '../utils/SoundEngine.js';
+import { haptics } from '../platform/haptics.js';
+
+const FONT = '"Pixelify Sans", monospace';
+const DISPLAY = '"Press Start 2P", monospace';
+
 const MODES = {
   IDLE: 'idle',
   RUNNING: 'running',
@@ -30,12 +37,11 @@ export class Minigame {
     this.feedbackTimer = 0;
 
     this._onClick = this._onClick.bind(this);
-    this.canvas.addEventListener('click', this._onClick);
+    // pointerdown (not click) so taps register instantly on touch screens
+    this.canvas.addEventListener('pointerdown', this._onClick);
   }
 
   start() {
-    this.canvas.width = 1280;
-    this.canvas.height = 750;
     this.mode = MODES.RUNNING;
     this.progress = 0;
     this.direction = 1;
@@ -46,6 +52,7 @@ export class Minigame {
     this.result = null;
     this.lastFeedback = null;
     this.feedbackTimer = 0;
+    this._hitLog = [];
   }
 
   get isActive() {
@@ -77,16 +84,23 @@ export class Minigame {
     if (isPerfect) {
       this.perfects += 1;
       this.hits += 1;
-      this._setFeedback('PERFECT', '#5fd3a8');
+      this._setFeedback('PERFECT!', '#a7f070');
+      soundEngine.play('confirm');
+      haptics.impact('heavy');
     } else if (isHit) {
       this.hits += 1;
-      this._setFeedback('HIT', '#8fe3c1');
+      this._setFeedback('HIT', '#73eff7');
+      soundEngine.play('select');
+      haptics.impact('medium');
     } else {
       this.perfect = false;
-      this._setFeedback('MISS', '#e0655c');
+      this._setFeedback('MISS', '#ff5d73');
+      soundEngine.play('error');
+      haptics.impact('light');
     }
 
     if (!isPerfect) this.perfect = false;
+    this._hitLog.push(isHit);
     this.attemptsLeft -= 1;
 
     if (this.attemptsLeft <= 0) {
@@ -109,96 +123,99 @@ export class Minigame {
 
   render() {
     const { ctx } = this;
-    const w = this.canvas.width;
-    const h = this.canvas.height;
+    // Full-bleed canvas; everything below is laid out in CSS px
+    const view = fitCanvas(this.canvas, 1280, 750);
+    ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    const w = view.cssW;
+    const h = view.cssH;
 
-    ctx.fillStyle = '#0d1117';
+    // Backdrop: dark panel grid
+    ctx.fillStyle = '#10111c';
     ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = 'rgba(115, 239, 247, 0.06)';
+    for (let x = 0; x < w; x += 24) for (let y = 0; y < h; y += 24) ctx.fillRect(x, y, 2, 2);
 
-    // Title
-    ctx.fillStyle = '#e8edf5';
-    ctx.font = '700 18px "Consolas", "Courier New", monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('PRECISION DRILL // TIMING CHALLENGE', w / 2, 45);
+    ctx.font = `400 ${Math.min(18, w / 34)}px ${DISPLAY}`;
+    ctx.fillStyle = '#000';
+    ctx.fillText('PRECISION DRILL', w / 2 + 3, h * 0.17 + 3);
+    ctx.fillStyle = '#ffcd75';
+    ctx.fillText('PRECISION DRILL', w / 2, h * 0.17);
+    ctx.font = `700 14px ${FONT}`;
+    ctx.fillStyle = '#94b0c2';
+    ctx.fillText('TAP ANYWHERE WHEN THE MARKER IS IN THE GREEN ZONE', w / 2, h * 0.17 + 24);
 
     // Bar
-    const barX = 120;
-    const barW = w - 240;
-    const barY = h / 2 - 12;
-    const barH = 24;
-
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
+    const barW = Math.min(620, w * 0.78);
+    const barX = Math.round(w / 2 - barW / 2);
+    const barH = 36;
+    const barY = Math.round(h * 0.5 - barH / 2);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(barX - 4, barY - 4, barW + 12, barH + 12);
+    ctx.fillStyle = '#333c57';
+    ctx.fillRect(barX - 4, barY - 4, barW + 8, barH + 8);
+    ctx.fillStyle = '#1a1c2c';
     ctx.fillRect(barX, barY, barW, barH);
 
-    // Hit band (center)
-    const bandW = 0.16 * barW;
-    const bandX = barX + barW * 0.5 - bandW / 2;
-    ctx.fillStyle = 'rgba(95, 211, 168, 0.25)';
-    ctx.fillRect(bandX, barY, bandW, barH);
+    const bandW = Math.round(0.16 * barW);
+    ctx.fillStyle = '#257179';
+    ctx.fillRect(Math.round(barX + barW / 2 - bandW / 2), barY, bandW, barH);
+    const perfectW = Math.max(6, Math.round(0.04 * barW));
+    ctx.fillStyle = '#a7f070';
+    ctx.fillRect(Math.round(barX + barW / 2 - perfectW / 2), barY, perfectW, barH);
+    // Tick marks
+    ctx.fillStyle = '#333c57';
+    for (let i = 1; i < 10; i++) ctx.fillRect(Math.round(barX + (barW * i) / 10), barY + barH - 6, 2, 6);
 
-    // Perfect band (inner)
-    const perfectW = 0.04 * barW;
-    const perfectX = barX + barW * 0.5 - perfectW / 2;
-    ctx.fillStyle = 'rgba(95, 211, 168, 0.5)';
-    ctx.fillRect(perfectX, barY, perfectW, barH);
-
-    // Border
-    ctx.strokeStyle = 'rgba(122, 162, 255, 0.4)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(barX, barY, barW, barH);
-
-    // Sweep indicator
+    // Marker
     if (this.mode === MODES.RUNNING) {
-      const ix = barX + this.progress * barW;
-      ctx.fillStyle = '#e8a94c';
-      ctx.beginPath();
-      ctx.moveTo(ix, barY - 8);
-      ctx.lineTo(ix - 6, barY + barH + 8);
-      ctx.lineTo(ix + 6, barY + barH + 8);
-      ctx.closePath();
-      ctx.fill();
+      const ix = Math.round(barX + this.progress * barW);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(ix - 3, barY - 14, 10, barH + 28);
+      ctx.fillStyle = '#ffcd75';
+      ctx.fillRect(ix - 4, barY - 16, 8, barH + 28);
+      ctx.fillStyle = '#f4f4f4';
+      ctx.fillRect(ix - 4, barY - 16, 8, 4);
     }
 
-    // Stats — total attempts in denominator, not remaining
-    const attemptsUsed = this.totalAttempts - this.attemptsLeft;
-    ctx.fillStyle = '#8a94a8';
-    ctx.font = '500 13px "Segoe UI", sans-serif';
-    ctx.fillText(`Hits: ${this.hits} / ${this.totalAttempts}`, w / 2, barY + barH + 28);
-    ctx.fillText(
-      attemptsUsed < this.totalAttempts
-        ? `Click ${this.attemptsLeft} more time${this.attemptsLeft === 1 ? '' : 's'}`
-        : 'Click when the marker is in the green band',
-      w / 2,
-      barY + barH + 50
-    );
+    // Attempt pips
+    const pip = 14;
+    const gap = 8;
+    const total = this.totalAttempts * pip + (this.totalAttempts - 1) * gap;
+    const used = this.totalAttempts - this.attemptsLeft;
+    for (let i = 0; i < this.totalAttempts; i++) {
+      const px = Math.round(w / 2 - total / 2 + i * (pip + gap));
+      const py = barY + barH + 26;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(px + 2, py + 2, pip, pip);
+      ctx.fillStyle = i < used ? (i < this._hitLog?.length && this._hitLog[i] ? '#a7f070' : '#ff5d73') : '#333c57';
+      ctx.fillRect(px, py, pip, pip);
+    }
+    ctx.font = `700 14px ${FONT}`;
+    ctx.fillStyle = '#f4f4f4';
+    ctx.fillText(`HITS ${this.hits}/${this.totalAttempts}  ·  NEED 3 TO PASS`, w / 2, barY + barH + 66);
 
-    // Per-click feedback
+    // Per-tap feedback
     if (this.lastFeedback && this.feedbackTimer > 0) {
+      const pop = 1 + Math.max(0, this.feedbackTimer - 0.45) * 2;
+      ctx.font = `400 ${Math.round(20 * pop)}px ${DISPLAY}`;
+      ctx.fillStyle = '#000';
+      ctx.fillText(this.lastFeedback.text, w / 2 + 3, barY - 30 + 3);
       ctx.fillStyle = this.lastFeedback.color;
-      ctx.font = '700 22px "Segoe UI", sans-serif';
-      ctx.fillText(this.lastFeedback.text, w / 2, barY - 24);
+      ctx.fillText(this.lastFeedback.text, w / 2, barY - 30);
     }
 
     // Result overlay
     if (this.mode === MODES.RESULT && this.result) {
-      ctx.fillStyle = 'rgba(8, 12, 18, 0.85)';
+      ctx.fillStyle = 'rgba(8, 9, 16, 0.85)';
       ctx.fillRect(0, 0, w, h);
-      ctx.fillStyle = this.result.success ? '#5fd3a8' : '#e0655c';
-      ctx.font = '700 26px "Segoe UI", sans-serif';
-      ctx.fillText(
-        this.result.perfect ? 'PERFECT!' : this.result.success ? 'SUCCESS' : 'DRILL FAILED',
-        w / 2,
-        h / 2 - 10
-      );
-      ctx.fillStyle = '#d6dde8';
-      ctx.font = '500 15px "Segoe UI", sans-serif';
-      ctx.fillText(
-        `Hits: ${this.result.hits}/${this.result.totalAttempts} • Perfects: ${this.result.perfects}`,
-        w / 2,
-        h / 2 + 24
-      );
-      ctx.fillStyle = '#8a94a8';
-      ctx.fillText('Click to continue', w / 2, h / 2 + 52);
+      ctx.font = `400 ${Math.min(26, w / 22)}px ${DISPLAY}`;
+      ctx.fillStyle = this.result.success ? '#a7f070' : '#ff5d73';
+      ctx.fillText(this.result.perfect ? 'PERFECT!' : this.result.success ? 'SUCCESS' : 'DRILL FAILED', w / 2, h / 2 - 10);
+      ctx.font = `700 16px ${FONT}`;
+      ctx.fillStyle = '#dfe6ee';
+      ctx.fillText(`Hits ${this.result.hits}/${this.result.totalAttempts}  ·  Perfects ${this.result.perfects}`, w / 2, h / 2 + 24);
     }
   }
 
@@ -209,12 +226,13 @@ export class Minigame {
     this.mode = MODES.IDLE;
     this.result = null;
     if (this.ctx && this.canvas) {
+      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
       this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     }
     return res;
   }
 
   destroy() {
-    this.canvas.removeEventListener('click', this._onClick);
+    this.canvas.removeEventListener('pointerdown', this._onClick);
   }
 }
