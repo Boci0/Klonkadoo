@@ -142,16 +142,102 @@ export class SaveSystem {
     return this.data.meta;
   }
 
-  /** Per-ball progress for skin unlocks: { wins, bestFloor }. */
+  /** Per-ball progress (skin unlocks): runs, wins, bestFloor + battle counters. */
   getBallStats(id) {
-    return (this.data.ballStats || {})[id] || { wins: 0, bestFloor: 0 };
+    return { runs: 0, wins: 0, bestFloor: 0, ...((this.data.ballStats || {})[id] || {}) };
   }
 
-  recordBallRun(id, victory, floorReached) {
+  recordBallRun(id, victory, floorReached, riskLevel = 0) {
     this.data.ballStats = this.data.ballStats || {};
     const cur = this.getBallStats(id);
-    this.data.ballStats[id] = { wins: cur.wins + (victory ? 1 : 0), bestFloor: Math.max(cur.bestFloor, floorReached) };
+    this.data.ballStats[id] = {
+      ...cur,
+      runs: cur.runs + 1,
+      wins: cur.wins + (victory ? 1 : 0),
+      bestFloor: Math.max(cur.bestFloor, floorReached),
+      // Highest Risk this class has won on (-1 = never won); final skins need Risk 3+
+      bestRiskWin: victory ? Math.max(cur.bestRiskWin ?? -1, riskLevel) : (cur.bestRiskWin ?? -1),
+    };
+    const life = this.getLifetime();
+    life.runs += 1;
+    if (victory) life.wins += 1;
+    life.bestFloor = Math.max(life.bestFloor, floorReached);
+    this.data.lifetime = life;
     this.save();
+  }
+
+  /**
+   * Add one battle's tracked totals (Game.battleStats.track) to the ball's
+   * stats and the lifetime stats. `best*` / `max*` keys keep the maximum.
+   */
+  addBattleStats(ballId, track) {
+    this.data.ballStats = this.data.ballStats || {};
+    const ball = this.getBallStats(ballId);
+    const life = this.getLifetime();
+    for (const [key, val] of Object.entries(track || {})) {
+      if (typeof val !== 'number') continue;
+      const keep = key.startsWith('best') || key.startsWith('max');
+      ball[key] = keep ? Math.max(ball[key] || 0, val) : (ball[key] || 0) + val;
+      life[key] = keep ? Math.max(life[key] || 0, val) : (life[key] || 0) + val;
+    }
+    this.data.ballStats[ballId] = ball;
+    this.data.lifetime = life;
+    this.save();
+  }
+
+  /** Lifetime counters for medals. */
+  getLifetime() {
+    return { runs: 0, wins: 0, bestFloor: 0, kills: 0, bossKills: 0, hits: 0, crits: 0, trickShots: 0, bestHit: 0, maxCombo: 0, maxRelics: 0, bestRiskWin: -1, ...(this.data.lifetime || {}) };
+  }
+
+  bumpLifetime(key, value, mode = 'max') {
+    const life = this.getLifetime();
+    life[key] = mode === 'max' ? Math.max(life[key] ?? 0, value) : (life[key] || 0) + value;
+    this.data.lifetime = life;
+    this.save();
+  }
+
+  hasMedal(id) {
+    return !!(this.data.medals || {})[id];
+  }
+
+  awardMedal(id, tp) {
+    this.data.medals = this.data.medals || {};
+    if (this.data.medals[id]) return false;
+    this.data.medals[id] = Date.now();
+    this.data.techPoints += tp;
+    this.save();
+    return true;
+  }
+
+  // ---------- Daily supply drop (login streak) ----------
+
+  static _dayKey(d = new Date()) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  /** { canClaim, streak (after claiming today), reward } */
+  getDailyStatus() {
+    const daily = this.data.daily || { last: null, streak: 0 };
+    const today = SaveSystem._dayKey();
+    const y = new Date();
+    y.setDate(y.getDate() - 1);
+    const continues = daily.last === SaveSystem._dayKey(y);
+    const canClaim = daily.last !== today;
+    const streak = canClaim ? (continues ? daily.streak + 1 : 1) : daily.streak;
+    return { canClaim, streak, reward: 2 + Math.min(7, streak) };
+  }
+
+  claimDaily() {
+    const status = this.getDailyStatus();
+    if (!status.canClaim) return null;
+    this.data.daily = { last: SaveSystem._dayKey(), streak: status.streak };
+    this.data.techPoints += status.reward;
+    const life = this.getLifetime();
+    life.bestStreak = Math.max(life.bestStreak || 0, status.streak);
+    this.data.lifetime = life;
+    this.save();
+    return status;
   }
 
   getMaxRiskUnlocked() {

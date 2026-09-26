@@ -94,7 +94,7 @@ const PAL = {
   shadow: '#000000',
 };
 
-const FONT = '"Pixelify Sans", "Courier New", monospace';
+const FONT = '"Pixel Digits", "Pixelify Sans", "Courier New", monospace';
 
 export class RogueMapRenderer {
   constructor(canvas) {

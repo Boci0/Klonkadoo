@@ -5,6 +5,7 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
+import { resolvePads } from '../core/Physics.js';
 import { clamp, length, normalize } from '../utils/math.js';
 
 const S = CONFIG.slingshot;
@@ -185,18 +186,29 @@ export class SlingshotInput {
     const groundY = CONFIG.world.groundY;
     const radius = CONFIG.ball.radius;
 
-    for (let i = 0; i < S.trajectoryPoints; i++) {
-      ball.vy += gravity * dt;
-      ball.vx += (CONFIG.world.wind || 0) * dt; // preview bends with the wind
-      const drag = 1 - airDrag * dt;
-      ball.vx *= drag;
-      ball.vy *= drag;
-      ball.x += ball.vx * dt;
-      ball.y += ball.vy * dt;
-
-      if (ball.y + radius > groundY) break;
-      if (ball.x < 0 || ball.x > CONFIG.world.width) break;
-
+    let zeroG = this.zeroGTime || 0; // Graviton skill: straight flight first
+    ball.radius = radius;
+    const pads = this.pads || [];
+    const sub = 6; // pad springs are stiff: integrate in small steps like the live game
+    const h = dt / sub;
+    outer: for (let i = 0; i < S.trajectoryPoints; i++) {
+      for (let j = 0; j < sub; j++) {
+        if (zeroG > 0) {
+          zeroG -= h;
+        } else {
+          ball.vy += gravity * (this.gravityMult || 1) * h;
+          if (!this.ignoreWind) ball.vx += (CONFIG.world.wind || 0) * h; // preview bends with the wind
+          const drag = 1 - airDrag * h;
+          ball.vx *= drag;
+          ball.vy *= drag;
+        }
+        ball.x += ball.vx * h;
+        ball.y += ball.vy * h;
+        if (pads.length) resolvePads(ball, pads, h);
+        if (ball._padContact) continue; // bouncing off a pad: the preview follows it
+        if (ball.y + radius > groundY || ball.y < -600) break outer;
+        if (ball.x < 0 || ball.x > CONFIG.world.width) break outer;
+      }
       points.push({ x: ball.x, y: ball.y });
     }
 

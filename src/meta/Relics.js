@@ -33,7 +33,7 @@ export const RELICS = [
   { id: 'rel_pyro', name: 'Thermal Engine', rarity: 'rare', icon: '(^)', desc: 'Hits burn enemies: 6 damage per turn for 3 turns.' },
   { id: 'rel_artillery_shell', name: 'HE Shell', rarity: 'rare', icon: '(o)', desc: 'Hits deal 10 splash damage to other nearby enemies.' },
   { id: 'rel_graviton', name: 'Singularity Core', rarity: 'rare', icon: '(@)', desc: 'Hits pull nearby enemies toward the target.' },
-  { id: 'rel_energy_well', name: 'Energy Well', rarity: 'epic', icon: '[!]', desc: 'Overdrive deals 2x damage instead of 1.5x.' },
+  { id: 'rel_energy_well', name: 'Energy Well', rarity: 'epic', icon: '[!]', desc: 'Empowers your class skill: Overdrive 2x, Slam 18 dmg, Railgun +50%, Shrapnel 5 bursts, Zero-G 1.2s.' },
   { id: 'rel_syndicate_blade', name: 'Shadow Stiletto', rarity: 'epic', icon: '[/]', desc: 'Hits that leave a non-boss enemy below 15% HP defeat it.' },
   { id: 'rel_chain_lightning', name: 'Chain Reactor', rarity: 'epic', icon: '[Z]', desc: 'Defeating an enemy zaps all other enemies for 25 damage.' },
   { id: 'rel_cluster', name: 'Cluster Splitter', rarity: 'epic', icon: '[::]', desc: 'Your first wall bounce each turn splits your shot into fragments.' },
@@ -69,7 +69,7 @@ export const RELICS = [
   { id: 'rel_lucky_coin', name: 'Lucky Coin', rarity: 'rare', icon: '[$]', desc: '+25% gold from all sources.' },
   { id: 'rel_blackmarket_pass', name: 'Black-Market Pass', rarity: 'rare', icon: '[=]', desc: 'Shop prices -20%.' },
   { id: 'rel_jade_pendant', name: 'Jade Pendant', rarity: 'rare', icon: '(o)', desc: '+1 Tech Point for each elite or boss defeated.' },
-  { id: 'rel_overcharge', name: 'Overcharge Cell', rarity: 'epic', icon: '[=]', desc: 'Ability cooldowns are 1 turn shorter.', stats: { abilityCd: 1 } },
+  { id: 'rel_overcharge', name: 'Overcharge Cell', rarity: 'epic', icon: '[=]', desc: 'Skill and barrier cooldowns are 1 turn shorter.', stats: { abilityCd: 1 } },
   { id: 'rel_apex_catalyst', name: 'Apex Catalyst', rarity: 'epic', icon: '<*>', desc: '+25% ATK, +40 max HP, +3 DEF.', stats: { atkPct: 0.25, maxHp: 40, def: 3 } },
 ].map((r) => ({ ...r, cost: RARITY[r.rarity].cost, category: RARITY[r.rarity].label }));
 

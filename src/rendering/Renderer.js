@@ -13,12 +13,13 @@
 
 import { CONFIG } from '../config.js';
 import { fitCanvas, clientToWorld } from './viewport.js';
+import { paintBall, CLASS_PATTERN } from './ballSprite.js';
 
 const C = CONFIG.colors;
 const W = CONFIG.world;
 const S = CONFIG.slingshot;
 
-const FONT = '"Pixelify Sans", monospace';
+const FONT = '"Pixel Digits", "Pixelify Sans", monospace'; // clear digits: see styles.css
 const DISPLAY = '"Press Start 2P", monospace';
 const BG_PIXEL = 3; // CSS px per backdrop pixel
 const SKY_CROP = 200; // world units of empty sky that wide phones may crop to draw the action bigger
@@ -164,7 +165,7 @@ export class Renderer {
     this._drawPlatformsAndObstacles(ctx, world.platforms || [], world.obstacles || []);
     this._drawBarriers(ctx, world.barriers || [], now);
     this._drawParticles(ctx, particles || []);
-    this._drawGravitonLinks(ctx, world, now);
+    this._drawSkillAura(ctx, world, now);
     this._updateAmbient(dt, [player, ...livingEnemies]);
     this._drawAmbient(ctx);
     for (const ball of [player, ...livingEnemies]) {
@@ -172,6 +173,7 @@ export class Renderer {
     }
     if (player && player.hp > 0) this._drawBall(ctx, player);
     for (const enemy of livingEnemies) this._drawBall(ctx, enemy);
+    this._drawMineMarkers(ctx, world.hazards || [], now);
     if (world.slingshotInput) world.slingshotInput.draw(ctx);
 
     // 3. HUD (CSS px)
@@ -373,13 +375,14 @@ export class Renderer {
     for (const barrier of barriers) {
       if (!barrier.active) continue;
       const { x, y, w, h } = barrier;
-      ctx.fillStyle = 'rgba(65, 166, 246, 0.35)';
+      const hostile = barrier.owner === 'enemy';
+      ctx.fillStyle = hostile ? 'rgba(255, 93, 115, 0.35)' : 'rgba(65, 166, 246, 0.35)';
       ctx.fillRect(x, y, w, h);
       // Scrolling energy scanlines
       const scroll = Math.floor(now / 60) % 8;
-      ctx.fillStyle = 'rgba(115, 239, 247, 0.8)';
+      ctx.fillStyle = hostile ? 'rgba(255, 150, 160, 0.8)' : 'rgba(115, 239, 247, 0.8)';
       for (let yy = y + scroll; yy < y + h; yy += 8) ctx.fillRect(x, yy, w, 2);
-      ctx.fillStyle = '#73eff7';
+      ctx.fillStyle = hostile ? '#ff5d73' : '#73eff7';
       ctx.fillRect(x - 3, y, 3, h);
       ctx.fillRect(x + w, y, 3, h);
 
@@ -439,9 +442,19 @@ export class Renderer {
   /** 16×16 pixel sprite for a ball, cached per look. */
   _ballSprite(ball, flash) {
     const emblem = ball.team === 'player' ? 'player' : ball.archetype || 'standard';
-    const key = `${ball.color}|${ball.darkColor}|${emblem}|${flash ? 1 : 0}`;
+    const pattern = ball.pattern || CLASS_PATTERN[ball.ballType] || 'chevron';
+    const key = `${ball.color}|${ball.darkColor}|${emblem}|${pattern}|${ball.accent}|${flash ? 1 : 0}`;
     let sprite = this._sprites.get(key);
     if (sprite) return sprite;
+
+    if (emblem === 'player') {
+      sprite = document.createElement('canvas');
+      sprite.width = 16;
+      sprite.height = 16;
+      paintBall(sprite.getContext('2d'), { color: ball.color, darkColor: ball.darkColor, accent: ball.accent, pattern, flash });
+      this._sprites.set(key, sprite);
+      return sprite;
+    }
 
     const N = 16;
     sprite = document.createElement('canvas');
@@ -525,7 +538,7 @@ export class Renderer {
 
     // Status rings (no blur: chunky pixel rings)
     const rings = [];
-    if (ball.team === 'player' && this.worldRef?.forcefieldActive) rings.push('#a7f070');
+    if (ball.forcefield) rings.push('#a7f070');
     const odStacks = ball.team === 'player' ? (this.worldRef?.battleStats?.overdriveStacks || 0) : 0;
     if (odStacks > 0) rings.push('#ffcd75');
     if (ball.burnTicks > 0) rings.push('#ef7d57');
@@ -615,25 +628,63 @@ export class Renderer {
         ctx.fillStyle = '#b13e53';
         for (let x = h.x; x < h.x + h.w; x += 16) ctx.fillRect(x, gy - 4, 8, 4);
       } else if (h.type === 'mine') {
-        // Blinking landmine
-        const cx = h.x + h.w / 2;
-        ctx.fillStyle = '#000';
-        ctx.fillRect(cx - 22, gy - 16, 44, 16);
-        ctx.fillStyle = '#333c57';
-        ctx.fillRect(cx - 19, gy - 13, 38, 13);
-        ctx.fillStyle = Math.floor(now / 300) % 2 ? '#ff5d73' : '#5d275d';
-        ctx.fillRect(cx - 5, gy - 22, 10, 8);
-      } else if (h.type === 'pad') {
-        // Spring: coil + yellow plate, bobbing
-        const bob = Math.round(Math.sin(now / 180) * 2);
-        ctx.fillStyle = '#566c86';
-        for (let y = gy - 14; y < gy; y += 5) ctx.fillRect(h.x + 12, y, h.w - 24, 3);
-        this._pixelBox(ctx, h.x, gy - 24 + bob, h.w, 10, '#ffcd75', '#f4f4f4', '#ef7d57', 3);
+        // Landmine: hazard-striped casing, blinking light, pulsing danger zone
+        const cx = Math.round(h.x + h.w / 2);
+        const blink = Math.floor(now / 250) % 2 === 0;
+        const pulse = (now % 900) / 900;
+        ctx.globalAlpha = 0.35 * (1 - pulse);
+        ctx.fillStyle = '#ff5d73';
+        const zw = 40 + pulse * 50;
+        ctx.fillRect(cx - zw, gy - 4, zw * 2, 4);
+        ctx.globalAlpha = 1;
         ctx.fillStyle = '#1a1c2c';
-        ctx.font = `700 18px ${FONT}`;
-        ctx.textAlign = 'center';
-        ctx.fillText('^^', h.x + h.w / 2, gy - 30 + bob);
+        ctx.fillRect(cx - 28, gy - 20, 56, 20);
+        for (let i = 0; i < 6; i++) {
+          ctx.fillStyle = i % 2 ? '#1a1c2c' : '#ffcd75';
+          ctx.fillRect(cx - 25 + i * 8.5, gy - 17, 8.5, 14);
+        }
+        ctx.fillStyle = '#1a1c2c';
+        ctx.fillRect(cx - 10, gy - 30, 20, 12);
+        ctx.fillStyle = blink ? '#ff5d73' : '#b13e53';
+        ctx.fillRect(cx - 7, gy - 28, 14, 9);
+        if (blink) {
+          ctx.globalAlpha = 0.3;
+          ctx.fillRect(cx - 14, gy - 34, 28, 18);
+          ctx.globalAlpha = 1;
+        }
+      } else if (h.type === 'pad') {
+        // Spring: the plate rides on its coil and squashes under a ball (Physics.resolvePads)
+        const squash = Math.round(h.compress || 0);
+        const plateY = gy - 24 + squash;
+        ctx.fillStyle = '#333c57';
+        ctx.fillRect(h.x, gy - 4, h.w, 4); // housing base
+        ctx.fillStyle = '#566c86';
+        const coilH = gy - 4 - (plateY + 10);
+        for (let k = 0; k < 4; k++) ctx.fillRect(h.x + 12, Math.round(plateY + 10 + (coilH * k) / 4), h.w - 24, 3);
+        // Recharging (kick spent) plates are dimmed
+        const charged = !(h.cooldown > 0);
+        this._pixelBox(ctx, h.x, plateY, h.w, 10, charged ? '#ffcd75' : '#94b0c2', charged ? '#f4f4f4' : '#c2c3c7', charged ? '#ef7d57' : '#566c86', 3);
+        if (squash < 2 && charged) {
+          ctx.fillStyle = '#1a1c2c';
+          ctx.font = `700 18px ${FONT}`;
+          ctx.textAlign = 'center';
+          ctx.fillText('^^', h.x + h.w / 2, plateY - 6);
+        }
       }
+    }
+  }
+
+  /** Bobbing "!" over each mine, drawn above the balls so it's never hidden. */
+  _drawMineMarkers(ctx, hazards, now) {
+    const gy = W.groundY;
+    for (const h of hazards) {
+      if (h.type !== 'mine') continue;
+      const cx = Math.round(h.x + h.w / 2);
+      const y = gy - 72 + Math.round(Math.sin(now / 200) * 4);
+      this._pixelBox(ctx, cx - 12, y, 24, 26, '#ff5d73', '#ffcd75', '#b13e53', 3);
+      ctx.fillStyle = '#1a1c2c';
+      ctx.fillRect(cx - 2, y + 5, 5, 10);
+      ctx.fillRect(cx - 2, y + 18, 5, 4);
     }
   }
 
@@ -661,24 +712,19 @@ export class Renderer {
     }
   }
 
-  /** Graviton ball: pulsing aura + tethers to every enemy it is dragging. */
-  _drawGravitonLinks(ctx, world, now) {
+  /** Armed skill: a pulsing ring in the skill's colour around your ball. */
+  _drawSkillAura(ctx, world, now) {
     const player = world.player;
-    if (!player || player.ballType !== 'graviton' || player.hp <= 0) return;
-    const flying = world.turnSystem?.phase === 'PLAYER_FLY';
-    const pulse = (now / 400) % 1;
-    ctx.strokeStyle = `rgba(196, 111, 214, ${flying ? 0.8 : 0.35})`;
+    const armed = world.battleStats?.skillArmed;
+    if (!player || player.hp <= 0 || !armed) return;
+    const pulse = (now / 500) % 1;
+    ctx.strokeStyle = armed.color;
     ctx.lineWidth = 4;
-    ctx.setLineDash([6, 8]);
-    for (const k of flying ? [pulse, (pulse + 0.5) % 1] : [0.5]) {
-      ctx.beginPath();
-      ctx.arc(player.x, player.y, player.radius + 10 + k * (flying ? 80 : 12), 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    ctx.setLineDash([]);
-    for (const enemy of world.gravitonLinks || []) {
-      this._zigzag(ctx, player.x, player.y, enemy.x, enemy.y, '#c46fd6', 4, 10, now / 60);
-    }
+    ctx.globalAlpha = 0.9 * (1 - pulse);
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.radius + 8 + pulse * 26, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
   }
 
   /** Spawn and move status particles: flames (burn), frost (frozen), acid drips (corrode). */
@@ -733,7 +779,7 @@ export class Renderer {
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
     ctx.fillRect(x, y, Math.round(w * pct), 2);
 
-    const shieldHp = ball.team === 'player' ? (this.worldRef?.run?.shieldHp || 0) : 0;
+    const shieldHp = ball.team === 'player' ? (ball.shieldHp || 0) : 0;
     if (shieldHp > 0) {
       ctx.fillStyle = 'rgba(115, 239, 247, 0.8)';
       ctx.fillRect(x, y + h - 3, Math.round(w * Math.min(1, shieldHp / ball.maxHp)), 3);
@@ -754,7 +800,7 @@ export class Renderer {
       ctx.fillText('YOU', x + 8, y + 14);
       ctx.textAlign = 'right';
       ctx.fillStyle = '#f4f4f4';
-      const shieldHp = this.worldRef?.run?.shieldHp || 0;
+      const shieldHp = player.shieldHp || 0;
       ctx.fillText(`${Math.ceil(player.hp)}/${player.maxHp}${shieldHp > 0 ? ` +${Math.ceil(shieldHp)}` : ''}`, x + panelW - 8, y + 14);
       this._hpBar(ctx, x + 8, y + 20, panelW - 16, 12, player, '#41a6f6');
       this._drawStatusTags(ctx, player, x, y + 46, panelW, false);
@@ -796,7 +842,9 @@ export class Renderer {
       const bs = this.worldRef?.battleStats;
       const odStacks = bs?.overdriveStacks || (bs?.overdriveActive ? 1 : 0);
       if (odStacks > 0) tags.push({ label: `OVERDRIVE${odStacks > 1 ? ` x${odStacks}` : ''}`, color: '#ffcd75', desc: `Overdrive Active! Next shot deals increased damage. (${odStacks} stack(s))` });
-      if (this.worldRef?.forcefieldActive) tags.push({ label: 'FORCEFIELD', color: '#a7f070', desc: 'Forcefield Barrier Active! Blocks 1 incoming attack.' });
+      const armed = bs?.skillArmed;
+      if (armed) tags.push({ label: armed.label, color: armed.color, desc: armed.desc });
+      if (ball.forcefield) tags.push({ label: 'FORCEFIELD', color: '#a7f070', desc: 'Forcefield Barrier Active! Blocks 1 incoming attack.' });
     }
     if (tags.length === 0) return;
 

@@ -12,6 +12,7 @@
 
 <body>
   <div id="app">
+    <div id="toast-stack" class="toast-stack" aria-live="polite"></div>
     <!-- ===== MAIN MENU ===== -->
     <section id="screen-menu" class="screen">
       <canvas id="menu-bg" class="menu-bg" aria-hidden="true"></canvas>
@@ -20,6 +21,7 @@
           <h1 class="game-title">SLINGSHOT<span>OPS</span></h1>
           <p class="game-tagline">&gt; TACTICAL BALLISTIC ROGUELIKE_</p>
           <div id="menu-stats" class="menu-stats px-frame"></div>
+          <button id="menu-daily" class="daily-card px-frame" type="button"></button>
           <div class="difficulty-panel px-frame">
             <div class="risk-row">
               <span class="risk-title">RISK</span>
@@ -33,7 +35,10 @@
         </div>
         <div class="menu-buttons">
           <button id="btn-play" class="btn btn-primary btn-large btn-menu">&#9654; START OPERATION</button>
-          <button id="btn-tech" class="btn btn-accent btn-menu">TECH TREE</button>
+          <div class="save-btn-row">
+            <button id="btn-tech" class="btn btn-accent btn-menu">TECH TREE</button>
+            <button id="btn-medals" class="btn btn-accent btn-menu">MEDALS</button>
+          </div>
           <div class="save-btn-row">
             <button id="btn-export-save" class="btn btn-outline btn-menu">EXPORT SAVE</button>
             <button id="btn-import-save" class="btn btn-outline btn-menu">IMPORT SAVE</button>
@@ -54,10 +59,9 @@
         <h2>TECH TREE</h2>
         <div class="tp-display px-frame">TP <span id="tech-points">0</span></div>
       </div>
-      <div id="tech-tabs" class="tech-tabs" role="tablist"></div>
       <div id="tech-tree" class="tech-tree"></div>
       <div class="screen-footer">
-        <div id="tech-apply" class="tech-apply"></div>
+        <button id="tech-apply" class="tech-apply" type="button"></button>
       </div>
     </section>
 
@@ -83,10 +87,7 @@
           <div class="drawer-scroll">
             <div class="run-panel">
               <h3>STATUS</h3>
-              <div class="run-stat"><span>ATK</span><strong id="run-atk">-</strong></div>
-              <div class="run-stat"><span>DEF</span><strong id="run-def">-</strong></div>
-              <div class="run-stat"><span>DMG RED</span><strong id="run-dmg-red" class="accent-green">-</strong></div>
-              <div class="run-stat"><span>FLOOR</span><strong id="run-floor">-</strong></div>
+              <div id="run-stats" class="run-stats"></div>
               <div id="run-boons" class="run-boons"></div>
             </div>
             <div class="run-panel">
@@ -116,7 +117,6 @@
           </div>
         </main>
         <div class="drawer-scrim" data-drawer-close></div>
-        <div id="toast-stack" class="toast-stack" aria-live="polite"></div>
       </div>
     </section>
 
@@ -130,9 +130,9 @@
         <button id="btn-audio-toggle" class="btn btn-outline btn-battle-small" title="Toggle Audio">SND ON</button>
       </div>
       <div class="battle-abilities">
-        <button id="btn-overdrive" class="ability-btn ability-overdrive" title="[1] Overdrive: next shot deals 1.5x damage">
+        <button id="btn-overdrive" class="ability-btn ability-overdrive" title="[1] Class skill">
           <span class="ability-icon">1</span>
-          <span class="ability-name">OVERDRIVE</span>
+          <span class="ability-name">SKILL</span>
           <span class="ability-cd" id="cd-overdrive">READY</span>
         </button>
         <button id="btn-barrier" class="ability-btn ability-barrier" title="[2] Barrier: drag onto the arena to place, drag back here to cancel">

@@ -10,7 +10,7 @@ import { fitCanvas } from '../rendering/viewport.js';
 import { soundEngine } from '../utils/SoundEngine.js';
 import { haptics } from '../platform/haptics.js';
 
-const FONT = '"Pixelify Sans", monospace';
+const FONT = '"Pixel Digits", "Pixelify Sans", monospace';
 const DISPLAY = '"Press Start 2P", monospace';
 
 const MODES = {

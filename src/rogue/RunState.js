@@ -25,7 +25,8 @@ export class RunState {
     this.hp = this.maxHp;
     this.baseAtk = 10 + (permanentStats.baseAtkBonus || 0);
     this.atkMult = 1.0 + (permanentStats.atkBonus || 0);
-    this.def = RUN.defBase + (permanentStats.defBonus || 0);
+    this.def = RUN.defBase + (permanentStats.defBonus || 0) + (this.ball.defBonus || 0);
+    this.shieldHp = 0; // Overflow Shielding: absorbs damage before HP
     this.gold = CONFIG.currency.startGold + (permanentStats.startGoldBonus || 0);
     this.totalGoldSpent = 0;
     this.maxRestHealed = 0;
@@ -113,7 +114,7 @@ export class RunState {
   /** Net damage reduction; negative means you take extra damage (e.g. Grizzly Claw). */
   get damageReductionPct() {
     const r = this.relicBonus;
-    return Math.max(-0.5, Math.min(0.85, r.dmgRed - r.dmgTaken));
+    return Math.max(-0.5, Math.min(0.85, r.dmgRed - r.dmgTaken - (this.ball?.dmgTakenPct || 0)));
   }
 
   /** Multiplier on maximum launch power (boons + relics). */
@@ -223,7 +224,7 @@ export class RunState {
   }
 
   /** Heal HP (respects rest cap formula, Risk penalty, and Overflow Shielding). */
-  heal(amount, capPct = CONFIG.run.hpRegenMaxPct, techStats = {}) {
+  heal(amount, capPct = CONFIG.run.hpRegenMaxPct, techStats = this.permanent || {}) {
     const effective = Math.round(amount * this.healMult);
     const cap = this.maxHp * capPct;
     const targetHp = Math.min(this.maxHp, this.hp + effective, this.hp + cap);
@@ -239,8 +240,9 @@ export class RunState {
   }
 
   /** Restore a flat amount up to max HP (respects Risk penalty and Overflow Shielding). */
-  healFlat(amount, techStats = {}) {
+  healFlat(amount, techStats = this.permanent || {}) {
     const effective = Math.round(amount * this.healMult);
+    const before = this.hp;
     if (techStats.overflowShieldCapPct > 0 && (this.hp + effective) > this.maxHp) {
       const maxShieldCap = Math.round(this.maxHp * techStats.overflowShieldCapPct);
       const overflow = (this.hp + effective) - this.maxHp;
@@ -249,6 +251,7 @@ export class RunState {
     } else {
       this.hp = Math.min(this.maxHp, this.hp + effective);
     }
+    return this.hp - before;
   }
 
   /** Gain max HP (+ heal equal amount by default). */

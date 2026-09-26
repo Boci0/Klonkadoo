@@ -23,7 +23,11 @@ import { MenuBackground } from './rendering/MenuBackground.js';
 import { soundEngine } from './utils/SoundEngine.js';
 import { haptics } from './platform/haptics.js';
 import { DevTools } from './dev/DevTools.js';
+import { checkMedals } from './meta/Medals.js';
 import './platform/native.js';
+
+// Canvas text only uses a web font once it's loaded: fetch the digit face up front
+document.fonts?.load('16px "Pixel Digits"', '0123456789').catch(() => {});
 
 // ---------- Core systems ----------
 
@@ -135,13 +139,13 @@ const ui = new UIManager({
   onShopRefresh: () => {
     const node = run.currentNode;
     if (node && node.type === 'shop') {
-      ui.showShop(run, node.shopItems, node.refreshesLeft ?? 3, 8);
+      ui.showShop(run, node.shopItems, node.refreshesLeft ?? 3, rerollCost());
     }
   },
   onShopDoRefresh: () => {
     const node = run.currentNode;
     if (!node || node.type !== 'shop') return;
-    const cost = 8;
+    const cost = rerollCost();
     const refreshesLeft = node.refreshesLeft ?? 3;
     if (refreshesLeft > 0 && run.gold >= cost) {
       run.gold -= cost;
@@ -163,6 +167,11 @@ const ui = new UIManager({
   onMinigameStart: startMinigame,
   onMinigameDone: finishMinigame,
 });
+
+/** Shop reroll price (Merchant Network perk discounts it). */
+function rerollCost() {
+  return Math.max(1, Math.round(8 * (1 - (run?.permanent?.rerollDiscountBonus || 0))));
+}
 
 // ---------- Run event toasts ----------
 
@@ -187,8 +196,11 @@ function bindAbilityButtons() {
       e.stopPropagation();
     }
     if (state !== State.BATTLE) return;
-    if (game.useAbility('overdrive')) {
+    if (game.useAbility('skill')) {
+      haptics.impact('medium');
       updateAbilityHud();
+    } else {
+      soundEngine.play('error');
     }
   };
 
@@ -266,8 +278,7 @@ function bindBarrierDrag(btn) {
   btn.addEventListener('pointerdown', (e) => {
     if (state !== State.BATTLE || drag) return;
     const ab = game.abilities?.barrier;
-    const active = game.barriers.filter((b) => b.active).length;
-    if (!game.running || !ab?.ready || active >= CONFIG.abilities.barrier.maxActive) {
+    if (!game.running || !ab?.ready || game.playerBarrierCount >= CONFIG.abilities.barrier.maxActive) {
       soundEngine.play('error');
       return;
     }
@@ -309,20 +320,19 @@ function updateAbilityHud() {
 
   if (!game.abilities) return;
 
-  const od = game.abilities.overdrive;
+  const od = game.abilities.skill;
   const br = game.abilities.barrier;
+  const armed = !!game.battleStats?.skillArmed;
 
   if (btnOverdrive) {
     btnOverdrive.disabled = !od.ready;
     btnOverdrive.classList.toggle('ready', od.ready);
+    btnOverdrive.classList.toggle('armed', armed);
   }
   if (cdOverdrive) {
     const stacks = game.battleStats?.overdriveStacks || 0;
-    if (stacks > 0) {
-      cdOverdrive.textContent = `${stacks}x STACK`;
-    } else {
-      cdOverdrive.textContent = od.ready ? 'READY' : `${od.cooldownLeft}T`;
-    }
+    const text = stacks > 0 ? `${stacks}x STACK` : armed ? 'ARMED' : od.ready ? 'READY' : `${od.cooldownLeft}T`;
+    if (cdOverdrive.textContent !== text) cdOverdrive.textContent = text;
   }
   if (btnBarrier) {
     btnBarrier.disabled = !br.ready;
@@ -362,6 +372,8 @@ function startNewRun(ballType = 'vanguard', skin = 'default') {
   ui.showRunScreen(run, map, 0);
   buildFloorTabs();
   if (cond.id === 'supplied') rewardRandomCollectible('SUPPLIES');
+  // Supply Drop (tech capstone): free relics at the start of every run
+  for (let i = 0; i < (run.permanent?.supplyDropRelics || 0); i++) rewardRandomCollectible('SUPPLY DROP');
   ui.updateRunHud(run);
   ui.showCondition(cond);
 }
@@ -461,7 +473,7 @@ function proceedFromNode(node, leaveShop) {
         node.refreshesLeft = 3;
         node.shopItems = rollShopCollectibles(run, 3);
       }
-      ui.showShop(run, node.shopItems, node.refreshesLeft ?? 3, 8);
+      ui.showShop(run, node.shopItems, node.refreshesLeft ?? 3, rerollCost());
       break;
     case 'rest':
       ui.showRest(run);
@@ -723,6 +735,7 @@ function startCombat(node) {
     player: {
       maxHp: run.maxHp,
       hp: run.hp, // carry current run HP into battle
+      shieldHp: run.shieldHp || 0,
       atk: run.atk * (run.condition === 'glass_war' ? 1.3 : 1),
       def: run.def,
       totalDef: run.totalDef,
@@ -748,6 +761,16 @@ function startCombat(node) {
   game.events.off('ability-used');
   game.events.off('enemy-ability');
   game.events.off('enemy-dealt-damage');
+  game.events.off('trick-shot');
+
+  // Trick shots pay gold right away (run gold modifiers apply)
+  game.events.on('trick-shot', ({ labels, gold }) => {
+    const got = run.gainGold(gold);
+    game.renderer.showBanner(`${labels.join(' + ')}  +${got}G`, '#ffcd75');
+    game.renderer.addFloatingText(game.player.x, game.player.y - game.player.radius - 40, `+${got}G`, '#ffcd75', true);
+    const goldEl = document.getElementById('battle-gold');
+    if (goldEl) goldEl.textContent = `${run.gold}G`;
+  });
 
   game.events.on('player-dealt-damage', ({ damage }) => {
     questSystem.reportCombatEvent('damage_dealt', { amount: damage });
@@ -814,11 +837,9 @@ function startCombat(node) {
 /** Pick an enemy archetype based on floor weights. */
 function pickArchetype(nodeType, floor, index) {
   const weights = CONFIG.archetypeWeights[nodeType === 'elite' ? 'elite' : nodeType === 'boss' ? 'boss' : floor] || CONFIG.archetypeWeights[1];
-  // Boss always gets a tank or striker; ensure variety in multi-enemy waves
-  if (index > 0 && nodeType !== 'boss') {
-    // Second enemy tends to be a striker for pressure
-    return 'striker';
-  }
+  // Waves roll each enemy from the same weights; escorts in a boss / elite
+  // wave skip the heavy hitters so fights stay readable
+  if (index > 0 && (nodeType === 'boss' || nodeType === 'miniboss')) return Math.random() < 0.5 ? 'standard' : 'striker';
   const total = Object.values(weights).reduce((a, b) => a + b, 0);
   let roll = Math.random() * total;
   for (const [key, w] of Object.entries(weights)) {
@@ -850,6 +871,12 @@ function onBattleEnd(won, node) {
 
   // Write battle HP back into the run (roguelike persistence)
   run.hp = Math.max(0, Math.min(run.maxHp, game.player.hp));
+  run.shieldHp = Math.max(0, Math.round(game.player.shieldHp || 0));
+
+  // Per-class + lifetime stats (skins, medals)
+  saveSystem.addBattleStats(run.ballType, game.battleStats.track);
+  saveSystem.bumpLifetime('maxRelics', run.relics.length);
+  ui.celebrateMedals(checkMedals(saveSystem));
   if (won) run.onCombatWon();
   else {
     run.onCombatLost();
@@ -878,7 +905,7 @@ function onBattleEnd(won, node) {
     }
     if (rewards.tech) {
       const riskBonusPct = saveSystem.getTpMultiplier() * (run.condition === 'blood_moon' ? 1.5 : 1);
-      tech = Math.max(1, Math.round(rewards.tech * riskBonusPct));
+      tech = Math.max(1, Math.round(rewards.tech * riskBonusPct * (1 + (run.permanent?.tpBonusPct || 0))));
       if (run.hasRelic('rel_jade_pendant') && ['elite', 'miniboss', 'boss'].includes(node.type)) tech += 1;
       saveSystem.addTechPoints(tech);
       addFeedEntry(`<span class="feed-boon">+${tech} TECH PTS</span>`);
@@ -1157,7 +1184,9 @@ function endRun(victory) {
   run.runOver = true;
   run.runResult = victory ? 'victory' : 'defeat';
   saveSystem.recordRun(victory);
-  saveSystem.recordBallRun(run.ballType, victory, run.floor + 1);
+  saveSystem.recordBallRun(run.ballType, victory, run.floor + 1, saveSystem.getDifficultyLevel());
+  if (victory) saveSystem.bumpLifetime('bestRiskWin', saveSystem.getDifficultyLevel());
+  ui.celebrateMedals(checkMedals(saveSystem));
   activeNode = null;
   ui.closeModal();
   setState(State.RESULT);

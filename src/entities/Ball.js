@@ -20,6 +20,11 @@ export class Ball {
     this.def = def ?? 0; // defense points
     this.aiDifficulty = aiDifficulty ?? 0.5; // AI accuracy for this enemy
     this.thinkDelay = thinkDelay ?? null; // per-enemy think delay override
+    // Class physics (Balls.js): collision mass, wall/floor bounce, gravity scale
+    this.mass = 1;
+    this.bounce = 1;
+    this.gravityMult = 1;
+    this.shieldHp = 0; // Overflow Shielding: soaks damage before HP
   }
 
   update(dt) {
@@ -28,6 +33,11 @@ export class Ball {
   }
 
   takeDamage(amount) {
+    if (this.shieldHp > 0) {
+      const soaked = Math.min(this.shieldHp, amount);
+      this.shieldHp -= soaked;
+      amount -= soaked;
+    }
     this.hp = Math.max(0, this.hp - amount);
     this.flashTimer = 0.15;
     return this.hp <= 0;

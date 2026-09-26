@@ -1,227 +1,244 @@
 // ============================================================
-// EnemyAI — simulates the same physics to find a good shot at
-// the player, then adds difficulty-based error. Uses the real
-// physics functions for a fair, predictable opponent.
+// EnemyAI — plans shots by running the real physics (walls, floor,
+// platforms, obstacles, barriers, spring pads, wind) for a spread of
+// angles and powers, in both directions so bank shots off the side walls
+// count. Among the shots that connect it prefers ones that still connect
+// when its aim wobbles (robust), hit hard, and don't plough into allies.
+//
+// Aggression (from the Risk level, 0..1) shifts that choice toward raw
+// impact speed, shortens the think delay and is read by Game for ability
+// use. Difficulty still sets the random aim error applied afterwards.
 // ============================================================
 
 import { CONFIG } from '../config.js';
 import { degToRad, lerp, clamp } from '../utils/math.js';
+import { stepBall, resolveBarrierCollisions, resolvePads } from '../core/Physics.js';
 
 const A = CONFIG.ai;
 const S = CONFIG.slingshot;
+const SIM_DT = 1 / 60;
+const SIM_TIME = 3.2; // seconds of flight simulated per candidate
 
 export class EnemyAI {
   constructor(events) {
     this.events = events;
     this.thinkTimer = 0;
     this.thinking = false;
-    this.pendingVelocity = null;
     this.difficulty = A.difficulty;
-    // Per-battle modifiers (from node tier / run boons)
+    this.aggression = 0;
     this.thinkDelayOverride = null;
-    this.aimErrorBonus = 0; // extra radians of error (e.g. "erratic" boons)
-    // Live references used to recalculate shot at fire time
+    this.aimErrorBonus = 0; // extra radians of error (e.g. Smoke Bomb relic)
+    this.world = { barriers: [], platforms: [], obstacles: [], pads: [] };
+    this.allies = [];
     this._enemyBall = null;
     this._playerBall = null;
-    this._barriers = [];
   }
 
   get thinkingDelay() {
-    return this.thinkDelayOverride ?? A.thinkDelay;
+    // Aggressive enemies fire sooner
+    return (this.thinkDelayOverride ?? A.thinkDelay) * (1 - 0.35 * this.aggression);
   }
 
-  /**
-   * Configure the AI for a specific battle.
-   * @param {Object} opts { difficulty, thinkDelay, aimErrorBonus }
-   */
+  /** @param {Object} opts { difficulty, thinkDelay, aimErrorBonus, aggression } */
   configure(opts = {}) {
     if (opts.difficulty !== undefined) this.difficulty = opts.difficulty;
     if (opts.thinkDelay !== undefined) this.thinkDelayOverride = opts.thinkDelay;
     if (opts.aimErrorBonus !== undefined) this.aimErrorBonus = opts.aimErrorBonus;
+    if (opts.aggression !== undefined) this.aggression = opts.aggression;
   }
 
-  /**
-   * Start the AI's turn. Begins a "thinking" delay before firing.
-   * @param {Array} barriers - active barrier rectangles to avoid
-   */
-  startTurn(enemyBall, playerBall, barriers = []) {
+  /** Arena geometry the simulation collides with (live arrays, read at fire time). */
+  setWorld(world) {
+    this.world = { barriers: [], platforms: [], obstacles: [], pads: [], ...world };
+  }
+
+  startTurn(enemyBall, playerBall, allies = []) {
     this.thinking = true;
     this.thinkTimer = 0;
     this._enemyBall = enemyBall;
     this._playerBall = playerBall;
-    this._barriers = barriers;
-    this.pendingVelocity = null; // calculated fresh at fire time
+    this.allies = allies;
+    // Inaccuracy = misjudging where you are: the enemy plans a perfect shot at
+    // a spot offset along the ground (less offset the more skilled it is),
+    // then adds a small launch wobble. Unlike pure angle error, this still
+    // misses at point-blank range, where most fights happen.
+    const offset = (Math.random() * 2 - 1) * (A.aimOffsetPx || 0) * (1 - this.difficulty);
+    const aimAt = { x: playerBall.x + offset, y: playerBall.y, radius: playerBall.radius };
+    // Plan during the think delay, a few milliseconds per frame, so phones never hitch
+    this._planner = this._plan(enemyBall, aimAt, { allies });
+    this._planned = undefined;
   }
 
-  /**
-   * Update the think delay. Returns true when the AI fires.
-   */
-  update(dt) {
-    if (!this.thinking) return false;
-
-    this.thinkTimer += dt;
-    if (this.thinkTimer >= this.thinkingDelay) {
-      this.thinking = false;
-      // Recalculate using the player's current live position so tether pulls
-      // and any drift during the think delay don't cause misses.
-      const velocity = this._calculateShot(this._enemyBall, this._playerBall, this._barriers);
-      this.events.emit('enemy-launch', { velocity });
-      return true;
+  /** Advance the planner until `budgetMs` is used up; true when finished. */
+  _advancePlan(budgetMs) {
+    if (!this._planner) return true;
+    const end = performance.now() + budgetMs;
+    while (performance.now() < end) {
+      const step = this._planner.next();
+      if (step.done) {
+        this._planned = step.value;
+        this._planner = null;
+        return true;
+      }
     }
     return false;
   }
 
-  /**
-   * Find a launch velocity that (approximately) lands on the player,
-   * then apply difficulty-based inaccuracy.
-   */
-  _calculateShot(enemyBall, playerBall, barriers = []) {
-    const best = this._searchForShot(enemyBall, playerBall, barriers);
+  update(dt) {
+    if (!this.thinking) return false;
+    this.thinkTimer += dt;
+    this._advancePlan(4);
+    if (this.thinkTimer < this.thinkingDelay) return false;
+    this.thinking = false;
+    this._advancePlan(Infinity); // finish whatever is left
+    const plan = this._planned;
+    // A charged Sniper shot is sped up 1.35x on launch (Game): plan for the
+    // final speed, then hand over the pre-charge velocity
+    const charge = this._enemyBall.isOvercharged ? 1.35 : 1;
+    let velocity = plan ? this._applyError(plan.velocity, S.maxPower * charge) : this._fallback(this._enemyBall, this._playerBall);
+    if (plan) velocity = { x: velocity.x / charge, y: velocity.y / charge };
+    this.events.emit('enemy-launch', { velocity });
+    return true;
+  }
 
-    if (!best) {
-      // Fallback: a reasonable lob toward the player
-      const angle = -Math.PI / 4; // 45 degrees up
-      const power = S.maxPower * 0.7;
-      return {
-        x: Math.cos(angle) * power,
-        y: Math.sin(angle) * power,
-      };
-    }
-
-    return this._applyError(best, enemyBall);
+  _fallback(from, to) {
+    const dir = to.x >= from.x ? 1 : -1;
+    const power = S.maxPower * 0.7;
+    return { x: Math.cos(-Math.PI / 4) * power * dir, y: Math.sin(-Math.PI / 4) * power };
   }
 
   /**
-   * Brute-force a search over angles and powers, simulating each shot
-   * and scoring by proximity to the player ball along the way.
+   * Best shot from `shooter` at `target`.
+   * @param {Object} opts { allies: balls to avoid, maxPower, aggression }
+   * @returns {{ velocity, hit, impactSpeed, path } | null}
    */
-  _searchForShot(enemyBall, playerBall, barriers = []) {
-    const steps = A.simulationSteps;
-    const dt = A.simulationDt;
+  findBestShot(shooter, target, opts = {}) {
+    const it = this._plan(shooter, target, opts);
+    let step = it.next();
+    while (!step.done) step = it.next();
+    return step.value;
+  }
 
-    // Player's current center for proximity scoring
-    const targetX = playerBall.x;
-    const targetY = playerBall.y;
-    const radius = CONFIG.ball.radius;
+  /** Generator version of findBestShot: yields between candidates. */
+  *_plan(shooter, target, opts = {}) {
+    const allies = opts.allies || [];
+    const maxPower = opts.maxPower || S.maxPower * (shooter.isOvercharged ? 1.35 : 1);
+    const aggression = opts.aggression ?? this.aggression;
+    const rects = this._rects();
 
-    let bestScore = Infinity;
-    let bestVelocity = null;
-
-    // Try a spread of angles (upward arcs toward the player's side)
-    const anglesCount = 18;
-    const powersCount = 12;
-
-    for (let a = 0; a < anglesCount; a++) {
-      const t = a / (anglesCount - 1);
-      // Angles from -10 deg (nearly horizontal) to -80 deg (high lob)
-      const angleDeg = lerp(10, 80, t);
-      const angle = -degToRad(angleDeg);
-
-      for (let p = 0; p < powersCount; p++) {
-        const power = lerp(S.minPower, S.maxPower, p / (powersCount - 1));
-
-        const vx = Math.cos(angle) * power;
-        const vy = Math.sin(angle) * power;
-
-        // Ensure the shot is directed toward the player
-        const dx = playerBall.x - enemyBall.x;
-        const dirSign = dx >= 0 ? 1 : -1;
-
-        const score = this._simulateAndScore(
-          enemyBall.x,
-          enemyBall.y,
-          vx * dirSign,
-          vy,
-          targetX,
-          targetY,
-          radius,
-          steps,
-          dt,
-          barriers
-        );
-
-        if (score < bestScore) {
-          bestScore = score;
-          bestVelocity = { x: vx * dirSign, y: vy };
+    const candidates = [];
+    let closest = null;
+    const angles = 20;
+    const powers = 12;
+    for (const dir of [1, -1]) {
+      // Shooting away from the target only makes sense as a wall bank: fewer tries
+      const toward = Math.sign(target.x - shooter.x || 1) === dir;
+      for (let a = 0; a < angles; a += toward ? 1 : 2) {
+        const angle = -degToRad(lerp(4, 84, a / (angles - 1)));
+        for (let p = 0; p < powers; p++) {
+          const power = lerp(S.minPower + 150, maxPower, p / (powers - 1));
+          const v = { x: Math.cos(angle) * power * dir, y: Math.sin(angle) * power };
+          const r = this._simulate(shooter, target, v, rects, allies);
+          if (r.hit) candidates.push({ velocity: v, ...r });
+          else if (!closest || r.minDist < closest.minDist) closest = { velocity: v, ...r };
+          yield;
         }
       }
     }
 
-    return bestVelocity;
-  }
+    if (!candidates.length) return closest ? { ...closest, hit: false } : null;
 
-  /**
-   * Simulate a shot forward and score how close it comes to the target.
-   */
-  _simulateAndScore(x, y, vx, vy, tx, ty, radius, steps, dt, barriers = []) {
-    const gravity = CONFIG.world.gravity;
-    const airDrag = CONFIG.world.airDrag;
-    const groundY = CONFIG.world.groundY;
-    const wallWidth = CONFIG.world.width;
-
-    let minDist = Infinity;
-
-    const wind = CONFIG.world.wind || 0;
-    for (let i = 0; i < steps; i++) {
-      vy += gravity * dt;
-      vx += wind * dt;
-      const drag = 1 - airDrag * dt;
-      vx *= drag;
-      vy *= drag;
-      x += vx * dt;
-      y += vy * dt;
-
-      // Stop if the ball leaves the world or hits the ground
-      if (y + radius > groundY) break;
-      if (x < 0 || x > wallWidth) break;
-
-      // Barrier check: if the shot would hit a barrier, heavily penalize
-      // (the AI should arc over or around it instead)
-      for (const barrier of barriers) {
-        if (!barrier.active) continue;
-        const cx = Math.max(barrier.x, Math.min(x, barrier.x + barrier.w));
-        const cy = Math.max(barrier.y, Math.min(y, barrier.y + barrier.h));
-        const dx = x - cx;
-        const dy = y - cy;
-        if (dx * dx + dy * dy <= radius * radius) {
-          return minDist + 10000; // blocked — bad shot
-        }
-      }
-
-      const d = Math.hypot(x - tx, y - ty);
-      if (d < minDist) minDist = d;
-
-      // Direct hit — perfect score
-      if (d < radius * 2) return 0;
+    // Aggression sets how hard the enemy swings: cautious enemies (low Risk)
+    // take controlled ~700 px/s shots, aggressive ones go for full speed.
+    // Impact speed is what damage scales with (CollisionSystem).
+    const wantSpeed = lerp(700, 1400, aggression);
+    const fit = (c) => 1 - Math.min(1, Math.abs(c.impactSpeed - wantSpeed) / 700);
+    // Shortlist the best-fitting shots, then test how well each survives wobble
+    candidates.sort((a, b) => fit(b) - fit(a) - (b.friendly - a.friendly) * 2);
+    const shortlist = candidates.slice(0, 10);
+    let best = null;
+    for (const c of shortlist) {
+      const robust = this._robustness(shooter, target, c.velocity, rects, allies, maxPower);
+      yield;
+      const score = robust * 0.6 + fit(c) * 0.6 - (c.friendly ? 0.8 : 0) - c.time * 0.05;
+      if (!best || score > best.score) best = { ...c, score, robust };
     }
+    return best;
+  }
 
-    return minDist;
+  /** Fraction of small aim/power perturbations that still hit. */
+  _robustness(shooter, target, v, rects, allies, maxPower) {
+    const speed = Math.hypot(v.x, v.y);
+    const angle = Math.atan2(v.y, v.x);
+    let hits = 0;
+    let tries = 0;
+    for (const da of [-2.5, 2.5, -5, 5]) {
+      for (const dp of [0.96, 1.04]) {
+        const s = clamp(speed * dp, S.minPower, maxPower);
+        const a = angle + degToRad(da);
+        if (this._simulate(shooter, target, { x: Math.cos(a) * s, y: Math.sin(a) * s }, rects, allies).hit) hits++;
+        tries++;
+      }
+    }
+    return hits / tries;
+  }
+
+  /** Solid geometry as plain copies, so the simulation can't damage real obstacles. */
+  _rects() {
+    const w = this.world;
+    return [...w.barriers, ...w.platforms, ...w.obstacles]
+      .filter((r) => r.active !== false)
+      .map((r) => ({ x: r.x, y: r.y, w: r.w, h: r.h }));
   }
 
   /**
-   * Add random aim error scaled inversely with difficulty.
-   * difficulty 1 = no error, difficulty 0 = max error.
+   * Fly one shot with the game's own physics.
+   * @returns {{ hit, impactSpeed, time, friendly, minDist, path }}
    */
-  _applyError(velocity, enemyBall) {
-    const skill = this.difficulty;
-    const errorScale = 1 - skill;
-
-    // Angle error in radians
-    const maxAngleError = degToRad(A.maxErrorDegrees * errorScale) + this.aimErrorBonus;
-    const angleError = (Math.random() * 2 - 1) * maxAngleError;
-
-    const speed = Math.hypot(velocity.x, velocity.y);
-    const angle = Math.atan2(velocity.y, velocity.x);
-    const newAngle = angle + angleError;
-
-    // Power error as a fraction
-    const maxPowerError = A.maxPowerError * errorScale;
-    const powerError = (Math.random() * 2 - 1) * maxPowerError;
-    const newSpeed = clamp(speed * (1 + powerError), S.minPower, S.maxPower);
-
-    return {
-      x: Math.cos(newAngle) * newSpeed,
-      y: Math.sin(newAngle) * newSpeed,
+  _simulate(shooter, target, v, rects, allies) {
+    const probe = {
+      x: shooter.x,
+      y: shooter.y,
+      vx: v.x,
+      vy: v.y,
+      radius: shooter.radius,
+      mass: shooter.mass || 1,
+      bounce: shooter.bounce || 1,
+      gravityMult: shooter.gravityMult || 1,
+      ballType: shooter.ballType || null,
     };
+    const hitDist = shooter.radius + target.radius;
+    const steps = Math.round(SIM_TIME / SIM_DT);
+    const path = [];
+    let minDist = Infinity;
+    let friendly = 0;
+    for (let i = 0; i < steps; i++) {
+      stepBall(probe, SIM_DT);
+      resolvePads(probe, this.world.pads, SIM_DT);
+      resolveBarrierCollisions(probe, rects);
+      if (i % 3 === 0) path.push({ x: probe.x, y: probe.y });
+
+      const d = Math.hypot(probe.x - target.x, probe.y - target.y);
+      if (d < minDist) minDist = d;
+      if (d <= hitDist) {
+        return { hit: true, impactSpeed: Math.hypot(probe.vx, probe.vy), time: i * SIM_DT, friendly, minDist: 0, path };
+      }
+      for (const ally of allies) {
+        if (ally !== shooter && ally.hp > 0 && Math.hypot(probe.x - ally.x, probe.y - ally.y) <= probe.radius + ally.radius) friendly = 1;
+      }
+      // Rolled to a stop: the shot is over
+      if (i > 20 && Math.abs(probe.vx) < 25 && Math.abs(probe.vy) < 25) break;
+    }
+    return { hit: false, impactSpeed: 0, time: SIM_TIME, friendly, minDist, path };
+  }
+
+  /** Random aim error: difficulty 1 = none, 0 = maximum. */
+  _applyError(velocity, maxPower = S.maxPower) {
+    const errorScale = 1 - this.difficulty;
+    const maxAngleError = degToRad(A.maxErrorDegrees * errorScale) + this.aimErrorBonus;
+    const angle = Math.atan2(velocity.y, velocity.x) + (Math.random() * 2 - 1) * maxAngleError;
+    const speed = Math.hypot(velocity.x, velocity.y) * (1 + (Math.random() * 2 - 1) * A.maxPowerError * errorScale);
+    const s = clamp(speed, S.minPower, maxPower);
+    return { x: Math.cos(angle) * s, y: Math.sin(angle) * s };
   }
 }

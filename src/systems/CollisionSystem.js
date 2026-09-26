@@ -38,8 +38,10 @@ export class CollisionSystem {
     if (baseDamage <= 0) return;
 
     const attacker = speedAPre >= speedBPre ? a : b;
-    if (attacker.hitCooldown > 0) return;
+    if (attacker.hitCooldown > 0 && !evt.pierce) return;
     const victim = attacker === a ? b : a;
+    const attackerVy = attacker === a ? evt.aVyPre : evt.bVyPre;
+    const extra = {}; // crit / combo / dive info for the hit feedback
 
     const attackerAtk = attacker.team === 'player' ? this.stats.playerAtk : attacker.atk ?? 1;
     let victimDef = victim.team === 'player' ? (this.stats.playerTotalDef || this.stats.playerDef || 0) : victim.def ?? 0;
@@ -67,9 +69,33 @@ export class CollisionSystem {
         baseDamage *= 1.4;
       }
 
-      if (tech.ballisticApexMultPer30px > 0 && base > 0) {
-        const apexBonus = 1 + (base / 30) * tech.ballisticApexMultPer30px;
-        baseDamage *= apexBonus;
+      // Graviton: hits while falling land harder
+      if (attacker.ballType === 'graviton' && victim.team === 'enemy' && attackerVy > 150) {
+        baseDamage *= 1.3;
+        extra.dive = true;
+      }
+
+      // Skill shots (Railgun pierce, Zero-G) carry a flat bonus for the whole flight
+      if (attacker.shotMult) baseDamage *= attacker.shotMult;
+      if (evt.pierce) extra.pierce = true;
+
+      // Combo: every extra enemy hit in the same shot hits 15% harder
+      if (bs && victim.team === 'enemy') {
+        bs.shotHits = (bs.shotHits || 0) + 1;
+        extra.combo = bs.shotHits;
+        if (bs.shotHits > 1) baseDamage *= 1 + 0.15 * (bs.shotHits - 1);
+      }
+
+      // Critical hits: 5% base, Striker +10%, Critical Mass perk
+      const critChance = 0.05 + (attacker.ballType === 'striker' ? 0.1 : 0) + (tech.critChance || 0);
+      if (victim.team === 'enemy' && Math.random() < critChance) {
+        baseDamage *= 1.75;
+        extra.crit = true;
+      }
+
+      // Ballistic Apex: scales from 600 px/s up to its full bonus at 1300 px/s
+      if (tech.ballisticApexMaxPct > 0) {
+        baseDamage *= 1 + Math.max(0, Math.min(1, (base - 600) / 700)) * tech.ballisticApexMaxPct;
       }
 
       const stacks = (bs && bs.overdriveStacks) ? bs.overdriveStacks : (bs && bs.overdriveActive ? 1 : 0);
@@ -159,6 +185,14 @@ export class CollisionSystem {
       finalDamage = Math.max(1, Math.round(damageAfterDef * (1 - victimDmgReductionPct)));
     }
 
+    // Forcefield (tech perk): the bubble absorbs one whole enemy hit
+    if (victim.team === 'player' && attacker.team === 'enemy' && victim.forcefield) {
+      victim.forcefield = false;
+      attacker.hitCooldown = D.hitCooldown;
+      this.events.emit('proc', { ball: victim, text: 'FORCEFIELD BLOCK', color: '#a7f070' });
+      return;
+    }
+
     // Aegis Drone shield: absorbs one whole hit
     if (victim.team === 'enemy' && victim.shieldCharges > 0 && attacker.team === 'player') {
       victim.shieldCharges -= 1;
@@ -200,7 +234,7 @@ export class CollisionSystem {
       }
     }
 
-    this.applyDamage(attacker, victim, finalDamage);
+    this.applyDamage(attacker, victim, finalDamage, extra);
   }
 
   calculatePlayerDamage(rawDamage, { bypassDef = false } = {}) {
@@ -231,7 +265,7 @@ export class CollisionSystem {
     return Math.max(1, damage);
   }
 
-  applyDamage(attacker, victim, damage) {
+  applyDamage(attacker, victim, damage, extra = {}) {
     attacker.hitCooldown = D.hitCooldown;
     const killed = victim.takeDamage(damage);
     this.events.emit('damage', {
@@ -239,6 +273,7 @@ export class CollisionSystem {
       victim,
       damage,
       killed,
+      ...extra,
     });
   }
 }

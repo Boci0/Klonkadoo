@@ -1,5 +1,5 @@
 // ============================================================
-// TechTree — permanent upgrades for ATK / HP / DEF.
+// TechTree — permanent upgrades across four branching trees.
 // Nodes are bought with Tech Points earned from quests and
 // roguelike runs. Purchases persist in SaveSystem.
 // ============================================================
@@ -37,11 +37,16 @@ export class TechTree {
     return node.costs[lvl] ?? node.costs[node.costs.length - 1];
   }
 
+  /** Prerequisite node ids (all need at least one rank). */
+  getRequirements(nodeId) {
+    const req = this.nodes[nodeId]?.requires;
+    if (!req) return [];
+    return Array.isArray(req) ? req : [req];
+  }
+
   isUnlocked(nodeId) {
-    const node = this.nodes[nodeId];
-    if (!node) return false;
-    if (!node.requires) return true;
-    return this.isPurchased(node.requires);
+    if (!this.nodes[nodeId]) return false;
+    return this.getRequirements(nodeId).every((id) => this.isPurchased(id));
   }
 
   canPurchase(nodeId) {
@@ -89,35 +94,48 @@ export class TechTree {
     const intellectLvl = this.getNodeLevel('tac_intellect');
     const relicLvl = this.getNodeLevel('tac_relic_synergy');
 
-    return {
-      atkBonus: sharpshooterLvl * 0.05,
-      baseAtkBonus: basePowerLvl * 0.5,
-      armorPenPct: armorPenLvl * 0.05,
-      riskResonanceBonusPerLevel: riskResonanceLvl * 0.005,
-      ballisticApexMultPer30px: ballisticApexLvl * 0.002,
+    const critLvl = this.getNodeLevel('atk_crit');
+    const secondWindLvl = this.getNodeLevel('vit_second_wind');
+    const counterLvl = this.getNodeLevel('def_counter');
+    const supplyLvl = this.getNodeLevel('tac_supply_drop');
 
-      hpBonus: vitLvl * 15,
-      overflowShieldCapPct: overflowLvl * 0.10,
+    return {
+      // Tuned so a maxed branch is strong but not game-breaking; ATK nodes
+      // multiply together, so each one is kept modest.
+      atkBonus: sharpshooterLvl * 0.03,
+      baseAtkBonus: basePowerLvl * 0.25,
+      armorPenPct: armorPenLvl * 0.08,
+      riskResonanceBonusPerLevel: riskResonanceLvl * 0.005,
+      ballisticApexMaxPct: ballisticApexLvl * 0.02,
+
+      hpBonus: vitLvl * 10,
+      overflowShieldCapPct: overflowLvl * 0.05,
       emergencyMedkitHeal: medkitLvl * 5,
       titanCoreHealBonusPct: titanLvl * 0.05,
       titanCoreMaxHpBonus: titanLvl * 2,
-      vampiricVitalityPct: vampLvl * 0.025,
+      vampiricVitalityPct: vampLvl * 0.015,
 
-      defBonus: aegisLvl * 1.5,
+      defBonus: aegisLvl * 1,
       defPctBonus: matrixPctLvl * 0.03,
-      thornsResistPct: thornsLvl * 0.05,
-      forcefieldTurnInterval: forcefieldLvl > 0 ? Math.max(3, 14 - forcefieldLvl) : 0,
-      fortifiedMatrixBonusDef: fortifiedLvl * 1,
-      kineticDampenerPct: dampenerLvl * 0.03,
+      thornsResistPct: thornsLvl * 0.08,
+      forcefieldTurnInterval: forcefieldLvl > 0 ? Math.max(5, 14 - forcefieldLvl) : 0,
+      fortifiedMatrixBonusDef: fortifiedLvl * 0.5,
+      kineticDampenerPct: dampenerLvl * 0.02,
 
       startGoldBonus: warChestLvl * 8,
       shopDiscountBonus: merchantLvl * 0.02,
       rerollDiscountBonus: merchantLvl * 0.05,
       cdReductionTurns: logisticsLvl * 0.2,
-      tpBonusPct: intellectLvl * 0.03,
+      tpBonusPct: intellectLvl * 0.03, // applied to battle TP rewards (main.js)
       relicAtkPctPerItem: relicLvl * 0.002,
       relicHpPctPerItem: relicLvl * 0.002,
-      relicDefPerItem: relicLvl * 0.1,
+      relicDefPerItem: relicLvl * 0.03,
+
+      // Capstones
+      critChance: critLvl * 0.06,
+      secondWindPct: secondWindLvl > 0 ? 0.2 + (secondWindLvl - 1) * 0.15 : 0,
+      counterPct: counterLvl > 0 ? 0.15 + (counterLvl - 1) * 0.1 : 0,
+      supplyDropRelics: supplyLvl,
 
       // Backwards-compatible feature flags
       hasArmorPen: armorPenLvl > 0,

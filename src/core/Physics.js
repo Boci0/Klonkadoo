@@ -15,9 +15,14 @@ const B = CONFIG.ball;
  * Apply gravity + air drag to a ball's velocity.
  */
 export function applyForces(ball, dt) {
-  ball.vy += W.gravity * dt;
-  // Arena wind pushes airborne balls sideways (W.wind is set per battle)
-  if (W.wind && ball.y + (ball.radius || B.radius) < W.groundY - 2) ball.vx += W.wind * dt;
+  // Zero-G (Graviton skill): the shot flies dead straight for a moment
+  if (ball.zeroG > 0) {
+    ball.zeroG -= dt;
+    return;
+  }
+  ball.vy += W.gravity * (ball.gravityMult || 1) * dt;
+  // Arena wind pushes airborne balls sideways (W.wind is set per battle); Graviton is too dense to care
+  if (W.wind && ball.ballType !== 'graviton' && ball.y + (ball.radius || B.radius) < W.groundY - 2) ball.vx += W.wind * dt;
   const drag = 1 - W.airDrag * dt;
   ball.vx *= drag;
   ball.vy *= drag;
@@ -39,11 +44,16 @@ export function resolveWorldCollisions(ball) {
   const events = [];
   const r = ball.radius || B.radius;
 
+  // Class bounce scales restitution (Juggernaut thuds, Cluster ricochets)
+  const bounce = ball.bounce || 1;
+  const groundE = Math.min(0.9, W.groundRestitution * bounce);
+  const wallE = Math.min(0.95, W.wallRestitution * bounce);
+
   // Ground
   if (ball.y + r > W.groundY) {
     ball.y = W.groundY - r;
     if (ball.vy > 0) {
-      ball.vy = -ball.vy * W.groundRestitution;
+      ball.vy = -ball.vy * groundE;
       ball.vx *= W.groundFriction;
       events.push({ type: 'ground', ball });
     }
@@ -56,7 +66,7 @@ export function resolveWorldCollisions(ball) {
   if (ball.x - r < 0) {
     ball.x = r;
     if (ball.vx < 0) {
-      ball.vx = -ball.vx * W.wallRestitution;
+      ball.vx = -ball.vx * wallE;
       events.push({ type: 'wall', ball });
     }
   }
@@ -65,7 +75,7 @@ export function resolveWorldCollisions(ball) {
   if (ball.x + r > W.width) {
     ball.x = W.width - r;
     if (ball.vx > 0) {
-      ball.vx = -ball.vx * W.wallRestitution;
+      ball.vx = -ball.vx * wallE;
       events.push({ type: 'wall', ball });
     }
   }
@@ -90,13 +100,32 @@ export function resolveBallCollision(a, b) {
   const speedAPre = Math.hypot(a.vx, a.vy);
   const speedBPre = Math.hypot(b.vx, b.vy);
 
+  // Railgun (Striker skill): pass straight through each enemy once, nudging it aside
+  const pierce = a.piercing && b.team !== a.team ? a : b.piercing && a.team !== b.team ? b : null;
+  if (pierce) {
+    const other = pierce === a ? b : a;
+    if (!pierce.pierced || pierce.pierced.has(other)) return null;
+    pierce.pierced.add(other);
+    other.vx += pierce.vx * 0.25;
+    other.vy -= 220;
+    const sp = pierce === a ? speedAPre : speedBPre;
+    return { type: 'ball', a: pierce, b: other, impactSpeed: sp, speedAPre: sp, speedBPre: 0, aVyPre: pierce.vy, bVyPre: other.vy, pierce: true };
+  }
+  const aVyPre = a.vy;
+  const bVyPre = b.vy;
+
   const overlap = minDist - dist;
   const nx = dx / dist;
   const ny = dy / dist;
-  a.x -= (nx * overlap) / 2;
-  a.y -= (ny * overlap) / 2;
-  b.x += (nx * overlap) / 2;
-  b.y += (ny * overlap) / 2;
+  // Heavier balls get pushed less when separating and when trading momentum
+  const ma = a.mass || 1;
+  const mb = b.mass || 1;
+  const shareA = mb / (ma + mb);
+  const shareB = ma / (ma + mb);
+  a.x -= nx * overlap * shareA;
+  a.y -= ny * overlap * shareA;
+  b.x += nx * overlap * shareB;
+  b.y += ny * overlap * shareB;
 
   const rvx = b.vx - a.vx;
   const rvy = b.vy - a.vy;
@@ -105,12 +134,12 @@ export function resolveBallCollision(a, b) {
   if (velAlongNormal > 0) return null;
 
   const restitution = W.ballRestitution;
-  const j = -(1 + restitution) * velAlongNormal;
+  const j = (-(1 + restitution) * velAlongNormal) / (1 / ma + 1 / mb);
 
-  a.vx -= (j * nx) / 2;
-  a.vy -= (j * ny) / 2;
-  b.vx += (j * nx) / 2;
-  b.vy += (j * ny) / 2;
+  a.vx -= (j * nx) / ma;
+  a.vy -= (j * ny) / ma;
+  b.vx += (j * nx) / mb;
+  b.vy += (j * ny) / mb;
 
   return {
     type: 'ball',
@@ -119,6 +148,8 @@ export function resolveBallCollision(a, b) {
     impactSpeed: Math.abs(velAlongNormal),
     speedAPre,
     speedBPre,
+    aVyPre,
+    bVyPre,
   };
 }
 
@@ -185,8 +216,9 @@ export function resolveBarrierCollisions(ball, barriers) {
         }
       }
 
-      ball.vx -= (1 + W.wallRestitution) * velDot * nx;
-      ball.vy -= (1 + W.wallRestitution) * velDot * ny;
+      const e = Math.min(0.95, W.wallRestitution * (ball.bounce || 1));
+      ball.vx -= (1 + e) * velDot * nx;
+      ball.vy -= (1 + e) * velDot * ny;
 
       // Platform top resting & friction
       if (ny < -0.7) {
@@ -204,19 +236,81 @@ export function resolveBarrierCollisions(ball, barriers) {
   return events;
 }
 
+/**
+ * Spring pads: the plate is a stiff spring. Pressing into it pushes back in
+ * proportion to the compression (Hooke's law), a little harder on the way
+ * out (a powered spring), so a fast landing flings you high and a gentle
+ * one barely bounces. Horizontal momentum is untouched. The housing below
+ * the plate is solid: balls rolling into its side bounce off.
+ * `live` marks real pads (compression is stored for the renderer).
+ */
+export const PAD = { rest: 22, maxCompress: 20, k: 4200, kick: 1.45, flash: 0.5 };
+
+export function resolvePads(ball, pads, dt, live = false) {
+  const events = [];
+  const r = ball.radius || B.radius;
+  const top = W.groundY - PAD.rest;
+  let contact = false;
+  for (const pad of pads) {
+    if (pad.type !== 'pad') continue;
+    const bottom = ball.y + r;
+    if (bottom <= top) continue;
+
+    if (ball.x <= pad.x || ball.x >= pad.x + pad.w) {
+      // Side of the housing: a solid edge from the plate down to the ground
+      const edge = ball.x <= pad.x ? pad.x : pad.x + pad.w;
+      const side = ball.x < edge ? -1 : 1;
+      if (Math.abs(ball.x - edge) < r && bottom > top + 8) {
+        ball.x = edge + side * r;
+        if (ball.vx * side < 0) ball.vx = -ball.vx * W.wallRestitution;
+      }
+      continue;
+    }
+
+    let p = bottom - top;
+    if (p > PAD.maxCompress) {
+      // Bottomed out: the coil is fully squashed and acts like the floor
+      p = PAD.maxCompress;
+      ball.y = top + p - r;
+      if (ball.vy > 0) ball.vy *= 0.5;
+    }
+    if (!ball._padContact) {
+      // A real landing fires the powered kick once per ball per turn (Game
+      // clears _padsFired each turn); after that the plate is a plain, lossy
+      // spring, so a ball bouncing in place dies down instead of hopping
+      // higher forever. Preview / AI probes are fresh objects, so they
+      // predict the same thing.
+      const fired = ball._padsFired || (ball._padsFired = new Set());
+      ball._padKick = !fired.has(pad) && ball.vy > 250;
+      if (ball._padKick) {
+        fired.add(pad);
+        if (live) pad.cooldown = PAD.flash;
+      }
+      if (ball.vy > 150) events.push({ type: 'pad', ball, pad, impactSpeed: ball.vy, kick: ball._padKick });
+    }
+    const k = ball.vy > 0 ? PAD.k : PAD.k * (ball._padKick ? PAD.kick : 0.5);
+    ball.vy -= k * p * dt;
+    contact = true;
+    if (live) pad.compress = Math.max(pad.compress || 0, p);
+  }
+  ball._padContact = contact;
+  return events;
+}
+
 export function stepBall(ball, dt) {
   applyForces(ball, dt);
   integrate(ball, dt);
   return resolveWorldCollisions(ball);
 }
 
-export function stepWorld(balls, dt, barriers = [], platforms = [], obstacles = []) {
+export function stepWorld(balls, dt, barriers = [], platforms = [], obstacles = [], pads = []) {
   const events = [];
 
   const rects = [...barriers, ...platforms, ...obstacles];
 
   for (const ball of balls) {
     events.push(...stepBall(ball, dt));
+    events.push(...resolvePads(ball, pads, dt, true));
     events.push(...resolveBarrierCollisions(ball, rects));
   }
 
