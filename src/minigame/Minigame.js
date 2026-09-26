@@ -55,6 +55,23 @@ export class Minigame {
     this._hitLog = [];
   }
 
+  // Every perfect raises the heat: the marker speeds up and both bands shrink
+  get heat() {
+    return this.perfects;
+  }
+
+  get sweepSpeed() {
+    return Math.min(1.6, this.speed * Math.pow(1.15, this.heat));
+  }
+
+  get hitHalf() {
+    return Math.max(0.035, 0.08 * Math.pow(0.9, this.heat));
+  }
+
+  get perfectHalf() {
+    return Math.max(0.009, 0.02 * Math.pow(0.9, this.heat));
+  }
+
   get isActive() {
     return this.mode !== MODES.IDLE;
   }
@@ -62,7 +79,7 @@ export class Minigame {
   update(dt) {
     if (this.mode !== MODES.RUNNING) return;
 
-    this.progress += this.direction * this.speed * dt;
+    this.progress += this.direction * this.sweepSpeed * dt;
     if (this.progress > 1) {
       this.progress = 1;
       this.direction = -1;
@@ -78,13 +95,13 @@ export class Minigame {
     if (this.mode !== MODES.RUNNING) return;
 
     const distFromCenter = Math.abs(this.progress - 0.5);
-    const isHit = distFromCenter <= 0.08;
-    const isPerfect = distFromCenter <= 0.02;
+    const isHit = distFromCenter <= this.hitHalf;
+    const isPerfect = distFromCenter <= this.perfectHalf;
 
     if (isPerfect) {
       this.perfects += 1;
       this.hits += 1;
-      this._setFeedback('PERFECT!', '#a7f070');
+      this._setFeedback(this.attemptsLeft > 1 ? 'PERFECT! FASTER' : 'PERFECT!', '#a7f070');
       soundEngine.play('confirm');
       haptics.impact('heavy');
     } else if (isHit) {
@@ -158,10 +175,10 @@ export class Minigame {
     ctx.fillStyle = '#1a1c2c';
     ctx.fillRect(barX, barY, barW, barH);
 
-    const bandW = Math.round(0.16 * barW);
+    const bandW = Math.round(this.hitHalf * 2 * barW);
     ctx.fillStyle = '#257179';
     ctx.fillRect(Math.round(barX + barW / 2 - bandW / 2), barY, bandW, barH);
-    const perfectW = Math.max(6, Math.round(0.04 * barW));
+    const perfectW = Math.max(4, Math.round(this.perfectHalf * 2 * barW));
     ctx.fillStyle = '#a7f070';
     ctx.fillRect(Math.round(barX + barW / 2 - perfectW / 2), barY, perfectW, barH);
     // Tick marks
@@ -194,7 +211,7 @@ export class Minigame {
     }
     ctx.font = `700 14px ${FONT}`;
     ctx.fillStyle = '#f4f4f4';
-    ctx.fillText(`HITS ${this.hits}/${this.totalAttempts}  ·  NEED 3 TO PASS`, w / 2, barY + barH + 66);
+    ctx.fillText(`HITS ${this.hits}/${this.totalAttempts}  ·  NEED 3 TO PASS${this.heat ? `  ·  HEAT ${this.heat}` : ''}`, w / 2, barY + barH + 66);
 
     // Per-tap feedback
     if (this.lastFeedback && this.feedbackTimer > 0) {
