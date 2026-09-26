@@ -65,6 +65,7 @@ export class Game {
 
     this._bindEvents();
     this._bindKeys();
+    this._bindInspect();
 
     this.reset(DEFAULT_BATTLE);
   }
@@ -165,12 +166,19 @@ export class Game {
         radius: e.radius,
       });
     });
-    this.enemies.forEach((b, i) => { b.rank = config.enemies[i]?.rank || null; });
+    this.enemies.forEach((b, i) => {
+      b.rank = config.enemies[i]?.rank || null;
+      b.weapons = (config.enemies[i]?.weapons || []).map((w) => ({ ...w, cdLeft: 0 }));
+    });
 
     this.techStats = config.techStats || {};
+    // Mech weapons (auto-fire after your shot settles) and drones (every turn)
+    this.playerWeapons = (this.techStats.mech?.weapons || []).map((w) => ({ ...w, cdLeft: 0 }));
+    this.playerDrones = this.techStats.mech?.drones || [];
+    this.inspected = null; // { ball, weapon? } shown by the renderer
     // Higher Risk = bolder enemies: they favour hard hits, fire sooner, use abilities more
     this.aggression = Math.min(1, (config.riskLevel || 0) / 8);
-    this.player.forcefield = !!this.techStats.hasForcefield || !!this.techStats.gearModules?.mod_shield;
+    this.player.forcefield = !!this.techStats.hasForcefield || !!this.techStats.mech?.startForcefield;
     this.medkitUsed = false;
     this._enemyShotHit = false;
 
@@ -808,6 +816,135 @@ export class Game {
   }
 
   /** Floating label above a ball (ability names, relic triggers). */
+  // ---------- Mech weapons ----------
+
+  /** Quick tap (not a drag) on a ball inspects its weapons; tap it again or empty ground to close. */
+  _bindInspect() {
+    let down = null;
+    this.canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+    this.canvas.addEventListener('pointerup', (e) => {
+      if (!down || !this.running) return;
+      const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+      const quick = performance.now() - down.t < 400;
+      down = null;
+      if (moved > 10 || !quick || !this.renderer.clientToWorld) return;
+      const pos = this.renderer.clientToWorld(e.clientX, e.clientY);
+      const hit = [this.player, ...this.enemies].find((b) => b && b.hp > 0 && Math.hypot(b.x - pos.x, b.y - pos.y) <= b.radius + 16);
+      this.inspected = hit && this.inspected?.ball !== hit ? { ball: hit } : null;
+    });
+  }
+
+  /** HUD weapon chip tapped: show that gun's range around you. */
+  inspectWeapon(index) {
+    const same = this.inspected?.ball === this.player && this.inspected.weapon === index;
+    this.inspected = same ? null : { ball: this.player, weapon: index };
+  }
+
+  /** After a ball's turn: every gun off cooldown fires at the nearest target inside its range band. */
+  _fireWeapons(shooter) {
+    if (!shooter || shooter.hp <= 0 || this.turnSystem.phase === TurnPhase.GAME_OVER) return;
+    const isPlayer = shooter === this.player;
+    const guns = isPlayer ? this.playerWeapons : shooter.weapons || [];
+    const foes = () => (isPlayer ? this.enemies.filter((e) => e.hp > 0) : this.player.hp > 0 ? [this.player] : []);
+    for (const w of guns) {
+      if (w.cdLeft > 0) {
+        w.cdLeft -= 1;
+        continue;
+      }
+      const target = foes()
+        .map((f) => ({ f, d: Math.hypot(f.x - shooter.x, f.y - shooter.y) }))
+        .filter(({ d }) => d >= w.range[0] && d <= w.range[1])
+        .sort((a, b) => a.d - b.d)[0]?.f;
+      if (!target) continue; // stays ready until something is in range
+      w.cdLeft = w.cd - 1;
+      this._weaponHit(shooter, target, w, w.dmg);
+      if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
+      if (w.fx?.chain) {
+        const next = foes().find((f) => f !== target && Math.hypot(f.x - target.x, f.y - target.y) <= w.fx.chain);
+        if (next) this._weaponHit(target, next, w, w.dmg * 0.6, shooter);
+      }
+      if (w.fx?.splash) {
+        for (const f of foes()) {
+          if (f !== target && Math.hypot(f.x - target.x, f.y - target.y) <= w.fx.splash) this._weaponHit(target, f, w, w.dmg * 0.5, shooter);
+        }
+        this.particles.push({ type: 'shockwave', x: target.x, y: target.y, radius: 10, maxRadius: w.fx.splash, life: 0.3, maxLife: 0.3 });
+      }
+      if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
+    }
+    if (!isPlayer) return;
+    // Drones: act every turn at any range
+    for (const d of this.playerDrones) {
+      if (d.heal) {
+        const before = this.player.hp;
+        this.player.hp = Math.min(this.player.maxHp, this.player.hp + Math.round(d.heal));
+        if (this.player.hp > before) this._callout(this.player, `REPAIR +${this.player.hp - before}`, d.color);
+      } else if (d.forcefieldEvery) {
+        if (this.battleStats.turns % d.forcefieldEvery === 0 && !this.player.forcefield) {
+          this.player.forcefield = true;
+          this._callout(this.player, 'DRONE SHIELD', d.color);
+        }
+      } else if (d.dmg) {
+        const target = foes().sort((a, b) => Math.hypot(a.x - shooter.x, a.y - shooter.y) - Math.hypot(b.x - shooter.x, b.y - shooter.y))[0];
+        if (target) this._weaponHit(shooter, target, d, d.dmg);
+        if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
+      }
+    }
+  }
+
+  /** One weapon hit. `from` is where the tracer starts (chains/splash start at the first target). */
+  _weaponHit(from, target, w, rawDmg, owner = from) {
+    this.particles.push({ type: 'tracer', x1: from.x, y1: from.y, x2: target.x, y2: target.y, color: w.color || '#f4f4f4', life: 0.3, maxLife: 0.3 });
+    soundEngine.playUI(target.team === 'player' ? 220 : 660, 0.04);
+    if (target.team === 'enemy') {
+      if (target.shieldCharges > 0) {
+        target.shieldCharges -= 1;
+        this._callout(target, 'BLOCKED', '#41a6f6');
+        return;
+      }
+      const crit = w.fx?.crit && Math.random() < w.fx.crit;
+      let dmg = rawDmg * (crit ? 1.75 : 1);
+      if (!w.fx?.pierce) dmg *= 1 - Math.min(CONFIG.run.maxDefCap || 15, target.def || 0) * CONFIG.damage.defensePerPoint;
+      dmg = Math.max(1, Math.round(dmg));
+      const killed = target.takeDamage(dmg);
+      target.flashTimer = 0.15;
+      if (w.fx?.burn) {
+        target.burnTicks = Math.max(target.burnTicks || 0, w.fx.burn);
+        target.burnDmg = Math.max(target.burnDmg || 0, 6);
+      }
+      if (w.fx?.freeze) target.isFrozen = true;
+      if (w.fx?.corrode) target.def = Math.max(0, (target.def || 0) - w.fx.corrode);
+      if (w.fx?.leech && owner === this.player) this.player.hp = Math.min(this.player.maxHp, this.player.hp + Math.round(dmg * w.fx.leech));
+      this._callout(target, `${w.name.split(' ').pop()} ${dmg}${crit ? '!' : ''}`, w.color || '#f4f4f4');
+      this.events.emit('damage', { attacker: owner, victim: target, damage: dmg, killed, crit });
+      this.events.emit('player-dealt-damage', { victim: target, damage: dmg });
+      if (killed) this._checkBattleEnd(target);
+      return;
+    }
+    // Enemy gun hitting you: Forcefield blocks it, DEF and damage reduction apply
+    if (this.player.forcefield) {
+      this.player.forcefield = false;
+      this._callout(this.player, 'BLOCKED', '#a7f070');
+      return;
+    }
+    const dmg = this.collisionSystem.calculatePlayerDamage(rawDmg);
+    const killed = this.player.takeDamage(dmg);
+    this.player.flashTimer = 0.15;
+    this.battleStats.playerDamageTaken += dmg;
+    if (w.fx?.burn) {
+      this.player.burnTicks = Math.max(this.player.burnTicks || 0, w.fx.burn);
+      this.player.burnDmg = Math.max(this.player.burnDmg || 0, 6);
+    }
+    if (w.fx?.freeze) this.player.isFrozen = true;
+    if (w.fx?.corrode) {
+      const s = this.collisionSystem.stats;
+      s.playerTotalDef = Math.max(0, (s.playerTotalDef || 0) - w.fx.corrode);
+    }
+    this._callout(this.player, `${w.name.split(' ').pop()} ${dmg}`, w.color || '#ff5d73');
+    this.events.emit('damage', { attacker: owner, victim: this.player, damage: dmg, killed });
+    this.events.emit('enemy-dealt-damage', { attacker: owner, damage: dmg });
+    if (killed) this._checkBattleEnd(this.player);
+  }
+
   _callout(ball, text, color) {
     if (ball) this.renderer.addCallout(ball, text, color);
   }
@@ -886,8 +1023,14 @@ export class Game {
     this.events.on('player-launch', ({ velocity }) => {
       if (!this.running) return;
       if (!this.turnSystem.isPlayerTurn || this.turnSystem.isFlying) return;
-      this.player.vx = velocity.x;
-      this.player.vy = velocity.y;
+      // Frozen by an enemy Cryo Cannon: this launch is weaker
+      const chill = this.player.isFrozen ? 0.65 : 1;
+      if (this.player.isFrozen) {
+        this.player.isFrozen = false;
+        this._callout(this.player, 'FROZEN SHOT', '#73eff7');
+      }
+      this.player.vx = velocity.x * chill;
+      this.player.vy = velocity.y * chill;
       this.slingshotInput.setActive(false);
       this._armShot();
       const speed = Math.hypot(velocity.x, velocity.y);
@@ -928,6 +1071,8 @@ export class Game {
 
       if (playerTurn) {
         this.battleStats.turns += 1;
+        this._fireWeapons(this.player);
+        if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
         this._resolveShot();
         this._clearShotEffects();
         this._tickAbilities();
@@ -952,6 +1097,8 @@ export class Game {
       } else {
         const currentIdx = this.turnSystem.enemyIndex;
         const shooter = this.enemies[currentIdx];
+        this._fireWeapons(shooter);
+        if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
         if (shooter) shooter.missStreak = this._enemyShotHit ? 0 : (shooter.missStreak || 0) + 1;
         let nextIdx = -1;
         for (let i = currentIdx + 1; i < this.enemies.length; i++) {
@@ -1529,6 +1676,8 @@ export class Game {
         turns: this.battleStats.turns,
       },
       slingshotInput: this.slingshotInput,
+      playerWeapons: this.playerWeapons || [],
+      inspected: this.inspected && this.inspected.ball.hp > 0 ? this.inspected : null,
     };
     this.renderer.render(world);
   }

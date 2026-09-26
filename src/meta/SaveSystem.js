@@ -8,13 +8,14 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
-import { INVENTORY_CAP, salvageValue, upgradeCost, MAX_LEVEL } from './Gear.js';
+import { INVENTORY_CAP, salvageValue, upgradeCost, MAX_LEVEL, STARTER_PARTS, STARTER_LOADOUT, SLOTS, getPart, newUid, openCrate, CRATES } from './Mech.js';
 
 const STORAGE_KEY = 'slingshot-save-v1';
 
 export class SaveSystem {
   constructor() {
     this.data = this._load();
+    this._ensureMech();
   }
 
   _defaults() {
@@ -42,7 +43,7 @@ export class SaveSystem {
         completedLevels: 1,
         unlockedLevels: 1,
       },
-      gear: { items: [], equipped: { core: null, plating: null, module: null }, scrap: 0, seen: 0 },
+      mech: null, // built on first load: see _ensureMech
     };
   }
 
@@ -63,11 +64,6 @@ export class SaveSystem {
           unlockedPerks: parsed.unlockedPerks || [],
           techTree: parsed.techTree || {},
           progression: { ...defaults.progression, ...(parsed.progression || {}) },
-          gear: {
-            ...defaults.gear,
-            ...(parsed.gear || {}),
-            equipped: { ...defaults.gear.equipped, ...(parsed.gear?.equipped || {}) },
-          },
         };
       }
     } catch (e) {
@@ -350,6 +346,7 @@ export class SaveSystem {
         techTree: parsed.techTree || {},
         progression: { ...defaults.progression, ...(parsed.progression || {}) },
       };
+      this._ensureMech(); // older exported saves have no mech yet
       this.save();
       return true;
     } catch (e) {
@@ -358,64 +355,108 @@ export class SaveSystem {
     }
   }
 
-  // ---------- Gear ----------
+  // ---------- Mech loadout ----------
 
-  getGear() {
-    return this.data.gear;
-  }
-
-  /** Items currently worn, one per slot (missing slots are null). */
-  getEquippedGear() {
-    const g = this.data.gear;
-    return Object.values(g.equipped).map((uid) => g.items.find((i) => i.uid === uid) || null);
-  }
-
-  /** Store a new drop. Past the cap, the weakest unequipped item is salvaged. */
-  addGearItem(item) {
-    const g = this.data.gear;
-    g.items.push(item);
-    g.seen += 1;
-    let autoSalvaged = null;
-    if (g.items.length > INVENTORY_CAP) {
-      const worn = new Set(Object.values(g.equipped));
-      const spare = g.items.filter((i) => !worn.has(i.uid) && i.uid !== item.uid);
-      spare.sort((a, b) => salvageValue(a) - salvageValue(b));
-      if (spare[0]) autoSalvaged = this.salvageGear(spare[0].uid, false);
+  /**
+   * Every save gets a starter mech. Old stat gear (the previous system) is
+   * converted into scrap so nothing earned is lost.
+   */
+  _ensureMech() {
+    if (this.data.mech) return;
+    const oldGear = this.data.gear;
+    const legacyScrap = (oldGear?.scrap || 0) + (oldGear?.items || []).reduce((sum, it) => {
+      const base = { common: 2, rare: 5, epic: 12, legendary: 30 }[it.rarity] || 2;
+      return sum + Math.round(base * (1 + ((it.level || 1) - 1) * 0.25));
+    }, 0);
+    const owned = STARTER_PARTS.map((id) => ({ uid: newUid(), id, level: 1 }));
+    const loadout = {};
+    for (const slot of SLOTS) {
+      const want = STARTER_LOADOUT[slot.id];
+      loadout[slot.id] = want ? owned.find((o) => o.id === want)?.uid || null : null;
     }
-    // First item for an empty slot is worn straight away
-    if (!g.equipped[item.slot]) g.equipped[item.slot] = item.uid;
+    this.data.mech = { owned, loadout, scrap: legacyScrap, tokens: 0, cratesOpened: 0 };
+    delete this.data.gear;
     this.save();
-    return autoSalvaged;
   }
 
-  equipGear(uid) {
-    const g = this.data.gear;
-    const item = g.items.find((i) => i.uid === uid);
-    if (!item) return false;
-    g.equipped[item.slot] = g.equipped[item.slot] === uid ? null : uid;
+  getMech() {
+    return this.data.mech;
+  }
+
+  getOwnedPart(uid) {
+    return this.data.mech.owned.find((o) => o.uid === uid) || null;
+  }
+
+  /** Parts in the loadout, one per slot (nulls for empty slots). */
+  getLoadoutParts() {
+    const m = this.data.mech;
+    return SLOTS.map((s) => this.getOwnedPart(m.loadout[s.id]));
+  }
+
+  addTokens(n) {
+    this.data.mech.tokens += Math.max(0, n);
+    this.save();
+  }
+
+  /** Buy and open a crate. Returns the new part, or null if you can't afford it. */
+  buyCrate(crateId) {
+    const m = this.data.mech;
+    const crate = CRATES.find((c) => c.id === crateId);
+    if (!crate || m.tokens < crate.cost) return null;
+    m.tokens -= crate.cost;
+    const part = openCrate(crateId);
+    m.owned.push(part);
+    m.cratesOpened += 1;
+    // Past the cap, the weakest spare part is salvaged automatically
+    if (m.owned.length > INVENTORY_CAP) {
+      const worn = new Set(Object.values(m.loadout));
+      const spare = m.owned.filter((o) => !worn.has(o.uid) && o.uid !== part.uid).sort((a, b) => salvageValue(a) - salvageValue(b));
+      if (spare[0]) this.salvagePart(spare[0].uid, false);
+    }
+    this.save();
+    return part;
+  }
+
+  /** Put a part in a slot (or take it out if it's already there). */
+  equipPart(slotId, uid) {
+    const m = this.data.mech;
+    const slot = SLOTS.find((s) => s.id === slotId);
+    const owned = this.getOwnedPart(uid);
+    if (!slot || (uid && (!owned || getPart(owned.id).type !== slot.type))) return false;
+    if (slot.id === 'frame' && !uid) return false; // a mech always has a frame
+    // A part can only sit in one slot
+    for (const k of Object.keys(m.loadout)) if (m.loadout[k] === uid) m.loadout[k] = null;
+    m.loadout[slotId] = uid;
     this.save();
     return true;
   }
 
-  salvageGear(uid, save = true) {
-    const g = this.data.gear;
-    const item = g.items.find((i) => i.uid === uid);
-    if (!item || Object.values(g.equipped).includes(uid)) return 0;
-    const value = salvageValue(item);
-    g.items = g.items.filter((i) => i.uid !== uid);
-    g.scrap += value;
+  unequipSlot(slotId) {
+    if (slotId === 'frame') return false;
+    this.data.mech.loadout[slotId] = null;
+    this.save();
+    return true;
+  }
+
+  salvagePart(uid, save = true) {
+    const m = this.data.mech;
+    const owned = this.getOwnedPart(uid);
+    if (!owned || Object.values(m.loadout).includes(uid)) return 0;
+    const value = salvageValue(owned);
+    m.owned = m.owned.filter((o) => o.uid !== uid);
+    m.scrap += value;
     if (save) this.save();
     return value;
   }
 
-  upgradeGear(uid) {
-    const g = this.data.gear;
-    const item = g.items.find((i) => i.uid === uid);
-    if (!item || item.level >= MAX_LEVEL) return false;
-    const cost = upgradeCost(item);
-    if (g.scrap < cost) return false;
-    g.scrap -= cost;
-    item.level += 1;
+  upgradePart(uid) {
+    const m = this.data.mech;
+    const owned = this.getOwnedPart(uid);
+    if (!owned || owned.level >= MAX_LEVEL) return false;
+    const cost = upgradeCost(owned);
+    if (m.scrap < cost) return false;
+    m.scrap -= cost;
+    owned.level += 1;
     this.save();
     return true;
   }
@@ -423,6 +464,7 @@ export class SaveSystem {
   reset() {
     localStorage.removeItem(STORAGE_KEY);
     this.data = this._load();
+    this._ensureMech();
   }
 }
 

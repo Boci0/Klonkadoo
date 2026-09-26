@@ -25,7 +25,7 @@ import { haptics } from './platform/haptics.js';
 import { DevTools } from './dev/DevTools.js';
 import { checkMedals } from './meta/Medals.js';
 import './platform/native.js';
-import { withGear, rollItem, dropChance, itemName, rarityColor } from './meta/Gear.js';
+import { withMech, tokenReward, enemyWeapons } from './meta/Mech.js';
 
 // Canvas text only uses a web font once it's loaded: fetch the digit face up front
 document.fonts?.load('16px "Pixel Digits"', '0123456789').catch(() => {});
@@ -313,6 +313,28 @@ function bindBarrierDrag(btn) {
   btn.addEventListener('click', (e) => e.preventDefault());
 }
 
+// ---------- Mech weapon chips (tap one to see its range) ----------
+
+let mechHudSig = '';
+function updateMechHud() {
+  const el = document.getElementById('mech-hud');
+  if (!el) return;
+  const guns = game.playerWeapons || [];
+  const drones = game.playerDrones || [];
+  const focus = game.inspected?.ball === game.player ? game.inspected.weapon : undefined;
+  const sig = guns.map((w) => w.cdLeft).join(',') + '|' + guns.length + '|' + drones.length + '|' + focus;
+  if (sig === mechHudSig) return;
+  mechHudSig = sig;
+  el.innerHTML = guns.map((w, i) => `<button class="mech-chip ${w.cdLeft ? 'cooling' : 'ready'} ${focus === i ? 'focus' : ''}" data-gun="${i}" style="--c:${w.color}">
+      <b>${w.name.split(' ').pop()}</b><span>${w.cdLeft ? `${w.cdLeft}T` : 'READY'}</span></button>`).join('')
+    + drones.map((d) => `<span class="mech-chip drone" style="--c:${d.color}"><b>${d.name.split(' ')[0]}</b><span>DRONE</span></span>`).join('');
+  el.querySelectorAll('[data-gun]').forEach((b) => b.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    game.inspectWeapon(Number(b.dataset.gun));
+    soundEngine.playUI();
+  }));
+}
+
 function updateAbilityHud() {
   const btnOverdrive = document.getElementById('btn-overdrive');
   const btnBarrier = document.getElementById('btn-barrier');
@@ -348,7 +370,7 @@ function updateAbilityHud() {
 
 function startNewRun(ballType = 'vanguard', skin = 'default') {
   runSeed = Math.floor(Math.random() * 100000) + 1;
-  run = new RunState(withGear(techTree.getPermanentStats(), saveSystem.getEquippedGear()), ballType);
+  run = new RunState(withMech(techTree.getPermanentStats(), saveSystem.getLoadoutParts()), ballType);
   run.skin = skin;
   // One random operation condition per run
   const cond = CONFIG.runConditions[Math.floor(Math.random() * CONFIG.runConditions.length)];
@@ -729,6 +751,7 @@ function startCombat(node) {
       aiDifficulty: Math.min(0.95, tier.aiDifficulty + arch.aiShift + riskData.aiBonus),
       thinkDelay: arch.ability === 'aggressive' ? Math.max(0.3, thinkDelay - 0.2) : thinkDelay,
       xPct,
+      weapons: enemyWeapons(node.type, run.floor + 1),
     });
   }
 
@@ -901,8 +924,7 @@ function onBattleEnd(won, node) {
     let heal = 0;
 
     if (rewards.gold) {
-      const bounty = 1 + (run.permanent?.gearModules?.mod_bounty || 0);
-      gold = run.gainGold(Math.round((rewards.gold + (run.hasRelic('rel_magnet') ? 6 : 0)) * bounty));
+      gold = run.gainGold(rewards.gold + (run.hasRelic('rel_magnet') ? 6 : 0));
       addFeedEntry(`<span class="feed-gold">+${gold} GOLD</span>`);
     }
     if (rewards.tech) {
@@ -917,7 +939,7 @@ function onBattleEnd(won, node) {
       run.healFlat(heal);
       addFeedEntry(`<span class="feed-heal">+${heal} HP RECOVERED</span>`);
     }
-    const medic = run.permanent?.gearModules?.mod_medic || 0;
+    const medic = run.permanent?.mech?.healAfterWin || 0;
     if (medic > 0) {
       const extra = Math.round(run.maxHp * medic);
       run.healFlat(extra);
@@ -925,12 +947,12 @@ function onBattleEnd(won, node) {
     }
 
     // Gear: elites sometimes, mini-boss and boss always. Saved at once, so it's kept even if the run is lost.
-    let gearDrop = null;
-    if (Math.random() < dropChance(node.type)) {
-      gearDrop = rollItem({ floor: run.floor + 1, risk: saveSystem.getDifficultyLevel(), source: node.type });
-      saveSystem.addGearItem(gearDrop);
-      (run.gearFound ||= []).push(gearDrop);
-      addFeedEntry(`<span class="feed-boon" style="color:${rarityColor(gearDrop.rarity)}">GEAR: ${itemName(gearDrop)} +${gearDrop.level}</span>`);
+    // Tokens buy crates on the Mech screen (saved at once, kept even if the run is lost)
+    const tokens = tokenReward(node.type, saveSystem.getDifficultyLevel());
+    if (tokens > 0) {
+      saveSystem.addTokens(tokens);
+      run.tokensEarned = (run.tokensEarned || 0) + tokens;
+      addFeedEntry(`<span class="feed-gold">+${tokens} TOKENS</span>`);
     }
 
     // Elite nodes reward 1 collectible; mini-boss rewards 2; boss gives none
@@ -959,7 +981,7 @@ function onBattleEnd(won, node) {
       setTimeout(() => endRun(true), 1400);
       return;
     }
-    ui.showCombatResult(true, { gold, tech, heal, relic: rewardRelic, relics: rewardRelics, gear: gearDrop }, run);
+    ui.showCombatResult(true, { gold, tech, heal, relic: rewardRelic, relics: rewardRelics, tokens }, run);
   } else {
     ui.updateRunHud(run);
     ui.showCombatResult(false, null, run);
@@ -1427,6 +1449,7 @@ function loop(now) {
     if (!battlePaused) game.update(dt);
     game.render();
     updateAbilityHud();
+    updateMechHud();
   } else if (state === State.MINIGAME) {
     minigame.update(dt);
     minigame.render();
