@@ -369,7 +369,7 @@ function updateGearHud(el, endBtn, ventBtn) {
     const cd = ventBtn.querySelector('.ability-cd');
     if (cd && cd.textContent !== heatTxt) cd.textContent = heatTxt;
   }
-  const sig = `${live}|${left}|` + guns.map((w, i) => `${w.ammoLeft}:${states[i].ok}:${states[i].reason}:${states[i].dmg}`).join(',') + '|' + drones.map((d) => d.off).join(',');
+  const sig = `${live}|${left}|` + guns.map((w, i) => `${w.ammoLeft}:${states[i].ok}:${states[i].reason}:${states[i].dmg}:${states[i].cover}`).join(',') + '|' + drones.map((d) => d.off).join(',');
   if (sig === mechHudSig) return;
   mechHudSig = sig;
   const D = CONFIG.gear.drone;
@@ -380,9 +380,9 @@ function updateGearHud(el, endBtn, ventBtn) {
     const ammo = w.ammo ? `<b class="gun-ammo">${w.ammoLeft}/${w.ammo}</b>` : '';
     return `<button class="mech-chip gear-gun ${ready ? 'ready' : 'cooling'}" data-gun="${i}" style="--c:${w.color}" title="[${i ? 'E' : 'Q'}] ${w.name}">
       <img src="${partIcon(w.id)}" alt="">${ammo}
-      <span class="gun-dmg">${st.dmg ? `~${st.dmg}` : ''}</span>
+      <span class="gun-dmg">${w.fx?.mine ? 'MINE' : st.dmg ? `~${st.dmg}` : ''}</span>
       <span class="gun-cost"><i class="c-en">${w.en || 0}</i><i class="c-heat">${w.heat || 0}</i></span>
-      <span class="gun-why">${ready ? 'FIRE' : why}</span></button>`;
+      <span class="gun-why">${ready ? (st.cover ? 'COVER' : 'FIRE') : why}</span></button>`;
   }).join('') + drones.map((d, i) => {
     const en = d.heal ? D.healEn : d.forcefieldEvery ? D.shieldEn : D.dmgEn;
     return `<button class="mech-chip drone gear-drone ${d.off ? 'off' : 'on'}" data-drone="${i}" style="--c:${d.color}" title="${d.name}: tap to switch ON/OFF. ON = acts at the end of your turn for ${en} energy.">
@@ -933,7 +933,7 @@ function startCombat(node) {
       aiDifficulty: Math.min(0.95, tier.aiDifficulty + arch.aiShift + riskData.aiBonus),
       thinkDelay: arch.ability === 'aggressive' ? Math.max(0.3, thinkDelay - 0.2) : thinkDelay,
       xPct,
-      weapons: enemyWeapons(node.type, run.floor + 1, Math.random, { atkMult: atkMult * waveAtkScale }),
+      weapons: enemyWeapons(node.type, run.floor + 1, Math.random, { atkMult: atkMult * waveAtkScale, archetype }),
       rig: enemyRig(node.type, { cdCut: riskData.gunCdCut || 0 }),
       legs: enemyLegs(node.type, archetype),
     });

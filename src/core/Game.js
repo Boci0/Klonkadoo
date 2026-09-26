@@ -39,6 +39,26 @@ export function vfxOf(w) {
   return 'bullet';
 }
 
+/** Where segment (x1,y1)-(x2,y2) first enters rectangle r, as 0..1 along it (null = misses). */
+function segmentEnterT(x1, y1, x2, y2, r) {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const edges = [[-dx, x1 - r.x], [dx, r.x + r.w - x1], [-dy, y1 - r.y], [dy, r.y + r.h - y1]];
+  for (const [p, q] of edges) {
+    if (p === 0) {
+      if (q < 0) return null;
+      continue;
+    }
+    const t = q / p;
+    if (p < 0) t0 = Math.max(t0, t);
+    else t1 = Math.min(t1, t);
+    if (t0 > t1) return null;
+  }
+  return t0;
+}
+
 /** Does segment (x1,y1)-(x2,y2) cross rectangle r? (Liang-Barsky clip) */
 function segmentHitsRect(x1, y1, x2, y2, r) {
   let t0 = 0;
@@ -596,22 +616,6 @@ export class Game {
         soundEngine.playAbility('barrier');
         this._callout(target, 'SHIELDED', '#41a6f6');
       }
-    } else if (enemy.archetype === 'minelayer') {
-      const mines = this.hazards.filter((h) => h.type === 'mine');
-      if (mines.length < 3 + Math.round(this.aggression * 2)) {
-        // Somewhere near you, but not right under you
-        for (let tries = 0; tries < 8; tries++) {
-          const side = Math.random() < 0.5 ? -1 : 1;
-          const x = Math.max(60, Math.min(W.width - 100, this.player.x + side * (90 + Math.random() * 140)));
-          if (mines.some((m) => Math.abs(m.x + m.w / 2 - x) < 160)) continue;
-          if (!act(6)) break;
-          this.hazards.push({ type: 'mine', x: x - 24, w: 48, armed: true, born: performance.now() });
-          this.particles.push({ type: 'shockwave', x, y: groundAt(x), radius: 6, maxRadius: 60, life: 0.3, maxLife: 0.3 });
-          soundEngine.playUI(300);
-          this._callout(enemy, 'MINE DROPPED', '#ef7d57');
-          break;
-        }
-      }
     }
     if (enemy.displayName === 'SECTOR COMMANDER') {
       if (Math.hypot(this.player.x - enemy.x, this.player.y - enemy.y) < 400 && act(10)) this._triggerShockwave(enemy);
@@ -733,21 +737,26 @@ export class Game {
       const hurtThisTurn = ball._hazardHurtTurn === this.turnId;
 
       if (touching.type === 'mine') {
-        if (ball.team !== 'player') continue; // enemies step over their own mines
+        if (ball.team === (touching.owner || 'enemy')) continue; // a side steps over its own mines
         if (hurtThisTurn) continue; // stays armed for later
         ball._hazardHurtTurn = this.turnId;
         this.hazards.splice(this.hazards.indexOf(touching), 1);
-        const dmg = this.collisionSystem.calculatePlayerDamage(15);
-        ball.takeDamage(dmg);
+        const raw = touching.dmg || 15;
+        const dmg = ball.team === 'player' ? this.collisionSystem.calculatePlayerDamage(raw) : Math.max(1, Math.round(raw * (1 - Math.min(15, ball.def || 0) * CONFIG.damage.defensePerPoint)));
+        const killed = ball.takeDamage(dmg);
         ball.vy = -600;
-        this.battleStats.playerDamageTaken += dmg;
+        if (ball.team === 'player') this.battleStats.playerDamageTaken += dmg;
+        else {
+          this.events.emit('damage', { attacker: this.player, victim: ball, damage: dmg, killed });
+          this.battleStats.report.dealt += dmg;
+        }
         this.particles.push({ type: 'shockwave', x: ball.x, y: groundAt(ball.x), radius: 10, maxRadius: 160, life: 0.35, maxLife: 0.35 });
         this._spawnDefeatParticles(ball.x, groundAt(ball.x), '#ef7d57');
         soundEngine.playDefeat();
         this.renderer.addScreenShake(14);
         haptics.impact('heavy');
         this._callout(ball, 'MINE!', '#ef7d57');
-        if (this.player.hp <= 0) this._checkBattleEnd(ball);
+        if (this.player.hp <= 0 || killed) this._checkBattleEnd(ball);
         continue;
       }
 
@@ -836,6 +845,8 @@ export class Game {
       pulse: Math.max(0.12, Math.min(0.45, dist / 1100)),
     }[kind];
     const rounds = w.fx?.burst || 1;
+    // A wall on the way stops the shot there (and takes the damage)
+    const block = this._coverOnPath(shooter.team, from, target, kind);
     for (let i = 0; i < rounds; i++) {
       this.projectiles.push({
         kind,
@@ -843,10 +854,11 @@ export class Game {
         x0: from.x,
         y0: from.y,
         target,
+        block,
         t: -i * 0.09, // burst rounds follow each other
-        dur,
+        dur: block ? Math.max(0.06, dur * block.k) : dur,
         last: i === rounds - 1,
-        onHit: (last) => this._landShot(shooter, w, target, last),
+        onHit: (last) => (block ? this._hitCover(block, w.dmg) : this._landShot(shooter, w, target, last)),
       });
     }
     soundEngine.playUI(kind === 'lob' ? 180 : kind === 'beam' ? 880 : 520, 0.05);
@@ -860,7 +872,7 @@ export class Game {
       p.t += dt;
       if (p.t < p.dur) continue;
       this.projectiles.splice(i, 1);
-      if (this.turnSystem.phase !== TurnPhase.GAME_OVER && p.target.hp > 0) p.onHit(p.last);
+      if (this.turnSystem.phase !== TurnPhase.GAME_OVER && (p.block || p.target.hp > 0)) p.onHit(p.last);
     }
   }
 
@@ -869,6 +881,8 @@ export class Game {
     const isPlayer = shooter === this.player;
     const foes = () => (isPlayer ? this.enemies.filter((e) => e.hp > 0) : this.player.hp > 0 ? [this.player] : []);
     const over = () => this.turnSystem.phase === TurnPhase.GAME_OVER;
+    // Mine Launcher: plant a mine near the target instead of hitting it
+    if (w.fx?.mine) return this._plantMine(shooter, target, w);
     // Laser: every foe along the beam, out to the gun's reach
     let victims = [target];
     if (w.fx?.line) {
@@ -917,6 +931,25 @@ export class Game {
     }
   }
 
+  /**
+   * A mine lands 80-150px beside the target (never right under it, never on
+   * another mine) and arms. Whoever of the other side steps on it takes the blast.
+   */
+  _plantMine(shooter, target, w) {
+    const mines = this.hazards.filter((h) => h.type === 'mine');
+    for (let tries = 0; tries < 10; tries++) {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const x = Math.max(60, Math.min(W.width - 60, target.x + side * (80 + Math.random() * 70)));
+      if (mines.some((m) => Math.abs(m.x + m.w / 2 - x) < 110)) continue;
+      this.hazards.push({ type: 'mine', x: x - 24, w: 48, armed: true, born: performance.now(), owner: shooter.team, dmg: w.dmg });
+      this.particles.push({ type: 'shockwave', x, y: groundAt(x), radius: 6, maxRadius: 60, life: 0.3, maxLife: 0.3 });
+      soundEngine.playUI(300);
+      this._callout(shooter, 'MINE PLANTED', '#ef7d57');
+      return;
+    }
+    this._callout(shooter, 'NO ROOM FOR A MINE', '#94b0c2');
+  }
+
   /** One shot hitting several enemies (laser, splash, chain). */
   _trackCombo(n) {
     const t = this.battleStats.track;
@@ -944,6 +977,7 @@ export class Game {
       const target = this._currentTarget() || this.enemies.filter((e) => e.hp > 0).sort(this._byDistance(shooter))[0];
       if (target) {
         d.firedAt = performance.now();
+        this._callout(shooter, 'DRONE', d.color || '#ffcd75'); // end-of-turn drone shot, not one of your actions
         const from = d._muzzle || { x: shooter.x, y: shooter.y - shooter.radius * 2 };
         this.projectiles.push({
           kind: 'bullet',
@@ -1001,18 +1035,71 @@ export class Game {
   }
 
   /**
-   * Clear shot from a to b? Platforms and obstacles block everyone; a
-   * barrier only blocks the other side's fire (your own cover doesn't stop you).
+   * Clear shot from a to b? Platforms (solid) always block. With `cover`,
+   * breakable walls and the other side's barriers count too: shots CAN be
+   * fired into those, but they stop there and chip the wall instead.
    */
-  _lineClear(a, b, shooterTeam) {
+  _lineClear(a, b, shooterTeam, cover = true) {
     for (const r of this.platforms) if (segmentHitsRect(a.x, a.y, b.x, b.y, r)) return false;
-    for (const r of this.obstacles) if (r.active !== false && segmentHitsRect(a.x, a.y, b.x, b.y, r)) return false;
+    if (!cover) return true;
+    return !this._coverRects(shooterTeam).some((r) => segmentHitsRect(a.x, a.y, b.x, b.y, r));
+  }
+
+  /** Walls that stop this side's shots: breakable walls, and the other side's barriers. */
+  _coverRects(shooterTeam) {
+    const out = this.obstacles.filter((r) => r.active !== false);
     for (const r of this.barriers) {
       if (!r.active) continue;
       const mine = shooterTeam === 'player' ? r.owner !== 'enemy' : r.owner === 'enemy';
-      if (!mine && segmentHitsRect(a.x, a.y, b.x, b.y, r)) return false;
+      if (!mine) out.push(r);
     }
-    return true;
+    return out;
+  }
+
+  /**
+   * First wall a shot from `from` to `target` runs into: { x, y, rect, k }
+   * with k = how far along the flight (0..1), or null. Lobbed shots follow
+   * their arc (the same one the renderer draws), so they clear low cover.
+   */
+  _coverOnPath(shooterTeam, from, target, kind) {
+    const rects = this._coverRects(shooterTeam);
+    if (!rects.length) return null;
+    const dx = target.x - from.x;
+    const dy = target.y - from.y;
+    if (kind === 'lob') {
+      const arcH = 110 + Math.hypot(dx, dy) * 0.28;
+      const at = (k) => ({ x: from.x + dx * k, y: from.y + dy * k - arcH * 4 * k * (1 - k) });
+      for (let i = 1; i <= 40; i++) {
+        const k = i / 40;
+        const q = at(k);
+        const rect = rects.find((r) => q.x >= r.x && q.x <= r.x + r.w && q.y >= r.y && q.y <= r.y + r.h);
+        if (rect) return { ...q, rect, k };
+      }
+      return null;
+    }
+    let best = null;
+    for (const rect of rects) {
+      const k = segmentEnterT(from.x, from.y, target.x, target.y, rect);
+      if (k !== null && (!best || k < best.k)) best = { x: from.x + dx * k, y: from.y + dy * k, rect, k };
+    }
+    return best;
+  }
+
+  /** A shot that hit a wall: the wall soaks the damage and may break. */
+  _hitCover(block, dmg) {
+    const r = block.rect;
+    if (!r.active && r.active !== undefined) return;
+    const hp = Math.max(0, (r.hp ?? r.maxHp ?? CONFIG.damage.barrierHp) - Math.round(dmg));
+    r.hp = hp;
+    this._spawnHitParticles(block.x, block.y);
+    this.renderer.addFloatingText(block.x, block.y - 20, `-${Math.round(dmg)}`, '#94b0c2');
+    soundEngine.playUI(180, 0.05);
+    if (hp <= 0) {
+      r.active = false;
+      this.particles.push({ type: 'shockwave', x: r.x + r.w / 2, y: r.y + r.h / 2, radius: 10, maxRadius: 120, life: 0.35, maxLife: 0.35 });
+      this.renderer.addFloatingText(r.x + r.w / 2, r.y - 10, 'WALL DOWN', '#ffcd75', true);
+      this.renderer.addScreenShake(10);
+    }
   }
 
   /**
@@ -1027,8 +1114,11 @@ export class Game {
     if (!target) return { ok: false, reason: 'NO TARGET' };
     const d = Math.hypot(target.x - shooter.x, target.y - shooter.y);
     if (d < w.range[0] || d > w.range[1]) return { ok: false, reason: d < w.range[0] ? 'TOO CLOSE' : 'RANGE' };
-    if (!w.arc && !this._lineClear(shooter, target, shooter.team)) return { ok: false, reason: 'BLOCKED' };
-    return { ok: true, reason: '' };
+    if (!w.arc && !this._lineClear(shooter, target, shooter.team, false)) return { ok: false, reason: 'BLOCKED' };
+    // Walls in the way: you can still fire, the wall takes the hit (see _coverOnPath)
+    const from = w._muzzle || shooter;
+    const cover = !!this._coverOnPath(shooter.team, from, target, vfxOf(w));
+    return { ok: true, reason: '', cover };
   }
 
   _byDistance(from) {
@@ -1057,7 +1147,7 @@ export class Game {
     const w = this.playerWeapons[i];
     if (!w || !this.player) return { ok: false, reason: '' };
     const target = this._targetFor(this.player, w);
-    if (target) return { ok: true, reason: '', target, dmg: this._previewDamage(w, target) };
+    if (target) return { ok: true, reason: '', target, cover: this.gunStatus(this.player, w, target).cover, dmg: this._previewDamage(w, target) };
     const probe = this._currentTarget() || this._foesOf(this.player).sort(this._byDistance(this.player))[0];
     const st = this.gunStatus(this.player, w, probe);
     return { ...st, dmg: probe ? this._previewDamage(w, probe) : 0 };
@@ -1311,7 +1401,8 @@ export class Game {
     if (!ready.length) return null;
     // Ammo guns are saved for when you're below 60% HP, unless nothing else can fire
     const save = ready.length > 1 && this.player.hp > this.player.maxHp * 0.6;
-    const value = (w) => w.dmg * (w.fx?.burst || 1) * (w.ammo && save ? 0.4 : 1);
+    const minesDown = this.hazards.filter((h) => h.type === 'mine' && (h.owner || 'enemy') === 'enemy').length;
+    const value = (w) => (w.fx?.mine ? (minesDown < 2 ? 18 : 2) : w.dmg * (w.fx?.burst || 1)) * (w.ammo && save && !w.fx?.mine ? 0.4 : 1);
     return ready.sort((a, b) => value(b) - value(a))[0];
   }
 

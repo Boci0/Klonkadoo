@@ -46,6 +46,7 @@ const RARITY_ORDER = ['common', 'rare', 'epic', 'legendary', 'mythic'];
 // fx: burn / freeze / corrode / splash / chain / pierce (ignores DEF) / leech / crit
 //     burst (hits N times) / line (hits every enemy along the shot)
 //     drain (burns target energy) / heat (adds target heat) / push / pull (px)
+//     mine (the shot plants a mine near the target instead of hitting it)
 // Frames and some modules set the reactor: energy (pool), regen (per turn),
 // heatCap and cool (per turn).
 export const PARTS = [
@@ -91,6 +92,7 @@ export const PARTS = [
   { id: 'wp_beam', type: 'weapon', name: 'LASER BEAM', rarity: 'rare', weight: 16, range: [0, 620], dmg: 7, en: 12, heat: 14, fx: { line: true }, color: '#ff5d73', desc: 'Hits every enemy along the beam.' },
   { id: 'wp_emp', type: 'weapon', name: 'EMP BURST', rarity: 'rare', weight: 14, range: [0, 380], dmg: 4, en: 10, heat: 6, fx: { drain: 14 }, color: '#c46fd6', desc: 'Drains 14 of their energy.' },
   { id: 'wp_grapple', type: 'weapon', name: 'GRAPPLE HOOK', rarity: 'rare', weight: 12, range: [180, 720], dmg: 4, en: 8, heat: 4, fx: { pull: 620 }, color: '#94b0c2', desc: 'Drags the target toward you.' },
+  { id: 'wp_minelauncher', type: 'weapon', name: 'MINE LAUNCHER', rarity: 'rare', weight: 16, range: [150, 900], dmg: 16, en: 8, heat: 6, ammo: 3, arc: true, fx: { mine: true }, color: '#ef7d57', desc: 'Lobs a mine near the target: it blasts whoever steps on it. 3 mines.' },
   { id: 'wp_rocket', type: 'weapon', name: 'ROCKET LAUNCHER', rarity: 'rare', weight: 20, range: [220, 950], dmg: 20, en: 10, heat: 10, ammo: 2, arc: true, fx: { splash: 90 }, color: '#ffcd75', desc: 'Lobbed. 2 rockets per battle.' },
   { id: 'wp_tesla', type: 'weapon', name: 'TESLA COIL', rarity: 'epic', weight: 20, range: [0, 400], dmg: 11, en: 16, heat: 12, fx: { chain: 260 }, color: '#c46fd6', desc: 'Arcs to a second enemy.' },
   { id: 'wp_missiles', type: 'weapon', name: 'MISSILE POD', rarity: 'epic', weight: 24, range: [0, 1400], dmg: 12, en: 12, heat: 8, ammo: 3, arc: true, color: '#ff5d73', desc: 'Any range, over cover. 3 salvos.' },
@@ -385,16 +387,19 @@ export function enemyRig(nodeType, { cdCut = 0 } = {}) {
  * bosses carry two. `atkMult` is the same Risk / condition / wave
  * multiplier the enemy's own ATK gets.
  */
-export function enemyWeapons(nodeType, floor, rnd = Math.random, { atkMult = 1 } = {}) {
+export function enemyWeapons(nodeType, floor, rnd = Math.random, { atkMult = 1, archetype = null } = {}) {
   const f = Math.max(1, Math.min(5, floor));
   const count = nodeType === 'combat' ? 1 : 2;
   const pool = [...ENEMY_POOL[f]];
+  // Minelayers carry a Mine Launcher (plus their usual gun on elite fights)
+  if (archetype === 'minelayer') pool.unshift('wp_minelauncher');
   // Guns are their only damage, so they hit at the gear scale
   const G = CONFIG.gear;
   const scale = G.dmgScale * G.enemyDmgScale * (1 + 0.1 * (f - 1)) * (nodeType === 'boss' ? 1.2 : 1);
   const out = [];
   for (let i = 0; i < count && pool.length; i++) {
-    const base = getPart(pool.splice(Math.floor(rnd() * pool.length), 1)[0]);
+    const pick = archetype === 'minelayer' && i === 0 ? 0 : Math.floor(rnd() * pool.length);
+    const base = getPart(pool.splice(pick, 1)[0]);
     out.push({ ...base, dmg: Math.max(2, Math.round(base.dmg * scale * atkMult)), level: 1 });
   }
   return out;

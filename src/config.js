@@ -172,7 +172,7 @@ export const CONFIG = {
       name: 'MINE LAYER',
       hpMult: 1.1, atkMult: 0.9, defBonus: 1, aiShift: 0.02,
       ability: 'mines',
-      abilityDesc: 'Drops a mine near you each turn: 15 damage if you roll onto it',
+      abilityDesc: 'Carries a Mine Launcher: lobs mines beside you (3 per battle) that blast if you land on them',
       color: '#ef7d57', darkColor: '#5d275d',
     },
   },

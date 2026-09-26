@@ -23,7 +23,7 @@ import { OPERATOR, skinsFor, isSkinUnlocked, skinProgress, skinColors } from '..
 import { ballDataUrl, CLASS_PATTERN } from '../rendering/ballSprite.js';
 import { MEDALS, medalProgress, checkMedals } from '../meta/Medals.js';
 import { masteryLevel, MILESTONES, MAX_MASTERY } from '../meta/Mastery.js';
-import { getPart, loadoutTotals, SLOTS, PARTS, CLEAN_WIN_KEYS } from '../meta/Mech.js';
+import { getPart, loadoutTotals, SLOTS, PARTS, rarityColor, CLEAN_WIN_KEYS } from '../meta/Mech.js';
 import { RigScreen } from './RigScreen.js';
 import { ico, partIcon } from '../rendering/pixelIcons.js';
 
@@ -230,39 +230,48 @@ export class UIManager {
     const b = OPERATOR;
     const owned = saveSystem.getLoadoutParts();
     const t = loadoutTotals(owned);
-    const bySlot = Object.fromEntries(SLOTS.map((s, i) => [s.id, owned[i] ? getPart(owned[i].id) : null]));
-    const slotChip = (slotId) => {
-      const p = bySlot[slotId];
-      const slot = SLOTS.find((s) => s.id === slotId);
-      return p
-        ? `<div class="deploy-part" style="--c:${p.color || '#566c86'}" title="${p.name}"><img src="${partIcon(p.id)}" alt=""><span>${p.name}</span></div>`
-        : `<div class="deploy-part empty"><span>${slot.name}: EMPTY</span></div>`;
-    };
-    const rig = t.overweight
-      ? `<p class="node-line bad">Rig is over its load limit. Fix it on the RIG screen first.</p>`
-      : '';
+    // One row of part icons (names on hover / tap), in the order you'd read a rig
+    const order = ['frame', 'legs', 'weapon1', 'weapon2', 'drone', 'armor', 'module1', 'module2'];
+    const parts = order.map((slotId) => {
+      const o = owned[SLOTS.findIndex((s) => s.id === slotId)];
+      return o ? getPart(o.id) : null;
+    }).filter(Boolean);
+    const icons = parts.map((p) => `<span class="deploy-part" style="--c:${rarityColor(p.rarity)}" title="${p.name}" data-name="${p.name}"><img src="${partIcon(p.id)}" alt="${p.name}"></span>`).join('');
 
     this.openModal('DEPLOY', `
       <div class="deploy">
         <div class="deploy-ball">
           <img class="ball-sprite" id="deploy-sprite" src="${ballDataUrl(skinColors(b, 'default'), 1)}" alt="">
-          <div class="deploy-stats">
-            <span>${ico('hp')}${CONFIG.run.maxHpBase + Math.round(t.hp)}</span>
-            <span>${ico('def')}${t.def.toFixed(1)}</span>
-            <span>${ico('energy')}${t.energy} +${t.regen}/T</span>
-            <span>${ico('heat')}${t.heatCap} -${t.cool}/T</span>
+          <div class="deploy-paint">
+            <button class="btn btn-outline paint-step" data-paint="-1" aria-label="Previous paint">&#9664;</button>
+            <b id="paint-name">COBALT</b>
+            <button class="btn btn-outline paint-step" data-paint="1" aria-label="Next paint">&#9654;</button>
           </div>
         </div>
-        <div class="deploy-rig">
-          ${slotChip('frame')}${slotChip('legs')}${slotChip('weapon1')}${slotChip('weapon2')}${slotChip('drone')}
+        <div class="deploy-info">
+          <div class="deploy-stats">
+            <span title="HP">${ico('hp')}${CONFIG.run.maxHpBase + Math.round(t.hp)}</span>
+            <span title="DEF">${ico('def')}${t.def.toFixed(1)}</span>
+            <span title="Energy pool, refill per turn">${ico('energy')}${t.energy}<em>+${t.regen}</em></span>
+            <span title="Heat cap, cooling per turn">${ico('heat')}${t.heatCap}<em>-${t.cool}</em></span>
+          </div>
+          <div class="deploy-parts">${icons}</div>
+          <p class="deploy-hint" id="deploy-hint">${t.overweight ? '<span class="bad">Over the load limit: fix it on the RIG screen.</span>' : ''}</p>
+          <div class="deploy-mastery" id="ball-mastery"></div>
         </div>
-      </div>
-      ${rig}
-      <div class="ball-sub-row"><div class="skin-row" id="skin-row"></div><span class="ball-mastery" id="ball-mastery"></span></div>`, `<div class="btn-row">
+      </div>`, `<div class="btn-row">
         <button class="btn btn-outline" data-act="cancel">BACK</button>
         <div class="ball-risk-row" id="ball-risk-row"></div>
         <button class="btn btn-primary" data-act="start" ${t.overweight ? 'disabled' : ''}>&#9654; START</button>
       </div>`);
+
+    // Tapping a part names it (phones have no hover)
+    const hint = document.getElementById('deploy-hint');
+    if (!t.overweight) {
+      this.modalBody.querySelectorAll('[data-name]').forEach((el) => el.addEventListener('click', () => {
+        hint.textContent = el.dataset.name;
+      }));
+    }
 
     // Risk + mastery
     const riskRow = this.modalActions.querySelector('#ball-risk-row');
@@ -271,12 +280,11 @@ export class UIManager {
       const val = saveSystem.getDifficultyLevel(b.id);
       const m = masteryLevel(saveSystem.getMasteryXp(b.id));
       const next = MILESTONES.find((x) => x.level > m.level);
-      riskRow.innerHTML = `<span class="skin-label">RISK</span>
-        <button class="btn btn-outline risk-step" data-risk="-1" ${val <= 0 ? 'disabled' : ''}>&minus;</button>
-        <b class="ball-risk-val ${val > 10 ? 'secret' : ''}">${max === 0 ? 'LOCKED' : `RISK <span>${val > 10 ? 'XI' : val}</span>`}</b>
+      riskRow.innerHTML = `<button class="btn btn-outline risk-step" data-risk="-1" ${val <= 0 ? 'disabled' : ''}>&minus;</button>
+        <b class="ball-risk-val ${val > 10 ? 'secret' : ''}">${max === 0 ? 'RISK LOCKED' : `RISK <span>${val > 10 ? 'XI' : val}</span>`}</b>
         <button class="btn btn-outline risk-step" data-risk="1" ${val >= max ? 'disabled' : ''}>+</button>`;
       const bar = m.need ? `<i class="bm-bar" title="${m.into}/${m.need} XP"><i style="width:${Math.round((m.into / m.need) * 100)}%"></i></i>` : '<em>MAX</em>';
-      document.getElementById('ball-mastery').innerHTML = `<b>${ico('star')}MASTERY ${m.level}</b> ${bar}${next ? `<span class="dim-text">Next (Lv ${next.level}): ${next.label}</span>` : ''}`;
+      document.getElementById('ball-mastery').innerHTML = `<b>${ico('star')}MASTERY ${m.level}</b>${bar}${next ? `<span title="Next at level ${next.level}">${next.label}</span>` : ''}`;
       riskRow.querySelectorAll('[data-risk]').forEach((btn) => btn.addEventListener('click', () => {
         saveSystem.setDifficultyLevel(val + Number(btn.dataset.risk), b.id);
         soundEngine.playUI();
@@ -285,52 +293,44 @@ export class UIManager {
       }));
     };
 
-    // Paints (locked ones show what unlocks them)
+    // Paint: step through all paints; locked ones show what unlocks them
+    const list = skinsFor();
+    const stats = saveSystem.getBallStats(b.id);
     let skin = 'default';
-    const skinRow = document.getElementById('skin-row');
-    const renderSkins = () => {
-      const stats = saveSystem.getBallStats(b.id);
-      const list = skinsFor();
-      try {
-        skin = localStorage.getItem(`slingshot-skin-${b.id}`) || 'default';
-      } catch (_) {}
-      if (!isSkinUnlocked(list.find((s) => s.id === skin), stats)) skin = 'default';
-      skinRow.innerHTML = '<span class="skin-label">PAINT</span>' + list.map((s) => {
-        const open = isSkinUnlocked(s, stats);
-        const [cur, max] = open ? [1, 1] : skinProgress(s, stats).split('/').map(Number);
-        return `<button class="skin-btn ${s.id === skin ? 'selected' : ''} ${open ? '' : 'locked'}" data-skin="${s.id}" title="${open ? s.name : `${s.name}: ${s.hint}`}">
-          <img src="${ballDataUrl(skinColors(b, s.id), 1)}" alt="">${open ? '' : `${ico('lock')}<i class="skin-prog"><i style="width:${Math.round((cur / max) * 100)}%"></i></i>`}
-        </button>`;
-      }).join('') + '<span class="skin-info" id="skin-info"></span>';
-      const info = document.getElementById('skin-info');
-      const describe = (s) => {
-        info.innerHTML = isSkinUnlocked(s, stats) ? `<b>${s.name}</b>` : `<b>${s.name}</b> ${s.hint} <em>${skinProgress(s, stats)}</em>`;
-      };
-      describe(list.find((s) => s.id === skin) || list[0]);
-      document.getElementById('deploy-sprite').src = ballDataUrl(skinColors(b, skin), 1);
-      skinRow.querySelectorAll('[data-skin]').forEach((btn) => btn.addEventListener('click', () => {
-        const s = list.find((x) => x.id === btn.dataset.skin);
-        if (!isSkinUnlocked(s, stats)) {
-          soundEngine.playUI();
-          return describe(s);
-        }
-        skin = btn.dataset.skin;
+    try {
+      skin = localStorage.getItem(`slingshot-skin-${b.id}`) || 'default';
+    } catch (_) {}
+    if (!isSkinUnlocked(list.find((s) => s.id === skin), stats)) skin = 'default';
+    let shown = Math.max(0, list.findIndex((s) => s.id === skin));
+    const renderPaint = () => {
+      const s = list[shown];
+      const open = isSkinUnlocked(s, stats);
+      document.getElementById('deploy-sprite').src = ballDataUrl(skinColors(b, s.id), 1);
+      document.getElementById('deploy-sprite').classList.toggle('locked', !open);
+      document.getElementById('paint-name').innerHTML = open ? s.name : `${ico('lock')}${s.name}`;
+      if (!t.overweight) hint.textContent = open ? `${list.filter((x) => isSkinUnlocked(x, stats)).length}/${list.length} paints` : `${s.hint} (${skinProgress(s, stats)})`;
+      if (open) {
+        skin = s.id;
         try {
           localStorage.setItem(`slingshot-skin-${b.id}`, skin);
         } catch (_) {}
-        soundEngine.play('select');
-        renderSkins();
-      }));
+      }
     };
+    this.modalBody.querySelectorAll('[data-paint]').forEach((btn) => btn.addEventListener('click', () => {
+      shown = (shown + Number(btn.dataset.paint) + list.length) % list.length;
+      soundEngine.playUI();
+      renderPaint();
+    }));
+
     saveSystem.setSelectedBall(b.id);
     renderRisk();
-    renderSkins();
+    renderPaint();
 
     this.modalActions.querySelector('[data-act="cancel"]').addEventListener('click', () => this.closeModal());
     this.modalActions.querySelector('[data-act="start"]').addEventListener('click', () => {
       soundEngine.play('confirm');
       this.closeModal();
-      onStart(b.id, skin);
+      onStart(b.id, skin); // a locked paint on screen isn't used: the last unlocked one is
     });
   }
 
@@ -582,7 +582,8 @@ export class UIManager {
 
   showUpdate(update) {
     // First real line of the release notes (skipping headings), without markdown noise
-    const note = update.notes.split('\n').filter((l) => !l.trim().startsWith('#'))
+    // (GitHub's auto notes end with a bare "Full Changelog" link: not worth showing)
+    const note = update.notes.split('\n').filter((l) => !l.trim().startsWith('#') && !/full changelog|https?:\/\//i.test(l))
       .map((l) => l.replace(/^[*\-\s]+/, '').replace(/[<>&*`]/g, '').trim()).find(Boolean) || '';
     this.openModal('UPDATE READY', `
       <p><strong class="accent-green">v${update.version}</strong> <span class="dim-text">(you have v${pkg.version})</span></p>

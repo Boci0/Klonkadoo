@@ -534,8 +534,10 @@ export class Renderer {
     for (const p of world.projectiles || []) {
       if (p.t < 0) continue; // a burst round still waiting its turn
       const k = Math.min(1, p.t / p.dur);
-      const tx = p.target.x;
-      const ty = p.target.y;
+      // Shots that hit a wall end there (lobs: their arc is cut short at the wall)
+      const lobbedIntoWall = p.kind === 'lob' && p.block;
+      const tx = p.block && !lobbedIntoWall ? p.block.x : p.target.x;
+      const ty = p.block && !lobbedIntoWall ? p.block.y : p.target.y;
       const dx = tx - p.x0;
       const dy = ty - p.y0;
       const dist = Math.hypot(dx, dy) || 1;
@@ -563,7 +565,11 @@ export class Renderer {
         }
         case 'lob': {
           const arcH = 110 + dist * 0.28;
-          const at = (kk) => ({ x: p.x0 + dx * kk, y: p.y0 + dy * kk - arcH * 4 * kk * (1 - kk) });
+          const cut = lobbedIntoWall ? p.block.k : 1; // the arc was aimed at the target, it stops at the wall
+          const at = (kk0) => {
+            const kk = kk0 * cut;
+            return { x: p.x0 + dx * kk, y: p.y0 + dy * kk - arcH * 4 * kk * (1 - kk) };
+          };
           // Smoke trail: fading puffs behind the shell
           for (let i = 1; i <= 6; i++) {
             const kk = k - i * 0.035;

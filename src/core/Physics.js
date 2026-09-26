@@ -276,21 +276,7 @@ export function resolveBarrierCollisions(ball, barriers) {
     if (velDot < 0) {
       const impactSpeed = Math.abs(velDot);
 
-      // Only apply destruction logic if structure is destructible (has HP)
-      if (barrier.hp !== undefined || barrier.maxHp !== undefined) {
-        if (ball.isShard) {
-          barrier.hp = 0;
-          barrier.active = false;
-        } else if (barrier.maxHp && impactSpeed >= 30) {
-          const dmg = Math.round(impactSpeed * 0.15);
-          barrier.hp = Math.max(0, (barrier.hp ?? barrier.maxHp) - dmg);
-          if (barrier.hp <= 0) barrier.active = false;
-        } else if (impactSpeed >= CONFIG.damage.barrierImpactMinSpeed) {
-          const dmg = Math.round(impactSpeed * 0.05);
-          barrier.hp = Math.max(0, (barrier.hp ?? CONFIG.damage.barrierHp) - dmg);
-          if (barrier.hp <= 0) barrier.active = false;
-        }
-      }
+      // Bodies never damage barriers or breakable walls: only gunfire does (Game._shoot)
 
       const e = Math.min(0.95, W.wallRestitution * (ball.bounce || 1));
       ball.vx -= (1 + e) * velDot * nx;

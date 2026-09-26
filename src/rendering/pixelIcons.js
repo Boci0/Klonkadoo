@@ -204,6 +204,16 @@ const WEAPON_GRIDS = {
     'kbbk........',
     'kkk.........',
   ],
+  wp_minelauncher: [
+    '............',
+    '.kkkkkkk....',
+    'khhhhhhhk.kk',
+    'kaaaaaaaakook',
+    'kbbbbbbbk.kk',
+    'kbbkkkkk....',
+    'kbbk........',
+    'kkkk........',
+  ],
   wp_rocket: [
     '............',
     'kkkkkkkkkk..',
