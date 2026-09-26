@@ -69,7 +69,7 @@ export const CONFIG = {
     barrierImpactMinSpeed: 200, // min ball speed to damage a barrier
   },
 
-  // --- Gear combat (combatMode 'gear'): guns are the only damage ---
+  // --- Gear combat: guns are the only damage ---
   gear: {
     dmgScale: 2.2, // gun/drone damage vs the classic numbers (bodies no longer hit)
     enemyDmgScale: 0.6, // enemy guns hit this much of a same-level player gun
@@ -379,7 +379,7 @@ export const CONFIG = {
     { id: 'quest_perfect', name: 'Flawless Run', desc: 'Reach floor 5 without losing a combat', reward: 5 },
     { id: 'quest_elite', name: 'Elite Killer', desc: 'Defeat an elite combat node', reward: 3 },
     { id: 'quest_rest', name: 'Recovery', desc: 'Use a Safe Zone node to heal 40+ HP in one run', reward: 1 },
-    { id: 'quest_bounce', name: 'Pinball', desc: 'Hit an enemy after a wall bounce', reward: 1 },
+    { id: 'quest_bounce', name: 'Pinball', desc: 'Bounce off a wall, then land a gun hit that turn', reward: 1 },
     { id: 'quest_lowhp', name: 'Survivor', desc: 'Win a combat with 10 HP or less', reward: 3 },
   ],
 
@@ -389,13 +389,13 @@ export const CONFIG = {
   // split off it, and a capstone that needs both. `col`/`row` place the
   // node on the branch graph; `requires` needs at least one rank first.
   techTree: {
-    // SKILL branch: your ball's signature skill
-    skl_potency: { id: 'skl_potency', label: 'Skill Potency', desc: 'Your class skill is 8% stronger per rank', maxLevel: 5, costs: [8, 12, 16, 22, 30], branch: 'skl', icon: 'POT', col: 0, row: 1, requires: [] },
-    skl_recharge: { id: 'skl_recharge', label: 'Quick Recharge', desc: 'Skill cooldown -1 turn per rank', maxLevel: 2, costs: [30, 60], branch: 'skl', icon: 'CD', col: 1, row: 0, requires: ['skl_potency'] },
-    skl_echo: { id: 'skl_echo', label: 'Echo', desc: '12% chance per rank that using your skill costs no cooldown', maxLevel: 3, costs: [14, 22, 32], branch: 'skl', icon: 'ECH', col: 1, row: 2, requires: ['skl_potency'] },
-    skl_opener: { id: 'skl_opener', label: 'Opening Gambit', desc: 'The first skill you use each battle is empowered', maxLevel: 1, costs: [40], branch: 'skl', icon: 'OPN', col: 2, row: 0, requires: ['skl_recharge'] },
-    skl_momentum: { id: 'skl_momentum', label: 'Momentum', desc: 'Each enemy you defeat cuts your skill cooldown by 1 turn', maxLevel: 1, costs: [40], branch: 'skl', icon: 'MOM', col: 2, row: 2, requires: ['skl_echo'] },
-    skl_overload: { id: 'skl_overload', label: 'Overload', desc: 'CAPSTONE: your skill is always empowered', maxLevel: 1, costs: [120], branch: 'skl', icon: 'OVL', col: 3, row: 1, requires: ['skl_opener', 'skl_momentum'], capstone: true },
+    // REACTOR branch: energy and heat, the budget every gun shot comes out of
+    rct_capacitor: { id: 'rct_capacitor', label: 'Capacitor', desc: '+4 energy pool per rank', maxLevel: 5, costs: [8, 12, 16, 22, 30], branch: 'rct', icon: 'CAP', col: 0, row: 1, requires: [] },
+    rct_dynamo: { id: 'rct_dynamo', label: 'Dynamo', desc: '+2 energy refilled each turn per rank', maxLevel: 2, costs: [30, 60], branch: 'rct', icon: 'DYN', col: 1, row: 0, requires: ['rct_capacitor'] },
+    rct_coolant: { id: 'rct_coolant', label: 'Coolant Lines', desc: 'Cool 3 more heat each turn per rank', maxLevel: 3, costs: [14, 22, 32], branch: 'rct', icon: 'COL', col: 1, row: 2, requires: ['rct_capacitor'] },
+    rct_opener: { id: 'rct_opener', label: 'Opening Salvo', desc: 'Your first shot each battle costs no energy or heat', maxLevel: 1, costs: [40], branch: 'rct', icon: 'OPN', col: 2, row: 0, requires: ['rct_dynamo'] },
+    rct_scavenge: { id: 'rct_scavenge', label: 'Scavenger', desc: 'Each enemy you defeat refunds 10 energy', maxLevel: 1, costs: [40], branch: 'rct', icon: 'SCV', col: 2, row: 2, requires: ['rct_coolant'] },
+    rct_overclock: { id: 'rct_overclock', label: 'Overclock', desc: 'CAPSTONE: +1 action on every 3rd turn', maxLevel: 1, costs: [120], branch: 'rct', icon: 'OVC', col: 3, row: 1, requires: ['rct_opener', 'rct_scavenge'], capstone: true },
 
     // BARRIER branch: the wall you place with button 2
     bar_reinforce: { id: 'bar_reinforce', label: 'Reinforced Wall', desc: 'Your barriers have +25% HP per rank', maxLevel: 4, costs: [6, 10, 16, 24], branch: 'bar', icon: 'WAL', col: 0, row: 1, requires: [] },
@@ -428,8 +428,8 @@ export const CONFIG = {
     { id: 'boon_def', name: 'Hardened Shell', desc: '+4 DEF.', color: '#41a6f6' },
     { id: 'boon_hp', name: 'Colossus', desc: '+40 max HP.', color: '#a7f070' },
     { id: 'boon_greed', name: 'Greed', desc: '+25% gold, but -5 max HP.', color: '#ffcd75' },
-    { id: 'boon_swift', name: 'Swift Loader', desc: '+15% launch power, +15% ATK.', color: '#c46fd6' },
-    { id: 'boon_power', name: 'Long Draw', desc: '+15% launch power.', color: '#ef7d57' },
+    { id: 'boon_swift', name: 'Swift Loader', desc: '+15% move power, +15% ATK.', color: '#c46fd6' },
+    { id: 'boon_power', name: 'Long Draw', desc: '+15% move power.', color: '#ef7d57' },
     { id: 'boon_regen', name: 'Regeneration', desc: 'Heal 10 HP after each battle won.', color: '#a7f070' },
   ],
 

@@ -84,13 +84,13 @@ export class TechTree {
       hpBonus: 0,
       defBonus: 0,
 
-      // SKILL
-      skillPotency: L('skl_potency') * 0.08,
-      skillCdCut: L('skl_recharge'),
-      skillEchoPct: L('skl_echo') * 0.12,
-      skillOpener: L('skl_opener') > 0,
-      skillMomentum: L('skl_momentum') > 0,
-      skillOverload: L('skl_overload') > 0,
+      // REACTOR (gun energy / heat)
+      rigEnergy: L('rct_capacitor') * 4,
+      rigRegen: L('rct_dynamo') * 2,
+      rigCool: L('rct_coolant') * 3,
+      freeFirstShot: L('rct_opener') > 0,
+      killEnergy: L('rct_scavenge') * 10,
+      overclock: L('rct_overclock') > 0,
 
       // BARRIER
       barrierHpPct: L('bar_reinforce') * 0.25,

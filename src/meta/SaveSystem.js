@@ -56,6 +56,19 @@ export class SaveSystem {
       d.techRefund = refund; // shown once on the tech screen
       d.techVersion = 2;
     }
+    if ((d.techVersion || 1) < 3) {
+      // Classes and skills were retired for gear combat: refund the SKILL branch
+      const oldSkill = { skl_potency: [8, 12, 16, 22, 30], skl_recharge: [30, 60], skl_echo: [14, 22, 32], skl_opener: [40], skl_momentum: [40], skl_overload: [120] };
+      const bought = d.techTreePurchases || {};
+      let refund = 0;
+      for (const [id, costs] of Object.entries(oldSkill)) {
+        for (let i = 0; i < (bought[id] || 0); i++) refund += costs[i] || 0;
+        delete bought[id];
+      }
+      d.techPoints = (d.techPoints || 0) + refund;
+      if (refund) d.techRefund = (d.techRefund || 0) + refund; // shown once on the tech screen
+      d.techVersion = 3;
+    }
     if (!d.ballRisk) {
       // Old saves shared one Risk ladder: each ball keeps what it has won on,
       // and the ball with the most wins keeps the whole old ladder
@@ -68,14 +81,21 @@ export class SaveSystem {
       if (best) d.ballRisk[best] = global;
       for (const id of Object.keys(d.ballRisk)) d.ballRiskSel[id] = Math.min(d.difficultyLevel || 0, d.ballRisk[id]);
     }
-    d.selectedBall = d.selectedBall || 'vanguard';
+    d.selectedBall = 'operator';
+    // Legs became a slot: older rigs get a pair of Strider legs fitted
+    const m = d.mech;
+    if (m && m.loadout && !('legs' in m.loadout)) {
+      const uid = newUid();
+      m.owned.push({ uid, id: 'lg_strider', level: 1 });
+      m.loadout.legs = uid;
+    }
     this.save();
   }
 
   _defaults() {
     return {
       version: 2,
-      techVersion: 2, // fresh saves start on the skill tree (see _migrate)
+      techVersion: 3, // fresh saves start on the current tree (see _migrate)
       profile: {
         name: 'operator',
         callsign: 'SLING-01',
@@ -312,7 +332,7 @@ export class SaveSystem {
   // account but only opens for balls that have reached Risk 10.
 
   getSelectedBall() {
-    return this.data.selectedBall || 'vanguard';
+    return 'operator'; // one ball since classes were retired
   }
 
   setSelectedBall(id) {

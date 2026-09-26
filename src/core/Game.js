@@ -1,8 +1,9 @@
 // ============================================================
 // Game — orchestrates the full game loop: turn flow, physics
-// stepping, collisions, damage, AI, input, sound effects, and rendering.
-// Supports multi-enemy battles, operative ball classes with their own
-// signature skills, trick-shot combos, arena obstacles and screen shake.
+// stepping, collisions, gunfire, AI, input, sound effects, and rendering.
+// Combat is gear-driven: bodies only move and ram (EXPOSE); every point of
+// damage comes from guns and drones, paid for with actions, energy and
+// heat. Multi-enemy battles, arena obstacles and screen shake.
 // ============================================================
 
 import { CONFIG } from '../config.js';
@@ -17,9 +18,9 @@ import { Renderer } from '../rendering/Renderer.js';
 import { soundEngine } from '../utils/SoundEngine.js';
 import { saveSystem } from '../meta/SaveSystem.js';
 import { haptics } from '../platform/haptics.js';
-import { getBall, getSkill } from '../meta/Balls.js';
+import { getBall } from '../meta/Balls.js';
+import { DEFAULT_MOVE } from '../meta/Mech.js';
 import { pickArena } from './Arenas.js';
-import { isGearMode } from '../meta/combatMode.js';
 
 const W = CONFIG.world;
 const B = CONFIG.ball;
@@ -27,6 +28,16 @@ const C = CONFIG.colors;
 
 const FIXED_DT = 1 / 120;
 const G = CONFIG.gear;
+
+/** How a gun's shot looks in flight (see Game._shoot and Renderer._drawProjectiles). */
+export function vfxOf(w) {
+  if (w.arc) return 'lob';
+  if (w.fx?.pull) return 'hook';
+  if (w.fx?.push || w.fx?.drain) return 'pulse';
+  if (w.fx?.line || w.fx?.chain || w.fx?.pierce || w.fx?.heat) return 'beam';
+  if (w.fx?.burn || w.fx?.corrode || w.fx?.freeze) return 'spray';
+  return 'bullet';
+}
 
 /** Does segment (x1,y1)-(x2,y2) cross rectangle r? (Liang-Barsky clip) */
 function segmentHitsRect(x1, y1, x2, y2, r) {
@@ -55,7 +66,7 @@ const DEFAULT_BATTLE = {
   ],
   relics: [],
   nodeType: 'combat',
-  ballType: 'vanguard',
+  ballType: 'operator',
   floor: 1,
 };
 
@@ -97,25 +108,21 @@ export class Game {
       turns: 0,
       playerDamageTaken: 0,
       wallBounced: false,
+      bouncedThisTurn: false, // Ricochet Crest
+      fullDrawThisTurn: false, // Full Draw
       echoUsed: false,
       clusteredThisTurn: false,
-      overdriveStacks: 0,
-      skillArmed: null, // { type, label, color, desc } while a skill waits for the next shot
-      shrapnel: 0, // bounces left that burst into fragments (Cluster skill)
-      shot: null, // the player's shot in flight, for combos and trick shots
-      // Totals the run screen saves into per-ball / lifetime stats
-      track: { kills: 0, hits: 0, bestHit: 0, shardHits: 0, diveHits: 0, pierceHits: 0, skillUses: 0, crits: 0, trickShots: 0, maxCombo: 0, bossKills: 0 },
+      // Totals the run screen saves into ball / lifetime stats
+      track: { kills: 0, hits: 0, bestHit: 0, crits: 0, maxCombo: 0, bossKills: 0, rams: 0, shots: 0 },
+      // The end-of-battle report
+      report: { dealt: 0, shots: 0, rams: 0, vents: 0, byGun: {} },
     };
   }
 
   _freshAbilities() {
     const relicCut = this.relics?.includes('rel_overcharge') ? 1 : 0;
     const tech = this.techStats || {};
-    const ballType = this.battleConfig?.ballType || 'vanguard';
-    const skill = getSkill(ballType);
-    const classCut = ballType === 'vanguard' ? 1 : 0;
     return {
-      skill: { ready: true, cooldownLeft: 0, baseCooldown: Math.max(1, skill.cooldown - relicCut - (tech.skillCdCut || 0) - classCut), name: skill.name, def: skill },
       barrier: { ready: true, cooldownLeft: 0, baseCooldown: Math.max(1, CONFIG.abilities.barrier.cooldown - relicCut - (tech.barrierCdCut || 0)), name: CONFIG.abilities.barrier.name },
     };
   }
@@ -127,7 +134,7 @@ export class Game {
       enemies: (opts.enemies && opts.enemies.length ? opts.enemies : DEFAULT_BATTLE.enemies),
       relics: opts.relics || [],
       nodeType: opts.nodeType || 'combat',
-      ballType: opts.ballType || 'vanguard',
+      ballType: 'operator',
       floor: opts.floor || 1,
     };
     this.reset(merged);
@@ -139,7 +146,7 @@ export class Game {
     this.battleStats = this._freshBattleStats();
     this.relics = config.relics || [];
 
-    const ballType = config.ballType || 'vanguard';
+    const ballType = 'operator';
     const ballDef = getBall(ballType);
     const pRadius = Math.round(B.radius * ballDef.radiusMult);
     const pColor = config.skinColors?.color || ballDef.color;
@@ -188,20 +195,32 @@ export class Game {
         radius: e.radius,
       });
     });
-    // Gear combat: guns are the only damage, fired by hand, paid for in energy + heat
-    this.gear = config.gear ?? isGearMode();
+    // Guns are the only damage, fired by hand, paid for in actions, energy + heat
+    this.gear = true;
+    this.projectiles = []; // shots in flight (damage lands on arrival)
     this.enemies.forEach((b, i) => {
       b.rank = config.enemies[i]?.rank || null;
-      b.weapons = (config.enemies[i]?.weapons || []).map((w) => ({ ...w, cdLeft: 0, ammoLeft: w.ammo || 0 }));
+      b.weapons = (config.enemies[i]?.weapons || []).map((w) => ({ ...w, ammoLeft: w.ammo || 0 }));
+      b.legs = config.enemies[i]?.legs || null; // how it can move (Mech.enemyLegs)
       this._initRig(b, config.enemies[i]?.rig || G.enemyRig[['elite', 'miniboss', 'boss'].includes(config.nodeType) ? config.nodeType : 'combat']);
     });
 
     this.techStats = config.techStats || {};
     // Rig weapons (classic: auto-fire after your shot settles; gear: fired by hand) and drones (every turn)
-    const gunScale = this.gear ? G.dmgScale : 1;
-    this.playerWeapons = (this.techStats.mech?.weapons || []).map((w) => ({ ...w, dmg: w.dmg * gunScale, cdLeft: 0, ammoLeft: w.ammo || 0 }));
-    this.playerDrones = (this.techStats.mech?.drones || []).map((d) => ({ ...d, dmg: d.dmg ? d.dmg * gunScale : d.dmg })); // copies: the renderer tags them
+    const gunScale = G.dmgScale;
+    this.playerWeapons = (this.techStats.mech?.weapons || []).map((w) => ({ ...w, dmg: w.dmg * gunScale, ammoLeft: w.ammo || 0 }));
+    // Drones start docked (OFF): switching one ON deploys it for the rest of the battle
+    this.playerDrones = (this.techStats.mech?.drones || []).map((d) => ({ ...d, dmg: d.dmg ? d.dmg * gunScale : d.dmg, off: true })); // copies: the renderer tags them
     this._initRig(this.player, this.techStats.mech?.rig || G.baseRig);
+    // Tech tree Reactor branch and reactor relics
+    const t = this.techStats;
+    const R = (id) => (config.relics || []).includes(id);
+    this.player.energyMax += (t.rigEnergy || 0) + (R('rel_energy_well') ? 12 : 0);
+    this.player.energy = this.player.energyMax;
+    this.player.regen += (t.rigRegen || 0) + (R('rel_energy_well') ? 3 : 0) + (R('rel_overcharge') ? 4 : 0);
+    this.player.cool += t.rigCool || 0;
+    // Legs: how you move (launch power band / angle), or anchored = no moving
+    this.player.legs = this.techStats.mech?.legs || null;
     this.fireTarget = null; // gear: the enemy you tapped to aim your guns at
     this.enemyFire = null; // gear: an enemy working through its shots
     this.autoEnd = 0; // gear: seconds until a fire phase with nothing left to do ends itself
@@ -245,11 +264,12 @@ export class Game {
     this.winner = null;
     this.turnSystem.reset();
     this.turnSystem.enemyIndex = 0;
-    this.slingshotInput.setActive(true);
+    this.slingshotInput.setActive(this.canPlayerMove);
     this.slingshotInput.setAnchor(this.player.x, this.player.y, this.player.radius);
     this.slingshotInput.powerMult = config.maxPowerMult || 1;
+    this.slingshotInput.move = this.player.legs?.move || DEFAULT_MOVE;
     this.slingshotInput.zeroGTime = 0;
-    this.slingshotInput.ignoreWind = ballType === 'graviton';
+    this.slingshotInput.ignoreWind = false;
     this.slingshotInput.gravityMult = ballDef.gravityMult || 1;
     this.fortifiedStacks = 0;
     this.slingshotInput.pads = this.hazards.filter((h) => h.type === 'pad');
@@ -281,93 +301,14 @@ export class Game {
     const ab = this.abilities[id];
     if (!ab || !ab.ready) return false;
 
-    if (id === 'skill') {
-      if (!this.turnSystem.isPlayerTurn || !this.turnSystem.isAiming) return false;
-      if (!this._useSkill(this.battleConfig.ballType || 'vanguard')) return false;
-      this.battleStats.skillUsedOnce = true;
-      this.battleStats.track.skillUses += 1;
-      if (Math.random() < (this.techStats?.skillEchoPct || 0)) {
-        this._callout(this.player, 'ECHO: SKILL READY', '#ffcd75');
-        return true;
-      }
-      ab.ready = false;
-      ab.cooldownLeft = ab.baseCooldown;
-      return true;
-    }
-
     if (id === 'barrier') {
-      if (this.playerBarrierCount >= this._maxBarriers()) return false;
+      if (this.playerBarrierCount >= this._maxBarriers() || !this.canPlayerAct) return false;
 
       this.slingshotInput.startBarrierPlacement();
       return true;
     }
 
     return false;
-  }
-
-  /** Class signature skills. Energy Well (relic) empowers each one. */
-  _useSkill(ballType) {
-    const skill = getSkill(ballType);
-    const type = getBall(ballType).skill;
-    const tech = this.techStats || {};
-    const bs = this.battleStats;
-    const empowered = this.relics.includes('rel_energy_well') || !!tech.skillOverload || (!!tech.skillOpener && !bs.skillUsedOnce);
-    const pot = 1 + (tech.skillPotency || 0); // Skill Potency scales every skill's bonus
-    const pct = (base) => Math.round(base * pot);
-    const arm = (label, desc) => {
-      bs.skillArmed = { type, label, color: skill.color, desc, empowered };
-      this.renderer.showBanner(`${skill.name} ARMED`, skill.color);
-      soundEngine.playAbility('overdrive');
-      haptics.impact('medium');
-    };
-
-    switch (type) {
-      case 'overdrive':
-        bs.overdriveStacks = (bs.overdriveStacks || 0) + 1;
-        bs.overdriveActive = true;
-        bs.overdriveEmpowered = empowered;
-        soundEngine.playAbility('overdrive');
-        this.events.emit('ability-used', { id: 'skill', name: `OVERDRIVE (STACK ${bs.overdriveStacks}x)` });
-        return true;
-      case 'railshot':
-        arm('RAILGUN', `Next shot pierces every enemy it touches for +${pct(empowered ? 50 : 25)}% damage.`);
-        return true;
-      case 'shrapnel':
-        arm(`SHRAPNEL x${empowered ? 5 : 3}`, `Next shot bursts into homing fragments on its next ${empowered ? 5 : 3} bounces.`);
-        return true;
-      case 'zerog':
-        this.slingshotInput.zeroGTime = empowered ? 1.2 : 0.8;
-        arm('ZERO-G', `Next shot flies straight for ${empowered ? 1.2 : 0.8}s and hits for +${pct(empowered ? 35 : 20)}% damage.`);
-        return true;
-      case 'quake':
-        this._seismicSlam(empowered);
-        return true;
-      default:
-        return false;
-    }
-  }
-
-  /** Juggernaut: every grounded enemy takes damage, loses its shield and is thrown up. */
-  _seismicSlam(empowered) {
-    const raw = (empowered ? 18 : 12) * (1 + (this.techStats?.skillPotency || 0)) * (this.collisionSystem.stats.playerAtk || 1);
-    this.renderer.addScreenShake(20);
-    this.addHitStop(0.08);
-    soundEngine.playImpact(2);
-    haptics.impact('heavy');
-    this.particles.push({ type: 'shockwave', x: this.player.x, y: groundAt(this.player.x), radius: 20, maxRadius: 900, life: 0.5, maxLife: 0.5 });
-    this._callout(this.player, 'SEISMIC SLAM', '#73eff7');
-    let hitAny = false;
-    for (const enemy of this.enemies) {
-      if (enemy.hp <= 0 || enemy.y + enemy.radius < groundAt(enemy.x) - 8) continue;
-      hitAny = true;
-      enemy.shieldCharges = 0;
-      enemy.vy = -700;
-      const dmg = Math.max(1, Math.round(raw - (enemy.def || 0) * 0.5));
-      const killed = enemy.takeDamage(dmg);
-      this.particles.push({ type: 'shockwave', x: enemy.x, y: groundAt(enemy.x), radius: 10, maxRadius: 120, life: 0.35, maxLife: 0.35 });
-      this.events.emit('damage', { attacker: this.player, victim: enemy, damage: dmg, killed });
-    }
-    if (!hitAny) this._callout(this.player, 'NO TARGETS ON THE GROUND', '#94b0c2');
   }
 
   /** Your active barriers (enemy walls don't count toward your cap). */
@@ -390,26 +331,18 @@ export class Game {
    * keeps a wall across that path, close enough to protect itself. It moves
    * the wall when you find a new angle, with a cooldown between moves.
    */
-  _tankWall(enemy) {
+  _tankWall(enemy, act = () => true) {
     enemy.wallCd = Math.max(0, (enemy.wallCd || 0) - 1);
     const wall = enemy.wall?.active ? enemy.wall : null;
     if (!wall && enemy.hp >= enemy.maxHp * 0.9 && this.aggression < 0.4) return; // not threatened yet
     if (enemy.wallCd > 0) return;
 
-    let spot = null;
-    if (this.gear) {
-      // Gear combat: stand the wall in your line of fire, 110px in front of the tank
-      if (wall && !this._lineClear(this.player, enemy, 'player')) return; // already covered
-      const d = Math.hypot(this.player.x - enemy.x, this.player.y - enemy.y) || 1;
-      if (d < 150) return; // too close for cover to help
-      spot = { x: enemy.x + ((this.player.x - enemy.x) / d) * 110, y: enemy.y + ((this.player.y - enemy.y) / d) * 110 };
-    } else {
-      this._syncAiWorld();
-      const maxPower = CONFIG.slingshot.maxPower * (this.slingshotInput.powerMult || 1);
-      const plan = this.enemyAI.findBestShot(this.player, enemy, { maxPower, aggression: 0.5 });
-      if (wall && (!plan?.hit || this._pathCrosses(plan.path, wall))) return; // your best line is already blocked
-      spot = plan?.hit ? this._wallSpot(enemy, plan.path) : null;
-    }
+    // Stand the wall in your line of fire, 110px in front of the tank
+    if (wall && !this._lineClear(this.player, enemy, 'player')) return; // already covered
+    const d = Math.hypot(this.player.x - enemy.x, this.player.y - enemy.y) || 1;
+    if (d < 150) return; // too close for cover to help
+    if (!act(8)) return; // raising a wall is one of its actions
+    const spot = { x: enemy.x + ((this.player.x - enemy.x) / d) * 110, y: enemy.y + ((this.player.y - enemy.y) / d) * 110 };
     const side = Math.sign(this.player.x - enemy.x) || -1;
     const pos = spot || { x: enemy.x + side * 110, y: groundAt(enemy.x + side * 110) - 50 };
     const bw = 14;
@@ -433,21 +366,6 @@ export class Game {
     this._callout(enemy, wall ? 'WALL MOVED' : 'WALL UP', '#41a6f6');
   }
 
-  /** Where on your predicted path to stand a wall: 100-240px in front of the tank. */
-  _wallSpot(enemy, path) {
-    for (let i = path.length - 1; i >= 0; i--) {
-      const p = path[i];
-      const dx = Math.abs(p.x - enemy.x);
-      if (dx >= 100 && dx <= 240 && p.y < W.groundY - 20) return p;
-    }
-    return null;
-  }
-
-  _pathCrosses(path, rect) {
-    const pad = (this.player?.radius || 24) * 0.8;
-    return path.some((p) => p.x > rect.x - pad && p.x < rect.x + rect.w + pad && p.y > rect.y - pad && p.y < rect.y + rect.h + pad);
-  }
-
   _barrierHp() {
     return Math.round(CONFIG.damage.barrierHp * (this.relics.includes('rel_graviton_lens') ? 2 : 1) * (1 + (this.techStats?.barrierHpPct || 0)));
   }
@@ -459,7 +377,7 @@ export class Game {
 
   deployBarrierAt(x, y) {
     const ab = this.abilities.barrier;
-    if (!ab || !ab.ready) return false;
+    if (!ab || !ab.ready || !this.canPlayerAct) return false; // one of your actions, on your turn
     if (this.playerBarrierCount >= this._maxBarriers()) return false;
 
     const bw = 14;
@@ -478,6 +396,8 @@ export class Game {
     });
     ab.ready = false;
     ab.cooldownLeft = ab.baseCooldown;
+    this.player.actionsLeft -= 1;
+    this._afterPlayerAction();
     soundEngine.playAbility('barrier');
     this.events.emit('ability-used', { id: 'barrier', name: CONFIG.abilities.barrier.name });
     if (this.techStats?.barrierForcefield && !this.player.forcefield) {
@@ -509,17 +429,25 @@ export class Game {
 
   _startPlayerTurn() {
     this.turnId = (this.turnId || 0) + 1;
-    if (this.gear && this.player) {
+    if (this.player) {
       this._tickRig(this.player);
       this.player.exposed = false; // a ram only exposes you until your own turn
       this.autoEnd = 0;
+      this.battleStats.bouncedThisTurn = false;
+      this.battleStats.fullDrawThisTurn = false;
+      this.battleStats.freeMoveUsed = false;
+      // Overclock (tech capstone): every 3rd turn brings an extra action
+      if (this.techStats?.overclock && (this.battleStats.turns + 1) % 3 === 0) {
+        this.player.actionsLeft += 1;
+        this._callout(this.player, 'OVERCLOCK: +1 ACTION', '#73eff7');
+      }
     }
     this._rechargePads();
     this._clearShotEffects();
     this.battleStats.clusteredThisTurn = false;
     this.turnSystem.startPlayerTurn();
     this.slingshotInput.cancelPlacement();
-    this.slingshotInput.setActive(true);
+    this.slingshotInput.setActive(this.canPlayerMove);
     if (this.player) {
       this.slingshotInput.setAnchor(this.player.x, this.player.y, this.player.radius);
     }
@@ -573,159 +501,110 @@ export class Game {
     const enemy = this.enemies[index];
     // A dead enemy's turn must still be passed on, or the battle freezes
     if (!enemy || enemy.hp <= 0) return this._passEnemyTurn();
-    if (this.gear) {
-      this._tickRig(enemy);
-      enemy.exposed = false;
-    }
+    this._tickRig(enemy);
+    enemy.exposed = false;
+
+    // Special abilities play by the same rules as everything else: each use
+    // costs the enemy one of its actions plus energy (shown on its panel),
+    // and it only spends them when the ability would actually do something.
+    const act = (energy) => {
+      if (enemy.actionsLeft < 1 || enemy.energy < energy) return false;
+      enemy.actionsLeft -= 1;
+      enemy.energy -= energy;
+      return true;
+    };
+    const ability = (label, color, desc) => {
+      this._callout(enemy, label, color);
+      this.events.emit('enemy-ability', { enemy, ability: label, desc });
+    };
 
     if (enemy.archetype === 'striker') {
-      enemy.turnCount = (enemy.turnCount || 0) + 1;
-      if (enemy.turnCount % 2 === 0 || this.aggression >= 0.5) {
+      // Charge: its guns hit 35% harder this turn (only worth it when it can shoot from here)
+      const canShoot = (enemy.weapons || []).some((w) => this.gunStatus(enemy, w, this.player).ok);
+      if (canShoot && (this.aggression >= 0.4 || this.player.hp < this.player.maxHp * 0.6) && act(6)) {
         enemy.isOvercharged = true;
-        this.events.emit('enemy-ability', {
-          enemy,
-          ability: 'Overdrive Charge',
-          desc: 'Striker charges a high-velocity pulse shot!',
-        });
+        ability('CHARGED SHOT', '#ef7d57', 'Striker charges its guns: +35% damage this turn.');
       }
     } else if (enemy.archetype === 'tank') {
-      this._tankWall(enemy);
+      this._tankWall(enemy, act);
       if (enemy.hp < enemy.maxHp * 0.75 && !enemy.hasFortified) {
+        // Passive, once per battle: armour locks down when it's hurt
         enemy.hasFortified = true;
         enemy.def = (enemy.def || 0) + 3;
         this.events.emit('enemy-ability', { enemy, ability: 'Fortify Shield', desc: 'Wall Unit hardens: +3 DEF.' });
       }
     } else if (enemy.archetype === 'disruptor') {
       const dx = enemy.x - this.player.x;
-      const dy = enemy.y - this.player.y;
-      const dist = Math.hypot(dx, dy) || 1;
-
-      // Line segment raycast check against active barriers, obstacles, and platforms
-      let isBlocked = false;
-      const lineIntersectsRect = (x1, y1, x2, y2, rx, ry, rw, rh) => {
-        const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
-        const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
-        if (maxX < rx || minX > rx + rw || maxY < ry || minY > ry + rh) return false;
-        return true;
-      };
-
-      for (const b of this.barriers) {
-        if (b.active && lineIntersectsRect(this.player.x, this.player.y, enemy.x, enemy.y, b.x, b.y, b.w, b.h)) {
-          isBlocked = true;
-          break;
-        }
-      }
-      if (!isBlocked) {
-        for (const obs of this.obstacles) {
-          if (obs.active && lineIntersectsRect(this.player.x, this.player.y, enemy.x, enemy.y, obs.x, obs.y, obs.w, obs.h)) {
-            isBlocked = true;
-            break;
-          }
-        }
-      }
-      if (!isBlocked) {
-        for (const plat of this.platforms) {
-          if (lineIntersectsRect(this.player.x, this.player.y, enemy.x, enemy.y, plat.x, plat.y, plat.w, plat.h)) {
-            isBlocked = true;
-            break;
-          }
-        }
-      }
-
-      if (isBlocked) {
-        soundEngine.playAbility('barrier');
-        this.events.emit('enemy-ability', {
-          enemy,
-          ability: 'Graviton Tether (Blocked)',
-          desc: 'Graviton pull was blocked by an intervening barrier/structure!',
-        });
-      } else {
-        // Drag the player up to 200 units toward the Weaver (stopping short of it)
-        const gap = enemy.radius + this.player.radius + 20;
-        const travel = Math.max(0, Math.min(200, Math.abs(dx) - gap));
+      const clear = this._lineClear(enemy, this.player, 'enemy');
+      const gap = enemy.radius + this.player.radius + 20;
+      const travel = Math.max(0, Math.min(200, Math.abs(dx) - gap));
+      if (clear && travel > 40 && act(10)) {
+        // Drag you up to 200px toward the Weaver (stopping short of it)
         this.player.pullTo = { x: this.player.x + Math.sign(dx) * travel, speed: 700, time: 0.6 };
         this.particles.push({ type: 'tether', from: enemy, to: this.player, life: 0.7, maxLife: 0.7 });
         this.renderer.addScreenShake(12);
         soundEngine.playAbility('overdrive');
-
-        // Pull deals impact damage to the player (affected by DEF, % reduction, and Risk modifiers)
-        const rawPullDamage = 12;
-        const pullDamage = this.collisionSystem.calculatePlayerDamage(rawPullDamage, { bypassDef: false });
+        const pullDamage = this.collisionSystem.calculatePlayerDamage(12);
         this.player.takeDamage(pullDamage);
         this._spawnHitParticles(this.player.x, this.player.y);
         this.battleStats.playerDamageTaken += pullDamage;
         this.events.emit('enemy-dealt-damage', { attacker: enemy, damage: pullDamage });
-
-        this.events.emit('enemy-ability', {
-          enemy,
-          ability: 'Graviton Tether Pull',
-          desc: `Graviton Weaver pulled you in, dealing ${pullDamage} impact damage!`,
-        });
-
+        ability('TETHER PULL', '#c46fd6', `Graviton Weaver pulled you in, dealing ${pullDamage} damage.`);
         if (this.player.hp <= 0) {
           this._checkBattleEnd(this.player);
           return;
         }
       }
     } else if (enemy.archetype === 'tactician') {
-      let ralliedAny = false;
-      for (const ally of this.enemies) {
-        if (ally !== enemy && ally.hp > 0 && !ally.isRallied) {
+      const allies = this.enemies.filter((a) => a !== enemy && a.hp > 0 && !a.isRallied);
+      if (allies.length && act(10)) {
+        for (const ally of allies) {
           ally.isRallied = true;
-          ally.atk = Math.round((ally.atk || 1) * 1.20 * 100) / 100;
+          ally.atk = Math.round((ally.atk || 1) * 1.2 * 100) / 100;
           ally.def = (ally.def || 0) + 3;
-          ralliedAny = true;
+          for (const w of ally.weapons || []) w.dmg = Math.round(w.dmg * 1.2);
         }
-      }
-      if (ralliedAny) {
         soundEngine.playAbility('barrier');
-        this.events.emit('enemy-ability', {
-          enemy,
-          ability: 'War Command',
-          desc: 'Commander rallies hostiles with +20% ATK and +3 DEF!',
-        });
+        ability('WAR COMMAND', '#ffcd75', 'Commander rallies its allies: +20% damage and +3 DEF.');
       }
     } else if (enemy.archetype === 'corroder') {
-      const curDef = this.collisionSystem.stats.playerTotalDef || 0;
-      if (curDef > 0) {
-        const newDef = Math.max(0, curDef - 4);
-        this.collisionSystem.stats.playerTotalDef = newDef;
+      const s = this.collisionSystem.stats;
+      if ((s.playerTotalDef || 0) > 0 && act(8)) {
+        s.playerTotalDef = Math.max(0, (s.playerTotalDef || 0) - 4);
         soundEngine.playAbility('overdrive');
         this.renderer.addScreenShake(8);
-        this.events.emit('enemy-ability', {
-          enemy,
-          ability: 'Corrosive Acid Splash',
-          desc: `Acid Drone sprayed corrosive acid! Player DEF reduced by -4 for this battle (Now ${newDef} DEF)!`,
-        });
+        ability('ACID SPLASH', '#a7f070', `Acid Drone strips 4 of your DEF for this battle (now ${s.playerTotalDef}).`);
       }
     } else if (enemy.archetype === 'medic') {
-      // Heal the most injured living enemy (possibly itself)
-      const hurt = this.enemies.filter((e) => e.hp > 0 && e.hp < e.maxHp).sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
-      enemy.healsLeft = enemy.healsLeft ?? 4; // limited supply: medic fights always end
-      if (hurt && enemy.healsLeft > 0) {
+      // Heal the most injured living enemy (possibly itself); limited supply so medic fights always end
+      const hurt = this.enemies.filter((e) => e.hp > 0 && e.hp < e.maxHp * 0.9).sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
+      enemy.healsLeft = enemy.healsLeft ?? 4;
+      if (hurt && enemy.healsLeft > 0 && act(8)) {
         enemy.healsLeft -= 1;
         // 12% to allies, only 6% to itself so a lone medic can't stall forever
         const pct = hurt === enemy ? 0.06 : 0.12;
         hurt.hp = Math.min(hurt.maxHp, hurt.hp + Math.round(hurt.maxHp * pct));
         soundEngine.play('heal');
+        this._spawnHealSparkles(hurt);
         this._callout(hurt, 'PATCHED UP', '#a7f070');
       }
     } else if (enemy.archetype === 'shielder') {
       // Allies only: a drone that could shield itself every turn would be unkillable
       const target = this.enemies.find((e) => e !== enemy && e.hp > 0 && !e.shieldCharges);
-      if (target) {
+      if (target && act(8)) {
         target.shieldCharges = 1;
         soundEngine.playAbility('barrier');
         this._callout(target, 'SHIELDED', '#41a6f6');
       }
     } else if (enemy.archetype === 'minelayer') {
-      if (this.hazards.filter((h) => h.type === 'mine').length < 3 + Math.round(this.aggression * 2)) {
-        // Somewhere near the player, but not right under them
-        const mines = this.hazards.filter((h) => h.type === 'mine');
+      const mines = this.hazards.filter((h) => h.type === 'mine');
+      if (mines.length < 3 + Math.round(this.aggression * 2)) {
+        // Somewhere near you, but not right under you
         for (let tries = 0; tries < 8; tries++) {
           const side = Math.random() < 0.5 ? -1 : 1;
           const x = Math.max(60, Math.min(W.width - 100, this.player.x + side * (90 + Math.random() * 140)));
           if (mines.some((m) => Math.abs(m.x + m.w / 2 - x) < 160)) continue;
+          if (!act(6)) break;
           this.hazards.push({ type: 'mine', x: x - 24, w: 48, armed: true, born: performance.now() });
           this.particles.push({ type: 'shockwave', x, y: groundAt(x), radius: 6, maxRadius: 60, life: 0.3, maxLife: 0.3 });
           soundEngine.playUI(300);
@@ -735,7 +614,7 @@ export class Game {
       }
     }
     if (enemy.displayName === 'SECTOR COMMANDER') {
-      this._triggerShockwave(enemy);
+      if (Math.hypot(this.player.x - enemy.x, this.player.y - enemy.y) < 400 && act(10)) this._triggerShockwave(enemy);
     }
 
     if (enemy.burnTicks > 0) {
@@ -765,10 +644,11 @@ export class Game {
       aimErrorBonus: this.relics.includes('rel_smoke_bomb') ? (7 * Math.PI) / 180 : 0,
       aggression: this.aggression,
       // Gear combat: pick a landing spot with its guns in range and yours not
-      spotScorer: this.gear ? (x, y, rammed, stay) => this._scoreSpot(enemy, x, y, rammed, stay) : null,
+      // Pick a landing spot with its guns in range and yours not
+      spotScorer: (x, y, rammed, stay) => this._scoreSpot(enemy, x, y, rammed, stay),
     });
     this._syncAiWorld();
-    this.enemyAI.startTurn(enemy, this.player, this.enemies);
+    this.enemyAI.startTurn(enemy, this.player);
   }
 
   /** Split Cell: two small cells burst out of the destroyed one. */
@@ -792,10 +672,19 @@ export class Game {
       cell.isSpawn = true;
       cell.vx = side * 260;
       cell.vy = -480;
+      this._armMinion(cell, parent, 0.5);
       this.enemies.push(cell);
     }
     this._callout(parent, 'SPLIT!', '#a7f070');
     soundEngine.play('select');
+  }
+
+  /** Spawned enemies play by the same rules: a weaker copy of the parent's gun, legs and a reactor. */
+  _armMinion(ball, parent, dmgMult) {
+    const gun = parent.weapons?.[0];
+    ball.weapons = gun ? [{ ...gun, dmg: Math.max(2, Math.round(gun.dmg * dmgMult)), ammoLeft: gun.ammo || 0 }] : [];
+    ball.legs = parent.legs?.anchored ? null : parent.legs || null;
+    this._initRig(ball, G.enemyRig.combat);
   }
 
   /** Bosses at half HP: +25% ATK and a minion joins the fight. */
@@ -818,6 +707,7 @@ export class Game {
       radius: 20,
     });
     minion.vy = -500;
+    this._armMinion(minion, boss, 0.5);
     this.enemies.push(minion);
     this.renderer.showBanner('PHASE 2', '#ff5d73');
     this._callout(boss, 'ENRAGED: +25% ATK', '#ff5d73');
@@ -922,36 +812,63 @@ export class Game {
     this.inspected = same ? null : { ball: this.player, weapon: index };
   }
 
-  /** After a ball's turn: every gun off cooldown fires at the nearest target inside its range band. */
-  _fireWeapons(shooter) {
-    if (!shooter || shooter.hp <= 0 || this.turnSystem.phase === TurnPhase.GAME_OVER) return;
-    const isPlayer = shooter === this.player;
-    const guns = isPlayer ? this.playerWeapons : shooter.weapons || [];
-    const foes = () => (isPlayer ? this.enemies.filter((e) => e.hp > 0) : this.player.hp > 0 ? [this.player] : []);
-    for (const w of guns) {
-      if (w.cdLeft > 0) {
-        w.cdLeft -= 1;
-        continue;
-      }
-      const target = foes()
-        .map((f) => ({ f, d: Math.hypot(f.x - shooter.x, f.y - shooter.y) }))
-        .filter(({ d }) => d >= w.range[0] && d <= w.range[1])
-        .sort((a, b) => a.d - b.d)[0]?.f;
-      if (!target) continue; // stays ready until something is in range
-      w.cdLeft = w.cd - 1;
-      this._shoot(shooter, w, target);
-      if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
+  // ---------- Shots: every gun fires a visible projectile ----------
+  //
+  // Damage lands when the projectile arrives, so turns wait for shots in
+  // flight. Each gun has a look (vfxOf): bullets fly straight, lobbed
+  // weapons arc, beams flash across, sprayers cone out, the grapple line
+  // reels, pulse guns send a shock ring.
+
+  /** One gun firing at one target: queues its projectile(s); hits land on arrival. */
+  _shoot(shooter, w, target) {
+    const kind = vfxOf(w);
+    const now = performance.now();
+    w.firedAt = now; // renderer: recoil + muzzle flash, gun turns to the target
+    w.aimAt = target;
+    const from = w._muzzle ? { ...w._muzzle } : { x: shooter.x, y: shooter.y };
+    const dist = Math.hypot(target.x - from.x, target.y - from.y);
+    const dur = {
+      bullet: Math.max(0.08, Math.min(0.4, dist / 1700)),
+      lob: 0.55 + Math.min(0.45, dist / 2400),
+      beam: 0.14,
+      spray: 0.3,
+      hook: Math.max(0.14, Math.min(0.42, dist / 1500)),
+      pulse: Math.max(0.12, Math.min(0.45, dist / 1100)),
+    }[kind];
+    const rounds = w.fx?.burst || 1;
+    for (let i = 0; i < rounds; i++) {
+      this.projectiles.push({
+        kind,
+        color: w.color || '#f4f4f4',
+        x0: from.x,
+        y0: from.y,
+        target,
+        t: -i * 0.09, // burst rounds follow each other
+        dur,
+        last: i === rounds - 1,
+        onHit: (last) => this._landShot(shooter, w, target, last),
+      });
     }
-    if (isPlayer) this._fireDrones();
+    soundEngine.playUI(kind === 'lob' ? 180 : kind === 'beam' ? 880 : 520, 0.05);
+    if (shooter === this.player) haptics.impact(kind === 'lob' || w.dmg > 60 ? 'medium' : 'light');
   }
 
-  /** One gun firing at one target: every hit, plus its area / status effects. */
-  _shoot(shooter, w, target) {
+  /** Advance projectiles; a projectile's hit lands when it arrives. */
+  _updateProjectiles(dt) {
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const p = this.projectiles[i];
+      p.t += dt;
+      if (p.t < p.dur) continue;
+      this.projectiles.splice(i, 1);
+      if (this.turnSystem.phase !== TurnPhase.GAME_OVER && p.target.hp > 0) p.onHit(p.last);
+    }
+  }
+
+  /** A projectile arrived: one hit, and on the last round the gun's area / status effects. */
+  _landShot(shooter, w, target, last) {
     const isPlayer = shooter === this.player;
     const foes = () => (isPlayer ? this.enemies.filter((e) => e.hp > 0) : this.player.hp > 0 ? [this.player] : []);
     const over = () => this.turnSystem.phase === TurnPhase.GAME_OVER;
-    w.firedAt = performance.now(); // renderer: recoil + muzzle flash, gun turns to the target
-    w.aimAt = target;
     // Laser: every foe along the beam, out to the gun's reach
     let victims = [target];
     if (w.fx?.line) {
@@ -966,21 +883,29 @@ export class Game {
       if (!victims.includes(target)) victims.push(target);
     }
     for (const v of victims) {
-      for (let i = 0; i < (w.fx?.burst || 1); i++) {
-        if (v.hp <= 0 || over()) break;
-        this._weaponHit(shooter, v, w, w.dmg);
-      }
+      if (v.hp > 0 && !over()) this._weaponHit(shooter, v, w, w.dmg);
     }
-    if (over()) return;
+    if (isPlayer && victims.length > 1) this._trackCombo(victims.length);
+    if (!last || over()) return;
     if (w.fx?.chain) {
       const next = foes().find((f) => f !== target && Math.hypot(f.x - target.x, f.y - target.y) <= w.fx.chain);
-      if (next) this._weaponHit(target, next, w, w.dmg * 0.6, shooter);
+      if (next) {
+        this.particles.push({ type: 'bolt', x1: target.x, y1: target.y, x2: next.x, y2: next.y, life: 0.3, maxLife: 0.3, seed: Math.random() });
+        this._weaponHit(target, next, w, w.dmg * 0.6, shooter);
+        if (isPlayer) this._trackCombo(2);
+      }
     }
     if (w.fx?.splash) {
+      let hitCount = 1;
       for (const f of foes()) {
-        if (f !== target && Math.hypot(f.x - target.x, f.y - target.y) <= w.fx.splash) this._weaponHit(target, f, w, w.dmg * 0.5, shooter);
+        if (f !== target && Math.hypot(f.x - target.x, f.y - target.y) <= w.fx.splash) {
+          this._weaponHit(target, f, w, w.dmg * 0.5, shooter);
+          hitCount++;
+        }
       }
+      if (isPlayer && hitCount > 1) this._trackCombo(hitCount);
       this.particles.push({ type: 'shockwave', x: target.x, y: target.y, radius: 10, maxRadius: w.fx.splash, life: 0.3, maxLife: 0.3 });
+      this.renderer.addScreenShake(8);
     }
     // Knockback guns: shove the target away, or reel it in
     if (target.hp > 0 && (w.fx?.push || w.fx?.pull)) {
@@ -992,16 +917,15 @@ export class Game {
     }
   }
 
-  /** Classic combat: every drone acts at the end of your turn, at any range. */
-  _fireDrones() {
-    if (!this.player || this.player.hp <= 0) return;
-    for (const d of this.playerDrones) {
-      this._droneAct(d);
-      if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
-    }
+  /** One shot hitting several enemies (laser, splash, chain). */
+  _trackCombo(n) {
+    const t = this.battleStats.track;
+    if (n <= (t.maxCombo || 0) && n < 3) return;
+    t.maxCombo = Math.max(t.maxCombo || 0, n);
+    if (n >= 2) this._callout(this.player, n >= 3 ? `TRIPLE HIT` : 'DOUBLE HIT', n >= 3 ? '#ff5d73' : '#ffcd75');
   }
 
-  /** One drone's action: repair, shield, or a shot at the nearest enemy (any range). */
+  /** One drone's action: repair, shield, or a shot at your target (any range). */
   _droneAct(d) {
     const shooter = this.player;
     if (d.heal) {
@@ -1009,6 +933,7 @@ export class Game {
       d.firedAt = performance.now();
       shooter.hp = Math.min(shooter.maxHp, shooter.hp + Math.round(d.heal));
       if (shooter.hp > before) this._callout(shooter, `REPAIR +${shooter.hp - before}`, d.color);
+      this._spawnHealSparkles(shooter);
     } else if (d.forcefieldEvery) {
       if (this.battleStats.turns % d.forcefieldEvery === 0 && !shooter.forcefield) {
         d.firedAt = performance.now();
@@ -1016,12 +941,28 @@ export class Game {
         this._callout(shooter, 'DRONE SHIELD', d.color);
       }
     } else if (d.dmg) {
-      // Your aimed-at enemy (gear), else the nearest one
       const target = this._currentTarget() || this.enemies.filter((e) => e.hp > 0).sort(this._byDistance(shooter))[0];
       if (target) {
         d.firedAt = performance.now();
-        this._weaponHit(shooter, target, d, d.dmg);
+        const from = d._muzzle || { x: shooter.x, y: shooter.y - shooter.radius * 2 };
+        this.projectiles.push({
+          kind: 'bullet',
+          color: d.color || '#ffcd75',
+          x0: from.x,
+          y0: from.y,
+          target,
+          t: 0,
+          dur: Math.max(0.1, Math.min(0.4, Math.hypot(target.x - from.x, target.y - from.y) / 1600)),
+          last: true,
+          onHit: () => this._weaponHit(shooter, target, d, d.dmg),
+        });
       }
+    }
+  }
+
+  _spawnHealSparkles(ball) {
+    for (let i = 0; i < 10; i++) {
+      this.particles.push({ x: ball.x + (Math.random() - 0.5) * ball.radius * 2, y: ball.y, vx: 0, vy: -90 - Math.random() * 80, float: true, size: 4, color: '#a7f070', life: 0.6, maxLife: 0.6 });
     }
   }
 
@@ -1130,9 +1071,17 @@ export class Game {
     return Math.max(1, Math.round(dmg));
   }
 
+  /** Can you launch right now? (anchored legs never can; Thrusters need energy) */
+  get canPlayerMove() {
+    const legs = this.player?.legs;
+    if (legs?.anchored) return false;
+    if (legs?.moveEn && this.player.energy < legs.moveEn) return false;
+    return !!this.player && this.player.actionsLeft > 0;
+  }
+
   /** Your actions can be spent while aiming (before or after a move). */
   get canPlayerAct() {
-    return this.gear && this.running && this.turnSystem.phase === TurnPhase.PLAYER_AIM && this.player.actionsLeft > 0 && !this.slingshotInput.dragging;
+    return this.running && this.turnSystem.phase === TurnPhase.PLAYER_AIM && this.player.actionsLeft > 0 && !this.slingshotInput.dragging;
   }
 
   /** Spend the shot's energy, heat, ammo and one action. */
@@ -1150,6 +1099,12 @@ export class Game {
     const before = ball.energy;
     ball.energy = Math.min(ball.energyMax, ball.energy + Math.round(ball.regen * G.vent.energyPct));
     ball.actionsLeft -= 1;
+    // Steam blasts out of the vents
+    for (let i = 0; i < 16; i++) {
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.6;
+      const sp = 90 + Math.random() * 160;
+      this.particles.push({ x: ball.x + (Math.random() - 0.5) * ball.radius, y: ball.y - ball.radius * 0.5, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, float: true, size: 6 + Math.random() * 8, color: i % 3 ? '#dfe6ee' : '#73eff7', life: 0.7, maxLife: 0.7 });
+    }
     this.particles.push({ type: 'shockwave', x: ball.x, y: ball.y, radius: 10, maxRadius: 90, life: 0.35, maxLife: 0.35 });
     soundEngine.playUI(330);
     this._callout(ball, `VENT -${Math.round(cooled)} HEAT +${Math.round(ball.energy - before)} EN`, '#73eff7');
@@ -1161,8 +1116,18 @@ export class Game {
     const w = this.playerWeapons[i];
     const state = this.playerGunState(i);
     if (!state.ok) return state;
-    this._payForShot(this.player, w);
-    this.battleStats.gearFired = true;
+    const bs = this.battleStats;
+    if (this.techStats?.freeFirstShot && !bs.firstShotDone) {
+      // Opening Salvo: the first shot of the battle costs no energy or heat
+      if (w.ammo) w.ammoLeft -= 1;
+      this.player.actionsLeft -= 1;
+      this._callout(this.player, 'OPENING SALVO', '#73eff7');
+    } else {
+      this._payForShot(this.player, w);
+    }
+    bs.firstShotDone = true;
+    bs.report.shots += 1;
+    bs.track.shots += 1;
     this._shoot(this.player, w, state.target);
     this._afterPlayerAction();
     return state;
@@ -1171,6 +1136,7 @@ export class Game {
   ventPlayer() {
     if (!this.canPlayerAct) return false;
     this._vent(this.player);
+    this.battleStats.report.vents += 1;
     this._afterPlayerAction();
     return true;
   }
@@ -1178,8 +1144,9 @@ export class Game {
   /** Drones are switched ON/OFF by the player; ON drones act at the end of the turn. */
   toggleDrone(i) {
     const d = this.playerDrones[i];
-    if (!d || !this.gear) return false;
+    if (!d) return false;
     d.off = !d.off;
+    d.deployedAt = performance.now(); // renderer: drone flies out / docks
     return true;
   }
 
@@ -1194,9 +1161,13 @@ export class Game {
 
   /** END TURN: skip whatever actions are left. */
   endPlayerTurn() {
-    if (!this.gear || !this.running || this.turnSystem.phase !== TurnPhase.PLAYER_AIM) return false;
+    if (!this.running || this.turnSystem.phase !== TurnPhase.PLAYER_AIM) return false;
     if (this.slingshotInput.dragging) return false;
     this.slingshotInput.setActive(false);
+    if (this.projectiles.length) {
+      this.autoEnd = 0.05; // let the shots in flight land first
+      return true;
+    }
     this.autoEnd = 0;
     this._finishPlayerTurn();
     return true;
@@ -1208,7 +1179,7 @@ export class Game {
     this.turnSystem.turnTime = 0;
     this._rechargePads();
     if (this.player.actionsLeft > 0) {
-      this.slingshotInput.setActive(true);
+      this.slingshotInput.setActive(this.canPlayerMove);
       this.slingshotInput.setAnchor(this.player.x, this.player.y, this.player.radius);
     } else {
       this._afterPlayerAction();
@@ -1238,19 +1209,10 @@ export class Game {
   /** Everything after your actions: drones, turn upkeep, then the enemies. */
   _finishPlayerTurn() {
     this.battleStats.turns += 1;
-    if (this.gear) this._gearDrones();
-    else this._fireWeapons(this.player);
+    this._gearDrones();
     if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
-    this._resolveShot();
-    this._clearShotEffects();
     this._tickAbilities();
-    // Gear combat: Overdrive powers one turn of gunfire, then it's spent
     const bs = this.battleStats;
-    if (this.gear && bs.gearFired) {
-      bs.overdriveStacks = 0;
-      bs.overdriveActive = false;
-    }
-    bs.gearFired = false;
 
     if (this.techStats.forcefieldTurnInterval > 0 && bs.turns % this.techStats.forcefieldTurnInterval === 0 && !this.player.forcefield) {
       this.player.forcefield = true;
@@ -1274,7 +1236,10 @@ export class Game {
   /** Hand over from enemy `currentIdx` to the next living enemy, or back to you. */
   _afterEnemyTurn(currentIdx) {
     const shooter = this.enemies[currentIdx];
-    if (shooter) shooter.missStreak = this._enemyShotHit ? 0 : (shooter.missStreak || 0) + 1;
+    if (shooter) {
+      shooter.missStreak = this._enemyShotHit ? 0 : (shooter.missStreak || 0) + 1;
+      shooter.isOvercharged = false; // a Striker's charge lasts one turn
+    }
     let nextIdx = -1;
     for (let i = currentIdx + 1; i < this.enemies.length; i++) {
       if (this.enemies[i].hp > 0) {
@@ -1298,8 +1263,12 @@ export class Game {
     const idx = this.turnSystem.enemyIndex;
     const enemy = this.enemies[idx];
     if (!enemy || enemy.hp <= 0 || this.turnSystem.phase !== TurnPhase.ENEMY_AIM) return;
-    if (velocity) {
-      enemy.actionsLeft -= 1;
+    const legs = enemy.legs;
+    const canMove = !legs?.anchored && (!legs?.moveEn || enemy.energy >= legs.moveEn);
+    if (velocity && enemy.actionsLeft > 0 && canMove) {
+      if (legs?.moveEn) enemy.energy -= legs.moveEn;
+      if (!legs?.freeMove) enemy.actionsLeft -= 1;
+      enemy.launchedAt = performance.now();
       this.events.emit('enemy-launch', { velocity, enemyIndex: idx });
       return;
     }
@@ -1310,6 +1279,7 @@ export class Game {
 
   /** Per frame (gear): auto-end your spent turn, and pace enemy actions. */
   _updateGearTurn(dt) {
+    if (this.projectiles.length) return; // wait for shots in flight to land
     if (this.turnSystem.phase === TurnPhase.PLAYER_AIM && this.autoEnd > 0) {
       this.autoEnd -= dt;
       if (this.autoEnd <= 0) this.endPlayerTurn();
@@ -1354,7 +1324,7 @@ export class Game {
     const spot = { x, y };
     const p = this.player;
     const d = Math.hypot(p.x - x, p.y - y);
-    let shots = stay ? G.actions : G.actions - 1; // moving costs an action
+    let shots = stay ? enemy.actionsLeft : enemy.actionsLeft - 1; // moving costs an action
     let score = 0;
     let energy = enemy.energy;
     let heat = enemy.heat;
@@ -1395,43 +1365,52 @@ export class Game {
     return score;
   }
 
-  /** One weapon hit. `from` is where the tracer starts (chains/splash start at the first target). */
+  /** One weapon hit landing on `target`. `owner` fired it (chains/splash hop from `from`). */
   _weaponHit(from, target, w, rawDmg, owner = from) {
-    // Shots leave from the gun's muzzle (set by the renderer), not the ball's centre
-    const src = from === owner && w._muzzle ? w._muzzle : from;
-    this.particles.push({ type: 'tracer', x1: src.x, y1: src.y, x2: target.x, y2: target.y, color: w.color || '#f4f4f4', life: 0.4, maxLife: 0.4 });
     soundEngine.playUI(target.team === 'player' ? 220 : 660, 0.04);
-    // Gear combat: a rammed target takes extra gun damage; energy/heat guns hit the reactor
-    if (this.gear && target.exposed) rawDmg *= G.exposedMult;
-    if (this.gear) this._reactorFx(target, w);
+    // A rammed target takes extra gun damage; energy/heat guns hit the reactor
+    if (target.exposed) rawDmg *= G.exposedMult;
+    this._reactorFx(target, w);
     if (target.team === 'enemy') {
       if (target.shieldCharges > 0) {
         target.shieldCharges -= 1;
         this._callout(target, 'BLOCKED', '#41a6f6');
         return;
       }
-      // Gear combat: your guns carry your ATK, crits and armed skill (the body no longer hits)
-      const yours = this.gear && owner === this.player;
+      // Your guns carry your ATK, crit chance and relics
+      const yours = owner === this.player;
       const critChance = (w.fx?.crit || 0) + (yours ? 0.05 + (this.techStats?.critChance || 0) : 0);
       const crit = critChance > 0 && Math.random() < critChance;
       let dmg = rawDmg * (crit ? 1.75 : 1);
-      if (yours) dmg *= this._gearDamageMult();
-      const pierce = w.fx?.pierce || (yours && this.player.piercing);
-      if (!pierce) dmg *= 1 - Math.min(CONFIG.run.maxDefCap || 15, target.def || 0) * CONFIG.damage.defensePerPoint;
+      if (yours) dmg = this._relicDamage(dmg * this._gearDamageMult(), target);
+      const armorPen = yours ? Math.min(0.9, this.techStats?.armorPenPct || 0) : 0;
+      if (!w.fx?.pierce) dmg *= 1 - Math.min(CONFIG.run.maxDefCap || 15, (target.def || 0) * (1 - armorPen)) * CONFIG.damage.defensePerPoint;
       dmg = Math.max(1, Math.round(dmg));
+      // Shadow Stiletto: finish off a non-boss enemy left below 15% HP
+      if (yours && this.relics.includes('rel_syndicate_blade') && !target.rank && target.hp - dmg > 0 && target.hp - dmg <= target.maxHp * 0.15) {
+        dmg = Math.ceil(target.hp);
+        this._callout(target, 'EXECUTE', '#ff5d73');
+      }
       const killed = target.takeDamage(dmg);
       target.flashTimer = 0.15;
-      if (w.fx?.burn) {
-        target.burnTicks = Math.max(target.burnTicks || 0, w.fx.burn);
+      if (w.fx?.burn || (yours && this.relics.includes('rel_pyro'))) {
+        target.burnTicks = Math.max(target.burnTicks || 0, w.fx?.burn || 3);
         target.burnDmg = Math.max(target.burnDmg || 0, 6);
       }
-      if (w.fx?.freeze) target.isFrozen = true;
+      if (w.fx?.freeze || (yours && this.relics.includes('rel_cryo'))) target.isFrozen = true;
       if (w.fx?.corrode) target.def = Math.max(0, (target.def || 0) - w.fx.corrode);
-      if (w.fx?.leech && owner === this.player) this.player.hp = Math.min(this.player.maxHp, this.player.hp + Math.round(dmg * w.fx.leech));
+      if (w.fx?.leech && yours) this.player.hp = Math.min(this.player.maxHp, this.player.hp + Math.round(dmg * w.fx.leech));
+      if (yours && !killed && this.relics.includes('rel_graviton')) this._singularityPull(target);
+      if (yours) this._reportHit(w, dmg);
       this._callout(target, `${w.name.split(' ').pop()} ${dmg}${crit ? '!' : ''}`, w.color || '#f4f4f4');
       this.events.emit('damage', { attacker: owner, victim: target, damage: dmg, killed, crit });
-      this.events.emit('player-dealt-damage', { victim: target, damage: dmg });
-      if (killed) this._checkBattleEnd(target);
+      if (killed) {
+        if (yours && this.techStats?.killEnergy) {
+          this.player.energy = Math.min(this.player.energyMax, this.player.energy + this.techStats.killEnergy);
+          this._callout(this.player, `+${this.techStats.killEnergy} ENERGY`, '#73eff7');
+        }
+        this._checkBattleEnd(target);
+      }
       return;
     }
     // Enemy gun hitting you: Forcefield blocks it, DEF and damage reduction apply
@@ -1440,10 +1419,16 @@ export class Game {
       this._callout(this.player, 'BLOCKED', '#a7f070');
       return;
     }
-    const dmg = this.collisionSystem.calculatePlayerDamage(rawDmg);
+    let dmg = this.collisionSystem.calculatePlayerDamage(rawDmg * (owner.isOvercharged ? 1.35 : 1));
+    // Shadow Cloak: the first 2 hits you take each battle are halved
+    const bs = this.battleStats;
+    if (this.relics.includes('rel_shadow_cloak') && (bs.cloakHits || 0) < 2) {
+      bs.cloakHits = (bs.cloakHits || 0) + 1;
+      dmg = Math.max(1, Math.round(dmg / 2));
+      this._callout(this.player, 'CLOAK -50%', '#94b0c2');
+    }
     const killed = this.player.takeDamage(dmg);
     this.player.flashTimer = 0.15;
-    this.battleStats.playerDamageTaken += dmg;
     if (w.fx?.burn) {
       this.player.burnTicks = Math.max(this.player.burnTicks || 0, w.fx.burn);
       this.player.burnDmg = Math.max(this.player.burnDmg || 0, 6);
@@ -1454,25 +1439,66 @@ export class Game {
       s.playerTotalDef = Math.max(0, (s.playerTotalDef || 0) - w.fx.corrode);
     }
     this._callout(this.player, `${w.name.split(' ').pop()} ${dmg}`, w.color || '#ff5d73');
+    // (the 'damage' handler counts it as damage taken and tells the run)
     this.events.emit('damage', { attacker: owner, victim: this.player, damage: dmg, killed });
-    this.events.emit('enemy-dealt-damage', { attacker: owner, damage: dmg });
     if (killed) this._checkBattleEnd(this.player);
   }
 
-  /** Your gun damage multiplier (gear): ATK, armed skill shot, Overdrive. */
+  /** Your gun damage multiplier: ATK, Risk Resonance, Full Draw / Ricochet Crest this turn. */
   _gearDamageMult() {
     let m = this.collisionSystem.stats.playerAtk || 1;
-    if (this.player.shotMult) m *= this.player.shotMult;
+    const tech = this.techStats || {};
+    if (tech.riskResonanceBonusPerLevel > 0 && this.battleConfig?.riskLevel > 0) m *= 1 + this.battleConfig.riskLevel * tech.riskResonanceBonusPerLevel;
     const bs = this.battleStats;
-    const stacks = bs.overdriveStacks || (bs.overdriveActive ? 1 : 0);
-    if (stacks > 0) {
-      const raw = this.relics.includes('rel_energy_well') || bs.overdriveEmpowered ? 2.0 : CONFIG.abilities.overdrive.damageMult;
-      m *= 1 + (raw - 1) * (1 + (this.techStats?.skillPotency || 0)) + (stacks - 1) * 0.5;
-    }
+    if (this.relics.includes('rel_radiant_crest') && bs.bouncedThisTurn) m *= 1.35;
+    if (this.relics.includes('rel_vector_engine') && bs.fullDrawThisTurn) m *= 1.25;
     return m;
   }
 
-  /** EMP drains energy, Heat Ray pumps in heat (gear combat). */
+  /** Relics that change one hit on one enemy. */
+  _relicDamage(dmg, target) {
+    const R = (id) => this.relics.includes(id);
+    const bs = this.battleStats;
+    const p = this.player;
+    if (R('rel_knight_lance') && !bs.lanceUsed) {
+      dmg *= 1.35;
+      bs.lanceUsed = true;
+    }
+    if (R('rel_gladiator_glove') && target.hp >= target.maxHp * 0.75) dmg *= 1.25;
+    if (R('rel_blood_sample') && p.hp < p.maxHp * 0.5) dmg *= 1.25;
+    if (R('rel_combat_drug') && p.hp < p.maxHp * 0.3) dmg *= 1.5;
+    if (R('rel_echo') && !bs.echoUsed) {
+      dmg += 15;
+      bs.echoUsed = true;
+      this._callout(target, 'ECHO +15', '#ffcd75');
+    }
+    return dmg;
+  }
+
+  /** Singularity Core: enemies near the one you hit slide in next to it. */
+  _singularityPull(target) {
+    let pulled = false;
+    for (const ball of this.enemies) {
+      if (ball === target || ball.hp <= 0) continue;
+      const dx = target.x - ball.x;
+      if (Math.abs(dx) > 360) continue;
+      ball.pullTo = { x: target.x - Math.sign(dx || 1) * (target.radius + ball.radius + 6), speed: 900, time: 0.5 };
+      pulled = true;
+    }
+    if (pulled) {
+      this._callout(target, 'SINGULARITY', '#c46fd6');
+      this.particles.push({ type: 'implode', x: target.x, y: target.y, radius: 360, life: 0.4, maxLife: 0.4 });
+    }
+  }
+
+  /** Battle report: damage per gun, best hit. */
+  _reportHit(w, dmg) {
+    const r = this.battleStats.report;
+    r.dealt += dmg;
+    r.byGun[w.name] = (r.byGun[w.name] || 0) + dmg;
+  }
+
+  /** EMP drains energy, Heat Ray pumps in heat. */
   _reactorFx(target, w) {
     if (w.fx?.drain && target.energy !== undefined) {
       const before = target.energy;
@@ -1557,6 +1583,15 @@ export class Game {
 
     this.events.on('enemy-plan', (plan) => this._onEnemyPlan(plan));
 
+    // A ram EXPOSED someone (CollisionSystem): count yours for the report and medals
+    this.events.on('ram', ({ attacker }) => {
+      if (attacker !== this.player) return;
+      this.battleStats.report.rams += 1;
+      this.battleStats.track.rams += 1;
+      this.renderer.addScreenShake(8);
+      haptics.impact('medium');
+    });
+
     this.events.on('place-barrier', ({ x, y }) => {
       if (!this.running) return;
       this.deployBarrierAt(x, y);
@@ -1565,11 +1600,17 @@ export class Game {
     this.events.on('player-launch', ({ velocity }) => {
       if (!this.running) return;
       if (this.turnSystem.phase !== TurnPhase.PLAYER_AIM) return;
-      if (this.gear) {
-        if (!(this.player.actionsLeft > 0)) return;
+      if (!this.canPlayerMove) return;
+      const legs = this.player.legs;
+      if (legs?.moveEn) this.player.energy -= legs.moveEn; // Thrusters
+      if (legs?.freeMove && !this.battleStats.freeMoveUsed) {
+        this.battleStats.freeMoveUsed = true; // Phase Striders: first move each turn is free
+        this._callout(this.player, 'PHASE STEP', '#ff5d73');
+      } else {
         this.player.actionsLeft -= 1; // MOVE is one action
-        this.autoEnd = 0;
       }
+      this.player.launchedAt = performance.now(); // renderer: legs spring
+      this.autoEnd = 0;
       // Frozen by an enemy Cryo Cannon: this launch is weaker
       const chill = this.player.isFrozen ? 0.65 : 1;
       if (this.player.isFrozen) {
@@ -1582,6 +1623,7 @@ export class Game {
       this._armShot();
       const speed = Math.hypot(velocity.x, velocity.y);
       this.battleStats.lastLaunchPct = speed / (CONFIG.slingshot.maxPower * this.slingshotInput.powerMult);
+      if (this.battleStats.lastLaunchPct >= 0.9) this.battleStats.fullDrawThisTurn = true;
       soundEngine.playLaunch(speed / 900);
       haptics.impact(speed > 1100 ? 'medium' : 'light');
       this.turnSystem.launch();
@@ -1593,11 +1635,6 @@ export class Game {
       const enemy = this.enemies[enemyIndex ?? this.turnSystem.enemyIndex];
       if (!enemy || enemy.hp <= 0) return;
 
-      if (enemy.isOvercharged) {
-        velocity.x *= 1.35;
-        velocity.y *= 1.35;
-        enemy.isOvercharged = false; // one charged shot per charge
-      }
       if (enemy.isFrozen) {
         velocity.x *= 0.65;
         velocity.y *= 0.65;
@@ -1617,19 +1654,18 @@ export class Game {
       if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
 
       if (playerTurn) {
-        // Gear combat: a MOVE was one action; spend the rest from where you landed
-        if (this.gear && this.turnSystem.phase === TurnPhase.PLAYER_FLY) return this._afterPlayerMove();
+        // A MOVE was one action; spend the rest from where you landed
+        if (this.turnSystem.phase === TurnPhase.PLAYER_FLY) return this._afterPlayerMove();
         this._finishPlayerTurn();
       } else {
         const currentIdx = this.turnSystem.enemyIndex;
         const shooter = this.enemies[currentIdx];
-        if (this.gear && this.turnSystem.phase === TurnPhase.ENEMY_FLY && shooter?.hp > 0 && shooter.actionsLeft > 0) {
+        if (this.turnSystem.phase === TurnPhase.ENEMY_FLY && shooter?.hp > 0 && shooter.actionsLeft > 0) {
           // Gear combat: the enemy spends its remaining actions (update() paces them)
           this.turnSystem.startFire();
           this.enemyFire = { shooter, index: currentIdx, timer: G.shotGap };
           return;
         }
-        if (!this.gear) this._fireWeapons(shooter);
         if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
         this._afterEnemyTurn(currentIdx);
       }
@@ -1638,13 +1674,7 @@ export class Game {
     this.events.on('damage', ({ attacker, victim, damage, killed, isThorn, crit, combo, dive, pierce }) => {
       this._spawnHitParticles(victim.x, victim.y);
       if (attacker.team === 'player' && victim.team === 'enemy') {
-        this._trackPlayerHit(victim, damage, killed, { crit, combo, dive, pierce });
-        const sk = this.abilities?.skill;
-        if (killed && this.techStats?.skillMomentum && sk && !sk.ready) {
-          sk.cooldownLeft -= 1;
-          if (sk.cooldownLeft <= 0) sk.ready = true;
-          this._callout(this.player, 'MOMENTUM', '#ffcd75');
-        }
+        this._trackPlayerHit(victim, damage, killed, { crit });
       } else if (victim.team === 'player' && attacker === this.activeEnemy) {
         this._enemyShotHit = true;
       }
@@ -1749,8 +1779,8 @@ export class Game {
         this.collisionSystem.stats.playerTotalDef = (this.collisionSystem.stats.playerTotalDef || 0) + this.techStats.fortifiedMatrixBonusDef;
       }
 
-      if (attacker.team === 'player' && this.battleStats.wallBounced) {
-        this.events.emit('wall-bounce-hit', { damage });
+      if (attacker.team === 'player' && this.battleStats.bouncedThisTurn && this.battleStats.wallBounced) {
+        this.events.emit('wall-bounce-hit', { damage }); // Pinball quest
         this.battleStats.wallBounced = false;
       }
 
@@ -1786,8 +1816,8 @@ export class Game {
       soundEngine.playWallBounce();
       if (ball.team === 'player') {
         this.battleStats.wallBounced = true;
-        this._shrapnelBurst(ball);
-        if ((ball.ballType === 'cluster' || this.relics.includes('rel_cluster')) && !this.battleStats.clusteredThisTurn) {
+        if (this.turnSystem.phase === TurnPhase.PLAYER_FLY) this.battleStats.bouncedThisTurn = true;
+        if (this.relics.includes('rel_cluster') && !this.battleStats.clusteredThisTurn) {
           this.battleStats.clusteredThisTurn = true;
           this._spawnClusterShards(ball);
         }
@@ -1878,7 +1908,6 @@ export class Game {
   }
 
   _endBattle() {
-    if (this.winner === 'player') this._resolveShot();
     this.running = false;
     this.slingshotInput.setActive(false);
     this.turnSystem.gameOver(this.winner);
@@ -1948,7 +1977,8 @@ export class Game {
       this.enemyAI.update(dt);
     }
 
-    if (this.gear) this._updateGearTurn(dt);
+    this._updateProjectiles(dt);
+    this._updateGearTurn(dt);
 
     if (this.turnSystem.isFlying) {
       const livingEnemies = this.enemies.filter((e) => e.hp > 0);
@@ -1975,11 +2005,9 @@ export class Game {
     const events = stepWorld(balls, dt, this.barriers, this.platforms, this.obstacles, this.hazards);
     this._applyHazards(balls);
     for (const evt of events) {
-      if (evt.type === 'ground' && evt.ball === this.player && Math.abs(evt.ball.vy) > 180) this._shrapnelBurst(evt.ball);
       if (evt.type === 'pad') {
         soundEngine.playUI(260 + Math.min(500, evt.impactSpeed / 2));
         if (evt.impactSpeed > 400) this.particles.push({ type: 'shockwave', x: evt.ball.x, y: W.groundY - 22, radius: 10, maxRadius: 60 + evt.impactSpeed / 12, life: 0.25, maxLife: 0.25 });
-        if (evt.ball === this.player) this._shrapnelBurst(evt.ball);
       }
       if (evt.type === 'barrier' && evt.ball.team === 'enemy' && evt.barrier?.owner !== 'enemy' && this.techStats?.barrierSpikeDmg && !evt.ball.spiked) {
         evt.ball.spiked = true;
@@ -2007,7 +2035,10 @@ export class Game {
         // Moving particles fall under light gravity; fx (tether, bolt, rings) stay put
         p.x += p.vx * dt;
         p.y += p.vy * dt;
-        p.vy += 400 * dt;
+        if (p.float) {
+          p.vx *= 1 - 2 * dt; // steam / sparkles drift up and slow down
+          p.vy *= 1 - 1.5 * dt;
+        } else p.vy += 400 * dt;
       }
       if (p.life <= 0) this.particles.splice(i, 1);
     }
@@ -2047,66 +2078,29 @@ export class Game {
     }
   }
 
-  // ---------- Shots: skills in flight, combos, trick shots ----------
+  // ---------- Moves and hit tracking ----------
 
-  /** Launch: apply an armed skill and start tracking the shot. */
+  /** Launch: a fresh move (wall-bounce tracking for Ricochet Crest). */
   _armShot() {
-    const bs = this.battleStats;
-    const p = this.player;
-    bs.shotHits = 0;
-    bs.wallBounced = false;
-    bs.shot = { hits: new Set(), kills: 0, bank: false, sky: false, long: false, x0: p.x, y0: p.y };
-    const armed = bs.skillArmed;
-    bs.skillArmed = null;
+    this.battleStats.wallBounced = false;
     this.slingshotInput.zeroGTime = 0;
-    if (!armed) return;
-    const pot = 1 + (this.techStats?.skillPotency || 0);
-    if (armed.type === 'railshot') {
-      p.piercing = true;
-      p.pierced = new Set();
-      p.shotMult = 1 + (armed.empowered ? 0.5 : 0.25) * pot;
-    } else if (armed.type === 'zerog') {
-      p.zeroG = armed.empowered ? 1.2 : 0.8;
-      p.shotMult = 1 + (armed.empowered ? 0.35 : 0.2) * pot;
-    } else if (armed.type === 'shrapnel') {
-      bs.shrapnel = armed.empowered ? 5 : 3;
-    }
   }
 
   _clearShotEffects() {
     if (!this.player) return;
     this.player.piercing = false;
-    this.player.pierced = null;
     this.player.shotMult = 0;
     this.player.zeroG = 0;
-    this.battleStats.shrapnel = 0;
-  }
-
-  /** Cluster skill: fragments burst from the ball on each bounce while charges last. */
-  _shrapnelBurst(ball) {
-    const bs = this.battleStats;
-    if (ball !== this.player || !(bs.shrapnel > 0) || this.turnSystem.phase !== TurnPhase.PLAYER_FLY) return;
-    bs.shrapnel -= 1;
-    this._spawnClusterShards(ball, { count: 2, dmg: Math.round(7 * (1 + (this.techStats?.skillPotency || 0))), label: `SHRAPNEL ${bs.shrapnel}` });
   }
 
   /** Feedback + stats for every hit you land on an enemy. */
-  _trackPlayerHit(victim, damage, killed, { crit, combo, dive, pierce }) {
+  _trackPlayerHit(victim, damage, killed, { crit }) {
     const t = this.battleStats.track;
-    const shot = this.battleStats.shot;
     t.hits += 1;
     t.bestHit = Math.max(t.bestHit, damage);
     if (killed) {
       t.kills += 1;
       if (victim.rank) t.bossKills += 1;
-    }
-    if (dive) {
-      t.diveHits += 1;
-      this._callout(victim, 'DIVE +30%', '#c46fd6');
-    }
-    if (pierce) {
-      t.pierceHits += 1;
-      this._callout(victim, 'PIERCED', '#ef7d57');
     }
     if (crit) {
       t.crits += 1;
@@ -2115,37 +2109,6 @@ export class Game {
       this.addHitStop(0.1);
       haptics.impact('heavy');
     }
-    if (combo > 1) {
-      t.maxCombo = Math.max(t.maxCombo, combo);
-      this.renderer.showBanner(`COMBO x${combo}`, combo >= 3 ? '#ff5d73' : '#ffcd75');
-      soundEngine.playUI(440 + combo * 110);
-    }
-    if (shot) {
-      if (shot.hits.size === 0 && this.battleStats.wallBounced) shot.bank = true;
-      shot.hits.add(victim);
-      if (killed) shot.kills += 1;
-      if (victim.y + victim.radius < groundAt(victim.x) - 40) shot.sky = true;
-      if (Math.hypot(victim.x - shot.x0, victim.y - shot.y0) > 700) shot.long = true;
-    }
-  }
-
-  /** Score the finished shot: trick shots pay out gold (handled by the run). */
-  _resolveShot() {
-    const shot = this.battleStats.shot;
-    this.battleStats.shot = null;
-    if (!shot || shot.hits.size === 0) return;
-    const labels = [];
-    if (shot.bank) labels.push('BANK SHOT');
-    if (shot.hits.size >= 2) labels.push(shot.hits.size >= 3 ? 'TRIPLE HIT' : 'DOUBLE HIT');
-    if (shot.kills >= 2) labels.push(shot.kills >= 3 ? 'TRIPLE KILL' : 'DOUBLE KILL');
-    if (shot.sky) labels.push('SKY SHOT');
-    if (shot.long) labels.push('LONG SHOT');
-    if (!labels.length) return;
-    const n = labels.length;
-    const gold = (3 * n * (n + 1)) / 2;
-    this.battleStats.track.trickShots += 1;
-    soundEngine.play('confirm');
-    this.events.emit('trick-shot', { labels, gold });
   }
 
   /**
@@ -2199,8 +2162,10 @@ export class Game {
       slingshotInput: this.slingshotInput,
       playerWeapons: this.playerWeapons || [],
       playerDrones: this.playerDrones || [],
-      gear: this.gear,
-      fireTarget: this.gear ? this._currentTarget() : null,
+      projectiles: this.projectiles || [],
+      relics: this.relics,
+      gear: true,
+      fireTarget: this._currentTarget(),
       inspected: this.inspected && this.inspected.ball.hp > 0 ? this.inspected : null,
     };
     this.renderer.render(world);

@@ -26,6 +26,8 @@ export class SlingshotInput {
     this.ballY = 0;
 
     this.powerMult = 1; // launch power bonus from boons / relics
+    // Your legs: the launch speed band you can use, optional elevation limits (degrees)
+    this.move = { min: S.minPower, max: S.maxPower };
     this.placementMode = null; // null | 'barrier'
     this.placementPos = { x: 0, y: 0 };
 
@@ -157,10 +159,20 @@ export class SlingshotInput {
       return;
     }
 
-    const dir = normalize(dx, dy);
-    const clampedDist = clamp(dist, 0, S.maxDragDistance);
-    const maxPower = S.maxPower * this.powerMult;
-    const power = clamp(clampedDist * S.powerScale * this.powerMult, S.minPower, maxPower);
+    let dir = normalize(dx, dy);
+    // Legs set the power band: the full drag always spans exactly what they can do
+    const m = this.move;
+    const lo = Math.max(S.minPower, m.min);
+    const hi = Math.max(lo, m.max * this.powerMult);
+    const pull = clamp(dist / S.maxDragDistance, 0, 1);
+    const power = lo + (hi - lo) * pull;
+    // ...and some legs only launch low (treads) or high (jump jets)
+    if (m.minDeg !== undefined || m.maxDeg !== undefined) {
+      const side = dir.x < 0 ? -1 : 1;
+      const elev = clamp((Math.atan2(-dir.y, Math.abs(dir.x)) * 180) / Math.PI, m.minDeg ?? -90, m.maxDeg ?? 90);
+      const r = (elev * Math.PI) / 180;
+      dir = { x: Math.cos(r) * side, y: -Math.sin(r) };
+    }
 
     this.launchVelocity = {
       x: dir.x * power,

@@ -149,6 +149,7 @@ export function paintBall(g, o) {
 
 /** Default pattern for a class when the skin has none. */
 export const CLASS_PATTERN = {
+  operator: 'chevron',
   vanguard: 'chevron',
   juggernaut: 'rivets',
   striker: 'bolt',

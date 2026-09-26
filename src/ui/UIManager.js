@@ -18,13 +18,12 @@ import pkg from '../../package.json';
 import { haptics } from '../platform/haptics.js';
 import { isDesktop, openExternal } from '../platform/desktop.js';
 import { canSelfUpdate, checkForUpdate, isSkipped, skipVersion } from '../platform/updater.js';
-import { isGearMode, setCombatMode } from '../meta/combatMode.js';
 import { RARITY } from '../meta/Relics.js';
-import { BALLS, skinsFor, isSkinUnlocked, skinProgress, skinColors, getSkill } from '../meta/Balls.js';
+import { OPERATOR, skinsFor, isSkinUnlocked, skinProgress, skinColors } from '../meta/Balls.js';
 import { ballDataUrl, CLASS_PATTERN } from '../rendering/ballSprite.js';
 import { MEDALS, medalProgress, checkMedals } from '../meta/Medals.js';
 import { masteryLevel, MILESTONES, MAX_MASTERY } from '../meta/Mastery.js';
-import { getPart, loadoutTotals, CLEAN_WIN_KEYS } from '../meta/Mech.js';
+import { getPart, loadoutTotals, SLOTS, PARTS, CLEAN_WIN_KEYS } from '../meta/Mech.js';
 import { RigScreen } from './RigScreen.js';
 import { ico, partIcon } from '../rendering/pixelIcons.js';
 
@@ -220,66 +219,54 @@ export class UIManager {
     this.modalActions.querySelector('[data-act="ok"]').addEventListener('click', () => this.closeModal());
   }
 
-  // ---------- Ball select ----------
+  // ---------- Deploy (run start) ----------
 
-  /** Pick a ball for the run. Remembers the last choice. */
+  /**
+   * Before a run: your rig at a glance (what you'll fight with), the
+   * ball's paint, mastery and the Risk to play on. There are no classes:
+   * the rig is the character.
+   */
   showBallSelect(onStart) {
-    let selected = saveSystem.getSelectedBall();
-    if (!BALLS.some((b) => b.id === selected)) selected = 'vanguard';
+    const b = OPERATOR;
+    const owned = saveSystem.getLoadoutParts();
+    const t = loadoutTotals(owned);
+    const bySlot = Object.fromEntries(SLOTS.map((s, i) => [s.id, owned[i] ? getPart(owned[i].id) : null]));
+    const slotChip = (slotId) => {
+      const p = bySlot[slotId];
+      const slot = SLOTS.find((s) => s.id === slotId);
+      return p
+        ? `<div class="deploy-part" style="--c:${p.color || '#566c86'}" title="${p.name}"><img src="${partIcon(p.id)}" alt=""><span>${p.name}</span></div>`
+        : `<div class="deploy-part empty"><span>${slot.name}: EMPTY</span></div>`;
+    };
+    const rig = t.overweight
+      ? `<p class="node-line bad">Rig is over its load limit. Fix it on the RIG screen first.</p>`
+      : '';
 
-    const bars = (n) => Array.from({ length: 5 }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('');
-    // Each card: mastery level + XP bar, and the ball's own Risk ladder
-    const cards = BALLS.map((b) => {
-      const m = masteryLevel(saveSystem.getMasteryXp(b.id));
-      const risk = saveSystem.getMaxRiskUnlocked(b.id);
-      return `
-      <button class="ball-card" data-ball="${b.id}" style="--ball:${b.color}">
-        <span class="ball-lv ${m.level >= MAX_MASTERY ? 'max' : ''}">LV ${m.level}</span>
-        <span class="ball-risk" title="Highest Risk unlocked">R${risk > 10 ? 'XI' : risk}</span>
-        <img class="ball-sprite" data-sprite="${b.id}" src="${ballDataUrl({ color: b.color, darkColor: b.darkColor, pattern: CLASS_PATTERN[b.id] }, b.radiusMult)}" alt="">
-        <strong>${b.name}</strong>
-        <span class="ball-role">${b.role}</span>
-        <span class="ball-stat">HP<em>${bars(b.rating.hp)}</em></span>
-        <span class="ball-stat">ATK<em>${bars(b.rating.atk)}</em></span>
-        <span class="ball-stat">PWR<em>${bars(b.rating.power)}</em></span>
-        <i class="ball-xp"><i style="width:${m.need ? Math.round((m.into / m.need) * 100) : 100}%"></i></i>
-      </button>`;
-    }).join('');
-
-    this.openModal('CHOOSE YOUR BALL', `
-      <div class="ball-grid">${cards}</div>
-      <p class="ball-trait" id="ball-trait"></p>
+    this.openModal('DEPLOY', `
+      <div class="deploy">
+        <div class="deploy-ball">
+          <img class="ball-sprite" id="deploy-sprite" src="${ballDataUrl(skinColors(b, 'default'), 1)}" alt="">
+          <div class="deploy-stats">
+            <span>${ico('hp')}${CONFIG.run.maxHpBase + Math.round(t.hp)}</span>
+            <span>${ico('def')}${t.def.toFixed(1)}</span>
+            <span>${ico('energy')}${t.energy} +${t.regen}/T</span>
+            <span>${ico('heat')}${t.heatCap} -${t.cool}/T</span>
+          </div>
+        </div>
+        <div class="deploy-rig">
+          ${slotChip('frame')}${slotChip('legs')}${slotChip('weapon1')}${slotChip('weapon2')}${slotChip('drone')}
+        </div>
+      </div>
+      ${rig}
       <div class="ball-sub-row"><div class="skin-row" id="skin-row"></div><span class="ball-mastery" id="ball-mastery"></span></div>`, `<div class="btn-row">
         <button class="btn btn-outline" data-act="cancel">BACK</button>
         <div class="ball-risk-row" id="ball-risk-row"></div>
-        <button class="btn btn-primary" data-act="start">&#9654; START</button>
+        <button class="btn btn-primary" data-act="start" ${t.overweight ? 'disabled' : ''}>&#9654; START</button>
       </div>`);
 
-    const traitEl = document.getElementById('ball-trait');
-    const select = (id) => {
-      selected = id;
-      this.modalBody.querySelectorAll('.ball-card').forEach((c) => c.classList.toggle('selected', c.dataset.ball === id));
-      const b = BALLS.find((x) => x.id === id);
-      const pct = (v) => `${v > 0 ? '+' : ''}${Math.round(v * 100)}%`;
-      const mods = [
-        b.hpBonus ? `<span class="${b.hpBonus > 0 ? 'mod-up' : 'mod-down'}">${b.hpBonus > 0 ? '+' : ''}${b.hpBonus} HP</span>` : '',
-        b.defBonus ? `<span class="mod-up">+${b.defBonus} DEF</span>` : '',
-        b.atkPct ? `<span class="${b.atkPct > 0 ? 'mod-up' : 'mod-down'}">${pct(b.atkPct)} ATK</span>` : '',
-        b.powerPct ? `<span class="${b.powerPct > 0 ? 'mod-up' : 'mod-down'}">${pct(b.powerPct)} PWR</span>` : '',
-      ].filter(Boolean).join('');
-      const skill = getSkill(b.id);
-      const cd = skill.cooldown - (b.id === 'vanguard' ? 1 : 0);
-      traitEl.innerHTML = `<span class="ball-tag" title="${b.trait} ${b.feel}">${b.tag}</span>${mods ? `<span class="ball-mods">${mods}</span>` : ''}
-        <span class="ball-skill" title="${skill.desc}" style="--skill:${skill.color}"><b>${skill.name}</b>${ico('cd')}${cd}T <span>${skill.brief}</span></span>`;
-      saveSystem.setSelectedBall(id);
-      this.cb.onBallChanged?.();
-      renderRisk(b);
-      renderSkins(b);
-    };
-
-    // Risk for the selected ball (each ball climbs its own ladder) + next mastery milestone
+    // Risk + mastery
     const riskRow = this.modalActions.querySelector('#ball-risk-row');
-    const renderRisk = (b) => {
+    const renderRisk = () => {
       const max = saveSystem.getMaxRiskUnlocked(b.id);
       const val = saveSystem.getDifficultyLevel(b.id);
       const m = masteryLevel(saveSystem.getMasteryXp(b.id));
@@ -288,47 +275,41 @@ export class UIManager {
         <button class="btn btn-outline risk-step" data-risk="-1" ${val <= 0 ? 'disabled' : ''}>&minus;</button>
         <b class="ball-risk-val ${val > 10 ? 'secret' : ''}">${max === 0 ? 'LOCKED' : `RISK <span>${val > 10 ? 'XI' : val}</span>`}</b>
         <button class="btn btn-outline risk-step" data-risk="1" ${val >= max ? 'disabled' : ''}>+</button>`;
-      // Mastery progress + next milestone sit beside the skins (keeps the trait line to one row)
       const bar = m.need ? `<i class="bm-bar" title="${m.into}/${m.need} XP"><i style="width:${Math.round((m.into / m.need) * 100)}%"></i></i>` : '<em>MAX</em>';
       document.getElementById('ball-mastery').innerHTML = `<b>${ico('star')}MASTERY ${m.level}</b> ${bar}${next ? `<span class="dim-text">Next (Lv ${next.level}): ${next.label}</span>` : ''}`;
       riskRow.querySelectorAll('[data-risk]').forEach((btn) => btn.addEventListener('click', () => {
         saveSystem.setDifficultyLevel(val + Number(btn.dataset.risk), b.id);
         soundEngine.playUI();
         this.cb.onBallChanged?.();
-        renderRisk(b);
+        renderRisk();
       }));
     };
 
-    // Skins for the selected ball: each class has its own set (locked ones show progress)
+    // Paints (locked ones show what unlocks them)
     let skin = 'default';
     const skinRow = document.getElementById('skin-row');
-    const renderSkins = (b) => {
+    const renderSkins = () => {
       const stats = saveSystem.getBallStats(b.id);
-      const list = skinsFor(b.id);
+      const list = skinsFor();
       try {
         skin = localStorage.getItem(`slingshot-skin-${b.id}`) || 'default';
       } catch (_) {}
       if (!isSkinUnlocked(list.find((s) => s.id === skin), stats)) skin = 'default';
-      skinRow.innerHTML = '<span class="skin-label">SKIN</span>' + list.map((s) => {
+      skinRow.innerHTML = '<span class="skin-label">PAINT</span>' + list.map((s) => {
         const open = isSkinUnlocked(s, stats);
-        const look = skinColors(b, s.id);
         const [cur, max] = open ? [1, 1] : skinProgress(s, stats).split('/').map(Number);
         return `<button class="skin-btn ${s.id === skin ? 'selected' : ''} ${open ? '' : 'locked'}" data-skin="${s.id}" title="${open ? s.name : `${s.name}: ${s.hint}`}">
-          <img src="${ballDataUrl(look, b.radiusMult)}" alt="">${open ? '' : `${ico('lock')}<i class="skin-prog"><i style="width:${Math.round((cur / max) * 100)}%"></i></i>`}
+          <img src="${ballDataUrl(skinColors(b, s.id), 1)}" alt="">${open ? '' : `${ico('lock')}<i class="skin-prog"><i style="width:${Math.round((cur / max) * 100)}%"></i></i>`}
         </button>`;
       }).join('') + '<span class="skin-info" id="skin-info"></span>';
       const info = document.getElementById('skin-info');
       const describe = (s) => {
-        const open = isSkinUnlocked(s, stats);
-        info.innerHTML = open ? `<b>${s.name}</b>` : `<b>${s.name}</b> ${s.hint} <em>${skinProgress(s, stats)}</em>`;
+        info.innerHTML = isSkinUnlocked(s, stats) ? `<b>${s.name}</b>` : `<b>${s.name}</b> ${s.hint} <em>${skinProgress(s, stats)}</em>`;
       };
       describe(list.find((s) => s.id === skin) || list[0]);
-      // The class card previews the chosen skin
-      const card = this.modalBody.querySelector(`[data-sprite="${b.id}"]`);
-      if (card) card.src = ballDataUrl(skinColors(b, skin), b.radiusMult);
+      document.getElementById('deploy-sprite').src = ballDataUrl(skinColors(b, skin), 1);
       skinRow.querySelectorAll('[data-skin]').forEach((btn) => btn.addEventListener('click', () => {
         const s = list.find((x) => x.id === btn.dataset.skin);
-        // Locked skins just show what unlocks them
         if (!isSkinUnlocked(s, stats)) {
           soundEngine.playUI();
           return describe(s);
@@ -338,23 +319,18 @@ export class UIManager {
           localStorage.setItem(`slingshot-skin-${b.id}`, skin);
         } catch (_) {}
         soundEngine.play('select');
-        renderSkins(b);
+        renderSkins();
       }));
     };
-    this.modalBody.querySelectorAll('.ball-card').forEach((c) => {
-      c.addEventListener('click', () => {
-        soundEngine.play('select');
-        haptics.impact('light');
-        select(c.dataset.ball);
-      });
-    });
-    select(selected);
+    saveSystem.setSelectedBall(b.id);
+    renderRisk();
+    renderSkins();
 
     this.modalActions.querySelector('[data-act="cancel"]').addEventListener('click', () => this.closeModal());
     this.modalActions.querySelector('[data-act="start"]').addEventListener('click', () => {
       soundEngine.play('confirm');
       this.closeModal();
-      onStart(selected, skin);
+      onStart(b.id, skin);
     });
   }
 
@@ -371,7 +347,6 @@ export class UIManager {
           ${row('sfx', 'SOUND EFFECTS', soundEngine.sfxOn)}
           ${row('music', 'MUSIC', soundEngine.musicOn)}
           ${row('haptics', 'VIBRATION', haptics.enabled)}
-          ${row('gear', 'GEAR COMBAT (BETA)', isGearMode())}
         </div>
         <div class="settings-data">
           <span>SAVE</span>
@@ -388,7 +363,6 @@ export class UIManager {
           const key = btn.dataset.setting;
           if (key === 'sfx') soundEngine.setSfx(!soundEngine.sfxOn);
           if (key === 'music') soundEngine.setMusic(!soundEngine.musicOn);
-          if (key === 'gear') setCombatMode(isGearMode() ? 'classic' : 'gear'); // next battle
           if (key === 'haptics') {
             haptics.setEnabled(!haptics.enabled);
             haptics.impact('medium');
@@ -741,9 +715,8 @@ export class UIManager {
     const play = document.getElementById('btn-play');
     if (play) {
       if (saved) {
-        const ball = BALLS.find((b) => b.id === saved.ballType);
         const where = saved.floor >= CONFIG.map.floors ? `ABYSS ${saved.floor - CONFIG.map.floors + 1}` : `F${saved.floor + 1}`;
-        play.innerHTML = `&#9654; CONTINUE RUN <small>${where} · ${ball?.name || ''}</small>`;
+        play.innerHTML = `&#9654; CONTINUE RUN <small>${where}</small>`;
       } else {
         play.innerHTML = '&#9654; START OPERATION';
       }
@@ -1171,27 +1144,24 @@ export class UIManager {
     const tone = (v, goodWhenUp = true) => (v === 0 ? '' : (v > 0) === goodWhenUp ? 'good' : 'bad');
 
     const dmg = Math.round((run.atk * (run.condition === 'glass_war' ? 1.3 : 1) - 1) * 100);
-    const classDmg = {
-      juggernaut: '+40% more on impact (class)',
-      cluster: 'fragments deal 9, less vs DEF',
-      graviton: '+30% more when falling (class)',
-    }[ball.id] || 'vs. a basic ball';
-    const crit = Math.round((0.05 + (ball.id === 'striker' ? 0.1 : 0) + (perm.critChance || 0)) * 100);
+    const crit = Math.round((0.05 + (perm.critChance || 0)) * 100);
+    const rig = perm.mech?.rig || CONFIG.gear.baseRig;
+    const energy = rig.energy + (perm.rigEnergy || 0) + (run.hasRelic('rel_energy_well') ? 12 : 0);
+    const regen = rig.regen + (perm.rigRegen || 0) + (run.hasRelic('rel_energy_well') ? 3 : 0) + (run.hasRelic('rel_overcharge') ? 4 : 0);
     const def = run.totalDef;
     const red = Math.max(-0.5, Math.min(0.85, (run.damageReductionPct || 0) + (perm.kineticDampenerPct || 0)));
     const taken = Math.round(((1 - red) * (1 + (risk.plusDmgTaken || 0) / 100) - 1) * 100);
     const power = Math.round((run.launchPowerMult - 1) * 100);
-    const skill = getSkill(run.ballType);
-    const cd = Math.max(1, skill.cooldown - (ball.id === 'vanguard' ? 1 : 0) - (run.hasRelic('rel_overcharge') ? 1 : 0) - (perm.skillCdCut || 0));
 
     const rows = [
       { label: 'HP', value: `${Math.ceil(run.hp)}/${run.maxHp}${run.shieldHp > 0 ? ` +${Math.ceil(run.shieldHp)}` : ''}`, hint: run.shieldHp > 0 ? 'includes shield' : ball.name },
-      { label: 'DAMAGE', value: signed(dmg), tone: tone(dmg), hint: classDmg },
+      { label: 'GUN DAMAGE', value: signed(dmg), tone: tone(dmg), hint: 'ATK from gear, relics, mastery' },
       { label: 'CRIT CHANCE', value: `${crit}%`, hint: 'crits hit 1.75x' },
       { label: 'DEF', value: `${def}`, hint: def > 0 ? `about -${Math.round(def * 0.75)} per enemy hit` : 'no flat reduction' },
-      { label: 'DAMAGE TAKEN', value: signed(taken), tone: tone(taken, false), hint: 'class, relics, perks, Risk' },
-      { label: 'LAUNCH POWER', value: signed(power), tone: tone(power), hint: 'max shot speed / range' },
-      { label: 'SKILL', value: `${cd} TURN CD`, hint: skill.name },
+      { label: 'DAMAGE TAKEN', value: signed(taken), tone: tone(taken, false), hint: 'relics, perks, Risk' },
+      { label: 'ENERGY', value: `${energy} +${regen}/T`, hint: 'per shot, refills each turn' },
+      { label: 'HEAT', value: `${rig.heatCap + 0} -${rig.cool + (perm.rigCool || 0)}/T`, hint: 'cap, cools each turn' },
+      { label: 'MOVE POWER', value: signed(power), tone: tone(power), hint: 'max launch speed / range' },
     ];
     if (perm.vampiricVitalityPct) rows.push({ label: 'LIFESTEAL', value: `${Math.round(perm.vampiricVitalityPct * 1000) / 10}%`, tone: 'good', hint: 'of damage dealt' });
     if (perm.forcefieldTurnInterval) rows.push({ label: 'FORCEFIELD', value: `EVERY ${perm.forcefieldTurnInterval}T`, tone: 'good', hint: 'blocks one hit' });
@@ -1350,26 +1320,104 @@ export class UIManager {
     return `<p class="node-line">${R[0]}</p><div class="node-chips">${R[1].join('')}</div>`;
   }
 
-  showCombatResult(win, rewards, run) {
+  /**
+   * End-of-battle report: a full-screen card over the arena.
+   *   left  – how the fight went (damage, shots, best hit, rams, turns)
+   *           and which gun did the work
+   *   right – rewards, popping in one by one with counting numbers,
+   *           and your HP going into the next node
+   * `report` comes from Game.battleStats (report + track).
+   */
+  showCombatResult(win, rewards, run, report = null) {
+    document.getElementById('battle-report')?.remove();
+    const r = report || {};
+    const el = document.createElement('div');
+    el.id = 'battle-report';
+    el.className = `battle-report ${win ? 'win' : 'lose'}`;
+
+    const row = (icon, label, value) => `<div class="br-row">${icon}<span>${label}</span><b data-count="${value}">0</b></div>`;
+    const stats = [
+      row(ico('dmg'), 'DAMAGE DEALT', Math.round(r.dealt || 0)),
+      row(ico('hp'), 'DAMAGE TAKEN', Math.round(r.taken || 0)),
+      row(ico('gun'), 'SHOTS FIRED', r.shots || 0),
+      row(ico('star'), 'BEST HIT', Math.round(r.bestHit || 0)),
+      row(ico('skull'), 'ENEMIES DOWN', r.kills || 0),
+      row(ico('move'), 'RAMS', r.rams || 0),
+      row(ico('cd'), 'TURNS', r.turns || 0),
+    ].join('');
+
+    // Which gun did the work
+    const guns = Object.entries(r.byGun || {}).sort((a, b) => b[1] - a[1]);
+    const top = guns[0]?.[1] || 1;
+    const gunRows = guns.map(([name, dmg], i) => {
+      const part = PARTS_BY_NAME[name];
+      return `<div class="br-gun ${i === 0 ? 'mvp' : ''}" style="--c:${part?.color || '#94b0c2'}">
+        ${part ? `<img src="${partIcon(part.id)}" alt="">` : ''}
+        <span>${name}${i === 0 && guns.length > 1 ? ' <em>MVP</em>' : ''}</span>
+        <i class="br-bar"><i style="--w:${Math.round((dmg / top) * 100)}%"></i></i><b>${Math.round(dmg)}</b></div>`;
+    }).join('') || '<p class="dim-text">No gun hits this fight.</p>';
+
+    // Rewards
     const tiles = [];
-    const tile = (icon, value, label, color) => tiles.push(`<div class="reward-tile" style="--c:${color}">${icon}<strong>${value}</strong><span>${label}</span></div>`);
+    const tile = (icon, value, label, color) => tiles.push(`<div class="reward-tile br-pop" style="--c:${color}">${icon}<strong data-count="${value}" data-prefix="+">+0</strong><span>${label}</span></div>`);
     if (rewards) {
-      if (rewards.gold) tile(ico('gold'), `+${rewards.gold}`, 'GOLD', '#ffcd75');
-      if (rewards.tech) tile(ico('tp'), `+${rewards.tech}`, 'TP', '#73eff7');
-      if (rewards.heal) tile(ico('hp'), `+${rewards.heal}`, 'HP', '#ff5d73');
-      if (rewards.tokens) tile(ico('key'), `+${rewards.tokens}`, 'KEYS', '#ffcd75');
+      if (rewards.gold) tile(ico('gold'), rewards.gold, 'GOLD', '#ffcd75');
+      if (rewards.tech) tile(ico('tp'), rewards.tech, 'TP', '#73eff7');
+      if (rewards.tokens) tile(ico('key'), rewards.tokens, 'KEYS', '#ffcd75');
+      if (rewards.heal) tile(ico('hp'), rewards.heal, 'HP', '#ff5d73');
       const relics = rewards.relics?.length ? rewards.relics : rewards.relic ? [rewards.relic] : [];
-      for (const r of relics) tile(ico('relic'), '+1', r.name, RARITY[r.rarity]?.color || '#c46fd6');
+      for (const rel of relics) tiles.push(`<div class="reward-tile br-pop" style="--c:${RARITY[rel.rarity]?.color || '#c46fd6'}">${ico('relic')}<strong>+1</strong><span>${rel.name}</span></div>`);
     }
-    const body = win
-      ? `${rewards?.clean ? `<p class="node-line clean">CLEAN WIN: +${CLEAN_WIN_KEYS} KEYS</p>` : ''}<div class="reward-tiles">${tiles.join('')}</div>`
-      : `<p class="node-line bad">Your ball was destroyed.</p>`;
-    this.openModal(win ? 'VICTORY' : 'DEFEATED', body,
-      `<div class="btn-row"><button class="btn btn-accent" data-act="continue">CONTINUE</button></div>`
-    );
-    const btn = this.modalActions.querySelector('button[data-act="continue"]');
-    btn.addEventListener('click', () => {
-      this.closeModal();
+    const hpPct = run ? Math.max(0, Math.min(100, Math.round((run.hp / run.maxHp) * 100))) : 0;
+    const right = win
+      ? `<h3>REWARDS</h3>
+        ${rewards?.clean ? `<p class="br-clean">CLEAN WIN · +${CLEAN_WIN_KEYS} KEYS</p>` : ''}
+        <div class="reward-tiles">${tiles.join('') || '<p class="dim-text">Nothing this time.</p>'}</div>`
+      : `<h3>DOWN</h3><p class="node-line bad">Your rig was destroyed.</p>`;
+
+    el.innerHTML = `
+      <div class="br-card">
+        <header class="br-head">
+          <h2>${win ? 'VICTORY' : 'DEFEATED'}</h2>
+          <span>${r.nodeLabel || ''}</span>
+        </header>
+        <div class="br-body">
+          <section class="br-col">
+            <h3>BATTLE</h3>
+            <div class="br-stats">${stats}</div>
+            <h3>GUNS</h3>
+            <div class="br-guns">${gunRows}</div>
+          </section>
+          <section class="br-col br-right">
+            ${right}
+            ${run ? `<div class="br-hp"><span>${ico('hp')}HP</span><i class="br-bar hp"><i style="--w:${hpPct}%"></i></i><b>${Math.ceil(run.hp)}/${run.maxHp}</b></div>` : ''}
+            <button class="btn btn-primary br-continue" data-act="continue">CONTINUE &#9654;</button>
+          </section>
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+
+    // Count the numbers up and pop the reward tiles in, one after another
+    const counters = [...el.querySelectorAll('[data-count]')];
+    const start = performance.now();
+    const dur = 700;
+    const tick = (now) => {
+      const k = Math.min(1, (now - start) / dur);
+      const e = 1 - Math.pow(1 - k, 3);
+      for (const c of counters) c.textContent = `${c.dataset.prefix || ''}${Math.round(Number(c.dataset.count) * e)}`;
+      if (k < 1 && el.isConnected) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    el.querySelectorAll('.br-pop').forEach((t, i) => {
+      t.style.animationDelay = `${0.35 + i * 0.12}s`;
+    });
+    requestAnimationFrame(() => el.classList.add('in'));
+    soundEngine.play(win ? 'confirm' : 'error');
+
+    el.querySelector('[data-act="continue"]').addEventListener('click', () => {
+      soundEngine.playUI();
+      el.classList.remove('in');
+      setTimeout(() => el.remove(), 180);
       this.cb.onBattleReportContinue();
     });
   }
@@ -1810,13 +1858,6 @@ export class UIManager {
     document.getElementById('battle-node').textContent =
       nodeType === 'boss' ? 'BOSS' : nodeType === 'miniboss' ? 'MINI-BOSS' : nodeType === 'elite' ? 'ELITE' : 'COMBAT';
     document.getElementById('battle-gold').textContent = `${run.gold}G`;
-    const skill = getSkill(run.ballType);
-    const skillBtn = document.getElementById('btn-overdrive');
-    if (skillBtn) {
-      skillBtn.querySelector('.ability-name').textContent = skill.short;
-      skillBtn.title = `[1] ${skill.name}: ${skill.desc}`;
-      skillBtn.style.setProperty('--skill', skill.color);
-    }
 
     const mapView = document.getElementById('map-view');
     const battleView = document.getElementById('battle-view');
@@ -1866,11 +1907,14 @@ export class UIManager {
   }
 }
 
+// Battle report: gun names back to their parts (icons / colours)
+const PARTS_BY_NAME = Object.fromEntries(PARTS.map((p) => [p.name, p]));
+
 // ---------- Tech tree layout ----------
 // Four branches grow out of the CORE like an X; `col` is how far along the
 // branch a node sits, `row` (0-2) which side of the branch it forks to.
 const TECH_BRANCHES = [
-  { key: 'skl', title: 'SKILL', color: '#ffcd75', angle: (-150 * Math.PI) / 180 },
+  { key: 'rct', title: 'REACTOR', color: '#73eff7', angle: (-150 * Math.PI) / 180 },
   { key: 'sur', title: 'SURVIVAL', color: '#a7f070', angle: (-30 * Math.PI) / 180 },
   { key: 'bar', title: 'BARRIER', color: '#41a6f6', angle: (30 * Math.PI) / 180 },
   { key: 'tac', title: 'TACTICS', color: '#c46fd6', angle: (150 * Math.PI) / 180 },
@@ -1913,12 +1957,12 @@ function techBonusList(st) {
   const out = [];
   const add = (cond, label, value) => { if (cond) out.push({ label, value }); };
   const pct = (v) => Math.round(v * 1000) / 10;
-  add(st.skillPotency, 'Skill power', `+${pct(st.skillPotency)}%`);
-  add(st.skillCdCut, 'Skill cooldown', `-${st.skillCdCut}T`);
-  add(st.skillEchoPct, 'Echo chance', `${pct(st.skillEchoPct)}%`);
-  add(st.skillOpener, 'First skill', 'empowered');
-  add(st.skillMomentum, 'Kills', 'skill -1T');
-  add(st.skillOverload, 'Skill', 'always empowered');
+  add(st.rigEnergy, 'Energy pool', `+${st.rigEnergy}`);
+  add(st.rigRegen, 'Energy per turn', `+${st.rigRegen}`);
+  add(st.rigCool, 'Cooling per turn', `+${st.rigCool}`);
+  add(st.freeFirstShot, 'First shot', 'free');
+  add(st.killEnergy, 'Kills refund', `${st.killEnergy} energy`);
+  add(st.overclock, 'Every 3rd turn', '+1 action');
   add(st.barrierHpPct, 'Barrier HP', `+${pct(st.barrierHpPct)}%`);
   add(st.barrierCdCut, 'Barrier cooldown', `-${st.barrierCdCut}T`);
   add(st.barrierSpikeDmg, 'Barrier spikes', `${st.barrierSpikeDmg} dmg`);

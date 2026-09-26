@@ -18,7 +18,7 @@ import { Minigame } from './minigame/Minigame.js';
 import { UIManager } from './ui/UIManager.js';
 import { pickRelics } from './meta/Relics.js';
 import { pickArena } from './core/Arenas.js';
-import { getBall, skinColors } from './meta/Balls.js';
+import { OPERATOR, skinColors } from './meta/Balls.js';
 import { MenuBackground } from './rendering/MenuBackground.js';
 import { soundEngine } from './utils/SoundEngine.js';
 import { haptics } from './platform/haptics.js';
@@ -26,8 +26,7 @@ import { DevTools } from './dev/DevTools.js';
 import { checkMedals } from './meta/Medals.js';
 import './platform/native.js';
 import './platform/desktop.js';
-import { withMech, tokenReward, enemyWeapons, enemyRig, CLEAN_WIN_KEYS } from './meta/Mech.js';
-import { isGearMode } from './meta/combatMode.js';
+import { withMech, tokenReward, enemyWeapons, enemyRig, enemyLegs, CLEAN_WIN_KEYS } from './meta/Mech.js';
 import { partIcon } from './rendering/pixelIcons.js';
 import { ballDataUrl, CLASS_PATTERN } from './rendering/ballSprite.js';
 import { withMastery, masteryLevel, runXp } from './meta/Mastery.js';
@@ -106,7 +105,7 @@ window.addEventListener('pointerdown', () => soundEngine.unlock(), { capture: tr
 const ui = new UIManager({
   onPlay: () => {
     if (hasSavedRun()) resumeSavedRun();
-    else ui.showBallSelect((ballType, skin) => startNewRun(ballType, skin));
+    else ui.showBallSelect((_ball, skin) => startNewRun(skin));
   },
   savedRun: savedRunInfo,
   onDataReset: clearRun,
@@ -198,22 +197,7 @@ function addFeedEntry(html) {
 // ---------- Battle ability HUD ----------
 
 function bindAbilityButtons() {
-  const btnOverdrive = document.getElementById('btn-overdrive');
   const btnBarrier = document.getElementById('btn-barrier');
-
-  const triggerOverdrive = (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    if (state !== State.BATTLE) return;
-    if (game.useAbility('skill')) {
-      haptics.impact('medium');
-      updateAbilityHud();
-    } else {
-      soundEngine.play('error');
-    }
-  };
 
   const triggerBarrier = (e) => {
     if (e) {
@@ -225,10 +209,6 @@ function bindAbilityButtons() {
       updateAbilityHud();
     }
   };
-
-  if (btnOverdrive) {
-    btnOverdrive.addEventListener('click', triggerOverdrive);
-  }
 
   document.getElementById('btn-retreat-battle')?.addEventListener('click', () => {
     if (!canRetreatFromBattle()) return;
@@ -252,20 +232,18 @@ function bindAbilityButtons() {
     if (!game.ventPlayer()) soundEngine.play('error');
   });
 
-  // Keyboard hotkeys: [1] skill, [2] barrier; gear combat: [Q] [E] guns, [Space] end turn
+  // Keyboard hotkeys: [Q] [E] guns, [2] / [B] barrier, [V] vent, [Space] end turn
   window.addEventListener('keydown', (e) => {
-    if (state !== State.BATTLE) return;
+    if (state !== State.BATTLE || battlePaused) return;
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
-    if (e.key === '1' || e.code === 'Digit1' || e.code === 'Numpad1') {
-      triggerOverdrive(e);
-    } else if (e.key === '2' || e.code === 'Digit2' || e.code === 'Numpad2') {
+    if (e.key === '2' || e.code === 'Digit2' || e.code === 'Numpad2' || e.code === 'KeyB') {
       triggerBarrier(e);
-    } else if (game.gear && !battlePaused && (e.code === 'KeyQ' || e.code === 'KeyE')) {
+    } else if (e.code === 'KeyQ' || e.code === 'KeyE') {
       fireGun(e.code === 'KeyQ' ? 0 : 1);
-    } else if (game.gear && !battlePaused && e.code === 'Space') {
+    } else if (e.code === 'Space') {
       e.preventDefault();
       if (game.endPlayerTurn()) soundEngine.playUI();
-    } else if (game.gear && !battlePaused && e.code === 'KeyV') {
+    } else if (e.code === 'KeyV') {
       if (!game.ventPlayer()) soundEngine.play('error');
     }
   });
@@ -307,7 +285,8 @@ function bindBarrierDrag(btn) {
   btn.addEventListener('pointerdown', (e) => {
     if (state !== State.BATTLE || drag) return;
     const ab = game.abilities?.barrier;
-    if (!game.running || battlePaused || !ab?.ready || game.playerBarrierCount >= game._maxBarriers()) {
+    // Placing a barrier is one of your actions, on your turn only
+    if (!game.canPlayerAct || battlePaused || !ab?.ready || game.playerBarrierCount >= game._maxBarriers()) {
       soundEngine.play('error');
       return;
     }
@@ -361,31 +340,14 @@ function fireGun(i) {
 let mechHudSig = '';
 function updateMechHud() {
   const el = document.getElementById('mech-hud');
-  if (!el) return;
-  const endBtn = document.getElementById('btn-end-turn');
-  const ventBtn = document.getElementById('btn-vent');
-  if (game.gear) return updateGearHud(el, endBtn, ventBtn);
-  endBtn?.classList.add('hidden');
-  ventBtn?.classList.add('hidden');
-  document.getElementById('battle-hud')?.classList.remove('gear');
-  const guns = game.playerWeapons || [];
-  const drones = game.playerDrones || [];
-  const focus = game.inspected?.ball === game.player ? game.inspected.weapon : undefined;
-  const sig = guns.map((w) => w.cdLeft).join(',') + '|' + guns.length + '|' + drones.length + '|' + focus;
-  if (sig === mechHudSig) return;
-  mechHudSig = sig;
-  el.innerHTML = guns.map((w, i) => `<button class="mech-chip ${w.cdLeft ? 'cooling' : 'ready'} ${focus === i ? 'focus' : ''}" data-gun="${i}" style="--c:${w.color}" title="${w.name}">
-      <img src="${partIcon(w.id)}" alt=""><span>${w.cdLeft ? `${w.cdLeft}T` : 'READY'}</span></button>`).join('')
-    + drones.map((d) => `<span class="mech-chip drone" style="--c:${d.color}" title="${d.name}"><img src="${partIcon(d.id)}" alt=""><span>AUTO</span></span>`).join('');
-  el.querySelectorAll('[data-gun]').forEach((b) => b.addEventListener('pointerdown', (e) => {
-    e.stopPropagation();
-    game.inspectWeapon(Number(b.dataset.gun));
-    soundEngine.playUI();
-  }));
+  if (el) updateGearHud(el, document.getElementById('btn-end-turn'), document.getElementById('btn-vent'));
 }
 
 function updateGearHud(el, endBtn, ventBtn) {
-  document.getElementById('battle-hud')?.classList.add('gear');
+  const hud = document.getElementById('battle-hud');
+  hud?.classList.add('gear');
+  // The Status drawer covers the bottom-left: tuck the gun chips away while it's open
+  hud?.classList.toggle('drawer-open', !!document.querySelector('.run-drawer.open'));
   const guns = game.playerWeapons || [];
   const drones = game.playerDrones || [];
   const p = game.player;
@@ -440,33 +402,18 @@ function updateGearHud(el, endBtn, ventBtn) {
 }
 
 function updateAbilityHud() {
-  const btnOverdrive = document.getElementById('btn-overdrive');
   const btnBarrier = document.getElementById('btn-barrier');
-  const cdOverdrive = document.getElementById('cd-overdrive');
   const cdBarrier = document.getElementById('cd-barrier');
-
-  if (!game.abilities) return;
-
-  const od = game.abilities.skill;
-  const br = game.abilities.barrier;
-  const armed = !!game.battleStats?.skillArmed;
-
-  if (btnOverdrive) {
-    btnOverdrive.disabled = !od.ready;
-    btnOverdrive.classList.toggle('ready', od.ready);
-    btnOverdrive.classList.toggle('armed', armed);
-  }
-  if (cdOverdrive) {
-    const stacks = game.battleStats?.overdriveStacks || 0;
-    const text = stacks > 0 ? `${stacks}x STACK` : armed ? 'ARMED' : od.ready ? 'READY' : `${od.cooldownLeft}T`;
-    if (cdOverdrive.textContent !== text) cdOverdrive.textContent = text;
-  }
+  const br = game.abilities?.barrier;
+  if (!br) return;
+  const usable = br.ready && game.canPlayerAct;
   if (btnBarrier) {
-    btnBarrier.disabled = !br.ready;
-    btnBarrier.classList.toggle('ready', br.ready);
+    btnBarrier.disabled = !usable;
+    btnBarrier.classList.toggle('ready', usable);
   }
   if (cdBarrier) {
-    cdBarrier.textContent = br.ready ? 'READY' : `${br.cooldownLeft}T`;
+    const text = br.ready ? 'READY' : `${br.cooldownLeft}T`;
+    if (cdBarrier.textContent !== text) cdBarrier.textContent = text;
   }
 }
 
@@ -503,7 +450,8 @@ function persistRun(resume = 'map', extra = {}) {
   });
 }
 
-function startNewRun(ballType = 'vanguard', skin = 'default') {
+function startNewRun(skin = 'default') {
+  const ballType = OPERATOR.id;
   runSeed = Math.floor(Math.random() * 100000) + 1;
   saveSystem.setSelectedBall(ballType); // Risk is per ball
   const perm = withMastery(withMech(techTree.getPermanentStats(), saveSystem.getLoadoutParts()), masteryLevel(saveSystem.getMasteryXp(ballType)).level);
@@ -985,8 +933,9 @@ function startCombat(node) {
       aiDifficulty: Math.min(0.95, tier.aiDifficulty + arch.aiShift + riskData.aiBonus),
       thinkDelay: arch.ability === 'aggressive' ? Math.max(0.3, thinkDelay - 0.2) : thinkDelay,
       xPct,
-      weapons: enemyWeapons(node.type, run.floor + 1, Math.random, { atkMult: atkMult * waveAtkScale, cdCut: riskData.gunCdCut || 0, gear: isGearMode() }),
+      weapons: enemyWeapons(node.type, run.floor + 1, Math.random, { atkMult: atkMult * waveAtkScale }),
       rig: enemyRig(node.type, { cdCut: riskData.gunCdCut || 0 }),
+      legs: enemyLegs(node.type, archetype),
     });
   }
 
@@ -1003,15 +952,14 @@ function startCombat(node) {
     enemies,
     relics: run.relics,
     nodeType: node.type,
-    ballType: run.ballType || 'vanguard',
-    skinColors: skinColors(getBall(run.ballType), run.skin),
+    ballType: OPERATOR.id,
+    skinColors: skinColors(OPERATOR, run.skin),
     techStats: run.permanent, // tech tree + equipped gear, fixed for the run
     riskLevel: riskLevel,
     riskPlusDmgTaken: riskData.plusDmgTaken || 0,
     riskDefPierce: riskData.defPierce || 0,
     floor: run.floor + 1,
     maxPowerMult,
-    gear: isGearMode(),
   };
 
   // Wire quest hooks (clear old listeners first so no stacking)
@@ -1021,16 +969,6 @@ function startCombat(node) {
   game.events.off('ability-used');
   game.events.off('enemy-ability');
   game.events.off('enemy-dealt-damage');
-  game.events.off('trick-shot');
-
-  // Trick shots pay gold right away (run gold modifiers apply)
-  game.events.on('trick-shot', ({ labels, gold }) => {
-    const got = run.gainGold(gold);
-    game.renderer.showBanner(`${labels.join(' + ')}  +${got}G`, '#ffcd75');
-    game.renderer.addFloatingText(game.player.x, game.player.y - game.player.radius - 40, `+${got}G`, '#ffcd75', true);
-    const goldEl = document.getElementById('battle-gold');
-    if (goldEl) goldEl.textContent = `${run.gold}G`;
-  });
 
   // (Mid-battle events have no toast: damage already shows as floating numbers)
   game.events.on('player-dealt-damage', ({ damage }) => reportQuest('damage_dealt', { amount: damage }));
@@ -1215,12 +1153,29 @@ function onBattleEnd(won, node) {
     }
     // Rewards are paid: a reload must continue from here, not replay the fight
     persistRun('combat', { pendingBoonId: pendingBoon?.id });
-    ui.showCombatResult(true, { gold, tech, heal, relic: rewardRelic, relics: rewardRelics, tokens, clean }, run);
+    // Let the finishing blow and the VICTORY splash land, then the report
+    const rewardsWon = { gold, tech, heal, relic: rewardRelic, relics: rewardRelics, tokens, clean };
+    setTimeout(() => ui.showCombatResult(true, rewardsWon, run, battleReport(node, damageTaken)), 900);
   } else {
     ui.updateRunHud(run);
     persistRun('combat');
-    ui.showCombatResult(false, null, run);
+    setTimeout(() => ui.showCombatResult(false, null, run, battleReport(node, damageTaken)), 900);
   }
+}
+
+/** Numbers for the end-of-battle report (Game.battleStats). */
+function battleReport(node, damageTaken) {
+  const bs = game.battleStats;
+  const label = { boss: 'BOSS', miniboss: 'MINI-BOSS', elite: 'ELITE' }[node.type] || 'COMBAT';
+  const where = run.floor >= CONFIG.map.floors ? `ABYSS ${run.floor - CONFIG.map.floors + 1}` : `FLOOR ${run.floor + 1}`;
+  return {
+    ...bs.report,
+    taken: damageTaken,
+    bestHit: bs.track.bestHit,
+    kills: bs.track.kills,
+    turns: bs.turns,
+    nodeLabel: `${where} · ${label}`,
+  };
 }
 
 function continueAfterCombatReport() {
@@ -1821,7 +1776,7 @@ function setupRiskSlider() {
 /** Compact Risk panel for the selected ball: level, TP bonus, newest rule (the rest are in RULES). */
 function updateRiskDisplay(val) {
   const max = saveSystem.getMaxRiskUnlocked();
-  const ball = getBall(saveSystem.getSelectedBall());
+  const ball = OPERATOR;
   const title = document.querySelector('.risk-title');
   if (title) {
     const look = skinColors(ball, 'default');

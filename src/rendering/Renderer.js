@@ -167,15 +167,17 @@ export class Renderer {
     this._drawPlatformsAndObstacles(ctx, world.platforms || [], world.obstacles || []);
     this._drawBarriers(ctx, world.barriers || [], now);
     this._drawParticles(ctx, particles || []);
-    this._drawSkillAura(ctx, world, now);
     this._updateAmbient(dt, [player, ...livingEnemies]);
     this._drawAmbient(ctx);
     for (const ball of [player, ...livingEnemies]) {
       if (ball && ball.hp > 0) this._drawBallShadow(ctx, ball);
     }
+    // Legs first, so the ball sits on top of them
+    for (const ball of [player, ...livingEnemies]) if (ball?.hp > 0 && ball.legs) this._drawLegs(ctx, world, ball, now);
     if (player && player.hp > 0) this._drawBall(ctx, player);
     for (const enemy of livingEnemies) this._drawBall(ctx, enemy);
     this._drawGear(ctx, world, player, livingEnemies);
+    this._drawProjectiles(ctx, world, now);
     this._drawMineMarkers(ctx, world.hazards || [], now);
     this._drawMechRanges(ctx, world);
     if (world.slingshotInput) world.slingshotInput.draw(ctx);
@@ -520,6 +522,150 @@ export class Renderer {
   }
 
   /**
+   * Shots in flight (Game.projectiles). Each gun's look comes from vfxOf:
+   *   bullet – a bright slug with a short streak
+   *   lob    – a shell on a high arc with a smoke trail
+   *   beam   – a flash of light that thins out
+   *   spray  – a cone of flame / acid / frost droplets
+   *   hook   – a line that reels out to the target
+   *   pulse  – a shock ring travelling to the target
+   */
+  _drawProjectiles(ctx, world, now) {
+    for (const p of world.projectiles || []) {
+      if (p.t < 0) continue; // a burst round still waiting its turn
+      const k = Math.min(1, p.t / p.dur);
+      const tx = p.target.x;
+      const ty = p.target.y;
+      const dx = tx - p.x0;
+      const dy = ty - p.y0;
+      const dist = Math.hypot(dx, dy) || 1;
+      const ang = Math.atan2(dy, dx);
+      ctx.save();
+      switch (p.kind) {
+        case 'bullet': {
+          const x = p.x0 + dx * k;
+          const y = p.y0 + dy * k;
+          ctx.strokeStyle = p.color;
+          ctx.globalAlpha = 0.5;
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(x - Math.cos(ang) * 34, y - Math.sin(ang) * 34);
+          ctx.lineTo(x, y);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.translate(x, y);
+          ctx.rotate(ang);
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(-8, -3, 14, 6);
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-12, -2, 6, 4);
+          break;
+        }
+        case 'lob': {
+          const arcH = 110 + dist * 0.28;
+          const at = (kk) => ({ x: p.x0 + dx * kk, y: p.y0 + dy * kk - arcH * 4 * kk * (1 - kk) });
+          // Smoke trail: fading puffs behind the shell
+          for (let i = 1; i <= 6; i++) {
+            const kk = k - i * 0.035;
+            if (kk <= 0) break;
+            const q = at(kk);
+            ctx.globalAlpha = 0.45 * (1 - i / 7);
+            ctx.fillStyle = '#94b0c2';
+            const s = 6 + i * 2;
+            ctx.fillRect(Math.round(q.x - s / 2), Math.round(q.y - s / 2), s, s);
+          }
+          ctx.globalAlpha = 1;
+          const q = at(k);
+          const q2 = at(Math.min(1, k + 0.02));
+          ctx.translate(q.x, q.y);
+          ctx.rotate(Math.atan2(q2.y - q.y, q2.x - q.x));
+          ctx.fillStyle = '#1a1c2c';
+          ctx.fillRect(-10, -6, 20, 12);
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-8, -4, 16, 8);
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(4, -2, 4, 4);
+          break;
+        }
+        case 'beam': {
+          const fade = 1 - k;
+          ctx.globalAlpha = 0.35 + 0.65 * fade;
+          ctx.strokeStyle = p.color;
+          ctx.lineWidth = 14 * fade + 4;
+          ctx.beginPath();
+          ctx.moveTo(p.x0, p.y0);
+          ctx.lineTo(tx, ty);
+          ctx.stroke();
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 4 * fade + 1;
+          ctx.stroke();
+          // Flash where it lands
+          ctx.globalAlpha = fade;
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(Math.round(tx - 12), Math.round(ty - 12), 24, 24);
+          break;
+        }
+        case 'spray': {
+          // Droplets fanning out along the cone, reaching the target as k -> 1
+          const n = 14;
+          for (let i = 0; i < n; i++) {
+            const f = ((i * 37) % n) / n; // stable spread per droplet
+            const reach = Math.min(1, k * 1.3 - f * 0.3);
+            if (reach <= 0) continue;
+            const spread = (f - 0.5) * 0.5;
+            const r = dist * reach;
+            const x = p.x0 + Math.cos(ang + spread) * r;
+            const y = p.y0 + Math.sin(ang + spread) * r;
+            ctx.globalAlpha = 0.9 - reach * 0.4;
+            ctx.fillStyle = i % 3 ? p.color : '#fff';
+            const s = 5 + reach * 8;
+            ctx.fillRect(Math.round(x - s / 2), Math.round(y - s / 2), s, s);
+          }
+          break;
+        }
+        case 'hook': {
+          const x = p.x0 + dx * k;
+          const y = p.y0 + dy * k;
+          ctx.strokeStyle = '#94b0c2';
+          ctx.lineWidth = 3;
+          ctx.setLineDash([8, 5]);
+          ctx.beginPath();
+          ctx.moveTo(p.x0, p.y0);
+          ctx.lineTo(x, y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.translate(x, y);
+          ctx.rotate(ang);
+          ctx.fillStyle = '#f4f4f4';
+          ctx.fillRect(-4, -8, 8, 16);
+          ctx.fillRect(4, -8, 6, 4);
+          ctx.fillRect(4, 4, 6, 4);
+          break;
+        }
+        case 'pulse': {
+          const x = p.x0 + dx * k;
+          const y = p.y0 + dy * k;
+          const r = 12 + 10 * Math.sin(k * Math.PI);
+          ctx.strokeStyle = p.color;
+          ctx.lineWidth = 5;
+          ctx.globalAlpha = 0.9;
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha = 0.4;
+          ctx.beginPath();
+          ctx.arc(x, y, r + 10, 0, Math.PI * 2);
+          ctx.stroke();
+          break;
+        }
+        default:
+          break;
+      }
+      ctx.restore();
+    }
+  }
+
+  /**
    * Equipped gear on the balls: guns hover on the flanks and turn toward the
    * nearest target (recoil + muzzle flash when they fire), drones orbit
    * above. Stowed (faded out) while the ball is flying. Each part's muzzle
@@ -536,10 +682,11 @@ export class Renderer {
       ctx.fillRect(Math.round(x - 4), Math.round(y - 4), 8, 8);
     };
     const mount = (ball, guns, foes, drones = []) => {
-      if (!ball || ball.hp <= 0 || (!guns.length && !drones.length)) return;
+      if (!ball || ball.hp <= 0) return;
       const speed = Math.hypot(ball.vx || 0, ball.vy || 0);
       const alpha = Math.max(0, Math.min(1, 1 - (speed - 60) / 220));
       const r = ball.radius;
+      if (!guns.length && !drones.length) return;
       const nearest = foes.filter((f) => f && f.hp > 0).sort((a, b) => Math.hypot(a.x - ball.x, a.y - ball.y) - Math.hypot(b.x - ball.x, b.y - ball.y))[0];
       guns.forEach((g, i) => {
         const side = guns.length === 1 ? (nearest && nearest.x < ball.x ? -1 : 1) : i % 2 === 0 ? -1 : 1;
@@ -557,22 +704,36 @@ export class Renderer {
         ctx.translate(Math.round(mx), Math.round(my));
         ctx.rotate(g._ang);
         if (Math.cos(g._ang) < 0) ctx.scale(1, -1); // keep the sprite upright
-        ctx.globalAlpha = alpha * (g.cdLeft > 0 || (g.ammo && g.ammoLeft <= 0) ? 0.6 : 1);
+        ctx.globalAlpha = alpha * (g.ammo && g.ammoLeft <= 0 ? 0.6 : 1);
         ctx.drawImage(ic, Math.round(-6 - recoil), Math.round(-h / 2), w, h);
+        const hot = ball.heatCap ? ball.heat / ball.heatCap : 0;
+        if (hot > 0.75) {
+          // Overheating barrel: a pulsing red glow along the gun
+          ctx.globalAlpha = alpha * (0.25 + 0.2 * Math.sin(now / 90)) * Math.min(1, (hot - 0.75) * 4);
+          ctx.fillStyle = '#ff5d73';
+          ctx.fillRect(Math.round(-6 - recoil), Math.round(-h / 2), w, h);
+        }
         ctx.globalAlpha = alpha;
         if (since < 110) flash(w - 2 - recoil, 0, g.color || '#ffcd75');
         ctx.restore();
         g._muzzle = { x: mx + Math.cos(g._ang) * (w - 6), y: my + Math.sin(g._ang) * (w - 6) };
       });
       drones.forEach((d, i) => {
+        // Switched OFF: docked inside the ball (drawn only while it flies back in)
+        const toggled = now - (d.deployedAt || -1e9);
+        const out = d.off ? Math.max(0, 1 - toggled / 300) : Math.min(1, toggled / 350);
+        if (out <= 0) return;
+        const ease = out * out * (3 - 2 * out);
         const t = now / 1000 + i * Math.PI;
         const since = now - (d.firedAt || -1e9);
-        const dx = ball.x + Math.cos(t * 1.3) * r * 1.5;
-        const dy = ball.y - r * 1.9 + Math.sin(t * 2.6) * 5 - (since < 150 ? 4 : 0);
+        const ox = Math.cos(t * 1.3) * r * 1.5;
+        const oy = -r * 1.9 + Math.sin(t * 2.6) * 5 - (since < 150 ? 4 : 0);
+        const dx = ball.x + ox * ease;
+        const dy = ball.y + oy * ease;
         const ic = partCanvas(d.id);
-        const w = ic.width * S;
-        const h = ic.height * S;
-        ctx.globalAlpha = alpha;
+        const w = ic.width * S * (0.4 + 0.6 * ease);
+        const h = ic.height * S * (0.4 + 0.6 * ease);
+        ctx.globalAlpha = alpha * (0.3 + 0.7 * ease);
         ctx.drawImage(ic, Math.round(dx - w / 2), Math.round(dy - h / 2), w, h);
         if (since < 120) flash(dx, dy + h / 2, d.color || '#ffcd75');
         ctx.globalAlpha = 1;
@@ -584,9 +745,42 @@ export class Renderer {
     for (const e of enemies) mount(e, e.weapons || [], player ? [player] : []);
   }
 
+  /**
+   * Legs under a ball: they crouch while you pull back to aim, spring out
+   * on launch, tuck in mid-air, and anchor clamps bite into the ground.
+   */
+  _drawLegs(ctx, world, ball, now) {
+    const legs = ball.legs;
+    const ic = partCanvas(legs.id);
+    const r = ball.radius;
+    const onGround = ball.y + r >= groundAt(ball.x) - 6;
+    let squash = onGround ? 1 : 0.7;
+    const inp = world.slingshotInput;
+    if (ball === world.player && inp?.dragging && inp.launchVelocity) {
+      const pull = Math.min(1, Math.hypot(inp.launchVelocity.x, inp.launchVelocity.y) / 1400);
+      squash = 1 - 0.4 * pull; // crouch deeper the harder you pull
+    }
+    const since = now - (ball.launchedAt || -1e9);
+    if (since < 260) squash = 1.35 - (since / 260) * 0.35; // spring
+    // Feet on the ball's bottom line (the ground), struts reaching up its sides
+    const w = r * 2.5;
+    const h = r * 1.15 * squash;
+    const top = ball.y + r + 3 - h;
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+    ctx.drawImage(ic, Math.round(ball.x - w / 2), Math.round(top), Math.round(w), Math.round(h));
+    if (legs.anchored && onGround) {
+      // Clamps dug into the floor
+      ctx.fillStyle = '#566c86';
+      ctx.fillRect(Math.round(ball.x - w / 2 - 4), Math.round(ball.y + r - 2), 8, 8);
+      ctx.fillRect(Math.round(ball.x + w / 2 - 4), Math.round(ball.y + r - 2), 8, 8);
+    }
+    ctx.restore();
+  }
+
   _drawMechRanges(ctx, world) {
     const now = performance.now();
-    const usable = (w) => (world.gear ? !(w.ammo && w.ammoLeft <= 0) : w.cdLeft === 0) && w.range[1] < 1400;
+    const usable = (w) => !(w.ammo && w.ammoLeft <= 0) && w.range[1] < 1400;
     // While aiming: where your ready guns will reach from the predicted landing spot
     const traj = world.slingshotInput?.dragging ? world.slingshotInput.trajectory : null;
     if (traj && traj.length) {
@@ -663,7 +857,18 @@ export class Renderer {
     ctx.textBaseline = 'middle';
     ctx.font = `700 22px ${FONT}`;
     ctx.fillStyle = '#ffcd75';
-    ctx.fillText(isPlayer ? 'YOUR RIG' : fitText(ctx, ball.displayName || 'ENEMY', w - 40), x + 16, y + 30);
+    ctx.fillText(isPlayer ? 'YOUR RIG' : fitText(ctx, ball.displayName || 'ENEMY', w - 300), x + 16, y + 30);
+    if (ball.legs) {
+      // Its legs: how it can move
+      const m = ball.legs.move;
+      const how = ball.legs.anchored ? "CAN'T MOVE" : m ? `MOVE ${m.min}-${m.max}${m.minDeg >= 40 ? ' HIGH' : m.maxDeg !== undefined && m.maxDeg <= 30 ? ' LOW' : ''}` : '';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#94b0c2';
+      ctx.font = `700 16px ${FONT}`;
+      ctx.fillText(`${ball.legs.name.replace(' LEGS', '')} · ${how}`, x + w - 16, y + 30);
+      ctx.textAlign = 'left';
+      ctx.font = `700 22px ${FONT}`;
+    }
     if (!guns.length) {
       ctx.fillStyle = '#94b0c2';
       ctx.fillText('UNARMED', x + 16, y + 52 + rowH / 2);
@@ -680,7 +885,7 @@ export class Renderer {
         ctx.fillRect(x + 10, ry, w - 20, 2);
       }
       const ic = partCanvas(g.id);
-      const spent = world.gear ? g.ammo && g.ammoLeft <= 0 : g.cdLeft > 0;
+      const spent = g.ammo && g.ammoLeft <= 0;
       ctx.globalAlpha = spent ? 0.5 : 1;
       ctx.drawImage(ic, x + 16, Math.round(cy - (ic.height * S) / 2), ic.width * S, ic.height * S);
       ctx.globalAlpha = 1;
@@ -709,7 +914,7 @@ export class Renderer {
       const r1 = Math.min(1, g.range[1] / 1400);
       ctx.fillRect(Math.round(bx + r0 * bw), cy - 5, Math.max(4, Math.round((r1 - r0) * bw)), 10);
       cx = bx + bw + 16;
-      if (world.gear) {
+      {
         // Energy and heat per shot, then ammo left (strong guns only)
         icon('energy', cx, cy);
         ctx.fillStyle = '#73eff7';
@@ -727,16 +932,6 @@ export class Renderer {
           ctx.fillStyle = '#566c86';
           ctx.fillText(g.arc ? 'LOB' : '', cx, cy);
         }
-        return;
-      }
-      icon('cd', cx, cy);
-      ctx.fillStyle = g.cdLeft > 0 ? '#94b0c2' : '#a7f070';
-      ctx.fillText(g.cdLeft > 0 ? `${g.cdLeft}T` : 'READY', cx + 30, cy);
-      cx += 120;
-      const fx = g.fx ? Object.keys(g.fx)[0] : '';
-      if (fx) {
-        ctx.fillStyle = g.color || '#f4f4f4';
-        ctx.fillText(fx.toUpperCase(), cx, cy);
       }
     });
     ctx.textBaseline = 'alphabetic';
@@ -842,8 +1037,6 @@ export class Renderer {
     // Status rings (no blur: chunky pixel rings)
     const rings = [];
     if (ball.forcefield) rings.push('#a7f070');
-    const odStacks = ball.team === 'player' ? (this.worldRef?.battleStats?.overdriveStacks || 0) : 0;
-    if (odStacks > 0) rings.push('#ffcd75');
     if (ball.burnTicks > 0) rings.push('#ef7d57');
     if (ball.isFrozen) rings.push('#73eff7');
     if (ball.corrodeTicks > 0) rings.push('#a7f070');
@@ -915,15 +1108,6 @@ export class Renderer {
           if (Math.hypot(xx - 7.5, yy - 7.5) < 6.5) ctx.fillRect(ball.x - r + xx * px, ball.y - r + yy * px, px, px);
         }
       }
-    }
-
-    if (odStacks > 0) {
-      ctx.font = `700 24px ${FONT}`;
-      ctx.textAlign = 'center';
-      ctx.fillStyle = INK;
-      ctx.fillText(`OVERDRIVE x${odStacks}`, ball.x + 2, ball.y - r - 20);
-      ctx.fillStyle = '#ffcd75';
-      ctx.fillText(`OVERDRIVE x${odStacks}`, ball.x, ball.y - r - 22);
     }
   }
 
@@ -1031,21 +1215,6 @@ export class Renderer {
       pts.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
       ctx.stroke();
     }
-  }
-
-  /** Armed skill: a pulsing ring in the skill's colour around your ball. */
-  _drawSkillAura(ctx, world, now) {
-    const player = world.player;
-    const armed = world.battleStats?.skillArmed;
-    if (!player || player.hp <= 0 || !armed) return;
-    const pulse = (now / 500) % 1;
-    ctx.strokeStyle = armed.color;
-    ctx.lineWidth = 4;
-    ctx.globalAlpha = 0.9 * (1 - pulse);
-    ctx.beginPath();
-    ctx.arc(player.x, player.y, player.radius + 8 + pulse * 26, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
   }
 
   /** Spawn and move status particles: flames (burn), frost (frozen), acid drips (corrode). */
@@ -1188,20 +1357,15 @@ export class Renderer {
       ctx.fillRect(bx, panelY + 5 + size - 3, size, 3);
       const ic = partCanvas(g.id);
       const gear = !!this.worldRef?.gear;
-      const spent = gear ? g.ammo && g.ammoLeft <= 0 : g.cdLeft > 0;
+      const spent = g.ammo && g.ammoLeft <= 0;
       ctx.globalAlpha = spent ? 0.45 : 1;
       ctx.drawImage(ic, Math.round(bx + (size - ic.width * 2) / 2), Math.round(panelY + 5 + (size - 3 - ic.height * 2) / 2), ic.width * 2, ic.height * 2);
       ctx.globalAlpha = 1;
-      if (gear && g.ammo) {
+      if (g.ammo) {
         ctx.font = `700 10px ${FONT}`;
         ctx.textAlign = 'right';
         ctx.fillStyle = g.ammoLeft > 0 ? '#ffcd75' : '#566c86';
         ctx.fillText(`${g.ammoLeft}`, bx + size - 3, panelY + 16);
-      } else if (!gear && g.cdLeft > 0) {
-        ctx.font = `700 10px ${FONT}`;
-        ctx.textAlign = 'right';
-        ctx.fillStyle = '#f4f4f4';
-        ctx.fillText(`${g.cdLeft}`, bx + size - 3, panelY + 16);
       }
     });
     return guns.length ? guns.length * (size + 3) : 0;
@@ -1218,7 +1382,7 @@ export class Renderer {
     if (ball.isRallied)
       tags.push({ label: 'RALLIED', color: '#ffcd75', desc: 'Rallied by Field Commander: +20% ATK and +3 DEF.' });
     if (ball.isOvercharged)
-      tags.push({ label: 'CHARGED', color: '#ef7d57', desc: 'Sniper Overcharged! Next shot launch velocity increased by +35%.' });
+      tags.push({ label: 'CHARGED', color: '#ef7d57', desc: 'Charged guns: +35% damage this turn.' });
     if (ball.hasFortified)
       tags.push({ label: 'FORTIFIED', color: '#41a6f6', desc: 'Fortified Shield! Defense increased by +3.' });
     if (ball.exposed)
@@ -1228,10 +1392,7 @@ export class Renderer {
 
     if (ball.team === 'player') {
       const bs = this.worldRef?.battleStats;
-      const odStacks = bs?.overdriveStacks || (bs?.overdriveActive ? 1 : 0);
-      if (odStacks > 0) tags.push({ label: `OVERDRIVE${odStacks > 1 ? ` x${odStacks}` : ''}`, color: '#ffcd75', desc: `Overdrive Active! Next shot deals increased damage. (${odStacks} stack(s))` });
-      const armed = bs?.skillArmed;
-      if (armed) tags.push({ label: armed.label, color: armed.color, desc: armed.desc });
+      if (bs?.bouncedThisTurn && this.worldRef?.relics?.includes?.('rel_radiant_crest')) tags.push({ label: 'RICOCHET +35%', color: '#ffcd75', desc: 'Ricochet Crest: your guns deal +35% this turn.' });
       if (ball.forcefield) tags.push({ label: 'FORCEFIELD', color: '#a7f070', desc: 'Forcefield Barrier Active! Blocks 1 incoming attack.' });
     }
     if (tags.length === 0) return;

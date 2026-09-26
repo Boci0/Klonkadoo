@@ -259,6 +259,18 @@ const TYPE_GRIDS = {
     '..kbbk.kbbk.',
     '..kkkk.kkkk.',
   ],
+  legs: [
+    '...kkkkkk...',
+    '..khhhhhhk..',
+    '..kaaaaaak..',
+    '..kbkkkkbk..',
+    '.khk....khk.',
+    '.kak....kak.',
+    'khak....kahk',
+    'kbk......kbk',
+    'kbbk....kbbk',
+    'kkkkk..kkkkk',
+  ],
   armor: [
     '.kkkkkkkkkk.',
     'khhhhhhhhhhk',

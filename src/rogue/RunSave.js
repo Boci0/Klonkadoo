@@ -118,6 +118,7 @@ export function readRun() {
   const { syntheticNode, ...data } = snap.run;
   const run = new RunState(data.permanent || {}, data.ballType);
   Object.assign(run, data);
+  run.ballType = 'operator'; // runs saved on a retired class continue as the operator
   run.ball = getBall(run.ballType);
   run.currentNode = findNode(map.floors, run.currentNodeId) || syntheticNode || null;
 

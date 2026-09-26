@@ -12,14 +12,16 @@ import { getBall } from '../meta/Balls.js';
 const RUN = CONFIG.run;
 
 export class RunState {
-  constructor(permanentStats = {}, ballType = 'vanguard') {
+  constructor(permanentStats = {}, ballType = 'operator') {
     // permanentStats: { atkBonus, hpBonus, defBonus } from the tech tree
     this.reset(permanentStats, ballType);
   }
 
-  reset(permanentStats = {}, ballType = 'vanguard') {
+  reset(permanentStats = {}) {
     this.permanent = permanentStats;
-    this.ballType = ballType;
+    // One ball since classes were retired: runs saved on an old class continue as the operator
+    this.ballType = 'operator';
+    const ballType = this.ballType;
     this.ball = getBall(ballType);
     this.maxHp = RUN.maxHpBase + (permanentStats.hpBonus || 0) + this.ball.hpBonus;
     this.hp = this.maxHp;

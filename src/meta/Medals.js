@@ -5,7 +5,6 @@
 // newly reached medal and returns them so the UI can celebrate.
 // ============================================================
 
-import { BALLS } from './Balls.js';
 
 export const MEDALS = [
   // Combat
@@ -17,9 +16,9 @@ export const MEDALS = [
   { id: 'm_hit_40', name: 'HEAVY HITTER', desc: 'Deal 40+ damage in one hit.', stat: 'bestHit', value: 40, tp: 4 },
   { id: 'm_hit_75', name: 'DEVASTATOR', desc: 'Deal 75+ damage in one hit.', stat: 'bestHit', value: 75, tp: 10 },
   { id: 'm_crit_25', name: 'LUCKY STRIKE', desc: 'Land 25 critical hits.', stat: 'crits', value: 25, tp: 5 },
-  { id: 'm_combo_3', name: 'PINBALL WIZARD', desc: 'Hit 3 enemies with a single shot.', stat: 'maxCombo', value: 3, tp: 6 },
-  { id: 'm_trick_10', name: 'SHOWBOAT', desc: 'Pull off 10 trick shots.', stat: 'trickShots', value: 10, tp: 4 },
-  { id: 'm_trick_100', name: 'TRICK MASTER', desc: 'Pull off 100 trick shots.', stat: 'trickShots', value: 100, tp: 12 },
+  { id: 'm_combo_3', name: 'CROSSFIRE', desc: 'Hit 3 enemies with a single shot.', stat: 'maxCombo', value: 3, tp: 6 },
+  { id: 'm_ram_10', name: 'BATTERING RAM', desc: 'Expose 10 enemies by ramming them.', stat: 'rams', value: 10, tp: 4 },
+  { id: 'm_ram_100', name: 'WRECKING BALL', desc: 'Expose 100 enemies by ramming them.', stat: 'rams', value: 100, tp: 12 },
 
   // Runs
   { id: 'm_floor_3', name: 'DEEP STRIKE', desc: 'Reach floor 3.', stat: 'bestFloor', value: 3, tp: 3 },
@@ -30,13 +29,13 @@ export const MEDALS = [
   { id: 'm_relics_8', name: 'HOARDER', desc: 'Hold 8 relics in one run.', stat: 'maxRelics', value: 8, tp: 6 },
   { id: 'm_runs_25', name: 'VETERAN OPERATOR', desc: 'Play 25 runs.', stat: 'runs', value: 25, tp: 10 },
   {
-    id: 'm_all_classes',
-    name: 'ALL-ROUNDER',
-    desc: 'Win a run with every class.',
+    id: 'm_arsenal',
+    name: 'ARSENAL',
+    desc: 'Own 20 different parts.',
     tp: 30,
     custom: (save) => {
-      const done = BALLS.filter((b) => save.getBallStats(b.id).wins > 0).length;
-      return [done, BALLS.length];
+      const kinds = new Set((save.data.mech?.owned || []).map((p) => p.id)).size;
+      return [Math.min(20, kinds), 20];
     },
   },
   { id: 'm_streak_7', name: 'ON DUTY', desc: 'Claim the daily supply drop 7 days in a row.', stat: 'bestStreak', value: 7, tp: 10 },

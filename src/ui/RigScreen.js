@@ -11,7 +11,7 @@
 import { saveSystem } from '../meta/SaveSystem.js';
 import { soundEngine } from '../utils/SoundEngine.js';
 import { haptics } from '../platform/haptics.js';
-import { BALLS, skinColors } from '../meta/Balls.js';
+import { OPERATOR, skinColors } from '../meta/Balls.js';
 import { paintBall, CLASS_PATTERN } from '../rendering/ballSprite.js';
 import { partIcon, partCanvas, ico, uiIcon } from '../rendering/pixelIcons.js';
 import {
@@ -96,7 +96,7 @@ export class RigScreen {
         <div class="rig-col">${LEFT.map(tile).join('')}</div>
         <div class="rig-stage">
           <canvas id="rig-canvas" width="72" height="54"></canvas>
-          ${tile('frame')}
+          <div class="rig-core-slots">${tile('frame')}${tile('legs')}</div>
         </div>
         <div class="rig-col">${RIGHT.map(tile).join('')}</div>
         <div class="rig-load ${t.overweight ? 'over' : ''}">
@@ -214,13 +214,11 @@ export class RigScreen {
     const W = canvas.width;
     const H = canvas.height;
 
-    let ballId = 'vanguard';
+    const ball = OPERATOR;
     let skin = 'default';
     try {
-      ballId = localStorage.getItem('slingshot-ball') || 'vanguard';
-      skin = localStorage.getItem(`slingshot-skin-${ballId}`) || 'default';
+      skin = localStorage.getItem(`slingshot-skin-${ball.id}`) || 'default';
     } catch (_) {}
-    const ball = BALLS.find((b) => b.id === ballId) || BALLS[0];
     const look = skinColors(ball, skin);
     const sprite = document.createElement('canvas');
     sprite.width = sprite.height = 16;

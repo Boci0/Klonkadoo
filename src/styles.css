@@ -3135,11 +3135,17 @@ canvas {
   image-rendering: pixelated;
 }
 
-.rig-stage .rig-slot {
+.rig-stage .rig-core-slots {
   position: absolute;
   bottom: 6px;
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+}
+
+.rig-stage .rig-slot {
+  position: relative;
   flex-direction: row;
   width: auto;
   height: 34px;
@@ -4363,4 +4369,240 @@ canvas {
 .ability-btn .action-pips {
   letter-spacing: 2px;
   color: var(--p-ink) !important;
+}
+
+.battle-hud.gear.drawer-open .mech-hud {
+  visibility: hidden;
+}
+
+/* Narrow windows: no room at the bottom, so the gun chips move to the top
+   centre, under the floor banner (open sky, clear of the ground fight) */
+@media (max-width: 760px) {
+  .battle-hud.gear .mech-hud {
+    left: 50%;
+    transform: translateX(-50%);
+    top: calc(52px + var(--safe-top, 0px));
+    bottom: auto;
+  }
+}
+
+/* ============================================================
+   Deploy screen (run start): the rig is the character
+   ============================================================ */
+
+.deploy {
+  display: flex;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.deploy-ball {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #141627;
+  border: var(--px) solid var(--p-steel);
+}
+
+.deploy-ball .ball-sprite {
+  width: 64px;
+  height: 64px;
+  image-rendering: pixelated;
+}
+
+.deploy-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 10px;
+  font-size: 11px;
+  color: var(--p-white);
+}
+
+.deploy-stats span { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+
+.deploy-rig {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  align-content: start;
+}
+
+.deploy-part {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 4px 8px;
+  background: var(--bg-card);
+  border-left: 4px solid var(--c, var(--p-steel));
+  font-size: 11px;
+  color: var(--p-white);
+}
+
+.deploy-part img { width: 32px; image-rendering: pixelated; }
+.deploy-part.empty { color: var(--text-dim); border-left-color: var(--p-steel); opacity: 0.7; }
+
+/* ============================================================
+   End-of-battle report
+   ============================================================ */
+
+.battle-report {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(10px + var(--safe-top, 0px)) calc(12px + var(--safe-right)) calc(10px + var(--safe-bottom)) calc(12px + var(--safe-left));
+  background: rgba(8, 9, 16, 0);
+  transition: background 0.25s;
+}
+
+.battle-report.in { background: rgba(8, 9, 16, 0.78); }
+
+.br-card {
+  width: min(880px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  background: var(--bg-card);
+  box-shadow: var(--bevel), 0 0 0 var(--px) #000, 0 8px 0 #000;
+  transform: translateY(24px) scale(0.96);
+  opacity: 0;
+  transition: transform 0.25s steps(5), opacity 0.2s;
+}
+
+.battle-report.in .br-card { transform: none; opacity: 1; }
+
+.br-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  background: #1a1c2c;
+  border-bottom: 4px solid var(--br-c);
+}
+
+.battle-report.win { --br-c: var(--p-lime); }
+.battle-report.lose { --br-c: var(--p-red, #ff5d73); }
+
+.br-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 26px;
+  color: var(--br-c);
+  letter-spacing: 2px;
+  text-shadow: 3px 3px 0 #000;
+}
+
+.br-head span { font-size: 12px; color: var(--text-dim); }
+
+.br-body {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 18px;
+  padding: 14px 18px 16px;
+}
+
+.br-col h3 {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  color: var(--p-yellow);
+  letter-spacing: 1px;
+}
+
+.br-col h3 + * { margin-bottom: 14px; }
+
+.br-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+}
+
+.br-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.br-row b { margin-left: auto; color: var(--p-white); font-size: 13px; }
+
+.br-guns { display: flex; flex-direction: column; gap: 6px; }
+
+.br-gun {
+  display: grid;
+  grid-template-columns: 30px 1fr 90px 40px;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--p-white);
+}
+
+.br-gun img { width: 30px; image-rendering: pixelated; }
+.br-gun em { font-style: normal; color: #1a1c2c; background: var(--p-yellow); padding: 1px 4px; font-size: 9px; }
+.br-gun b { text-align: right; }
+
+.br-bar {
+  display: block;
+  height: 8px;
+  background: #10111c;
+}
+
+.br-bar > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--c, var(--p-sky));
+  animation: br-fill 0.8s steps(8) 0.3s forwards;
+}
+
+.br-bar.hp > i { background: var(--p-lime); }
+
+@keyframes br-fill { to { width: var(--w); } }
+
+.br-right { display: flex; flex-direction: column; }
+.br-right .reward-tiles { margin-bottom: 12px; }
+
+.br-pop {
+  opacity: 0;
+  transform: scale(0.6);
+  animation: br-pop 0.3s steps(4) forwards;
+}
+
+@keyframes br-pop { to { opacity: 1; transform: none; } }
+
+.br-clean {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: var(--p-lime);
+}
+
+.br-hp {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  margin: auto 0 12px;
+  font-size: 12px;
+  color: var(--p-white);
+}
+
+.br-hp span { display: flex; align-items: center; gap: 4px; }
+.br-continue { align-self: stretch; }
+
+@media (max-height: 480px), (max-width: 640px) {
+  .br-head h2 { font-size: 18px; }
+  .br-body { gap: 12px; padding: 10px 12px 12px; }
+  .br-col h3 + * { margin-bottom: 8px; }
+}
+
+@media (max-width: 560px) {
+  .br-body { grid-template-columns: 1fr; }
+  .deploy { flex-direction: column; }
 }

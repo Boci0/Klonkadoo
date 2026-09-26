@@ -69,8 +69,8 @@ export function applyForces(ball, dt) {
     return;
   }
   ball.vy += W.gravity * (ball.gravityMult || 1) * dt;
-  // Arena wind pushes airborne balls sideways (W.wind is set per battle); Graviton is too dense to care
-  if (W.wind && ball.ballType !== 'graviton' && ball.y + (ball.radius || B.radius) < groundAt(ball.x) - 2) ball.vx += W.wind * dt;
+  // Arena wind pushes airborne balls sideways (W.wind is set per battle)
+  if (W.wind && ball.y + (ball.radius || B.radius) < groundAt(ball.x) - 2) ball.vx += W.wind * dt;
   const drag = 1 - W.airDrag * dt;
   ball.vx *= drag;
   ball.vy *= drag;
@@ -278,7 +278,7 @@ export function resolveBarrierCollisions(ball, barriers) {
 
       // Only apply destruction logic if structure is destructible (has HP)
       if (barrier.hp !== undefined || barrier.maxHp !== undefined) {
-        if (ball.ballType === 'juggernaut' || ball.isShard) {
+        if (ball.isShard) {
           barrier.hp = 0;
           barrier.active = false;
         } else if (barrier.maxHp && impactSpeed >= 30) {
