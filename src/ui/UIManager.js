@@ -1005,7 +1005,7 @@ export class UIManager {
     const dmg = Math.round((run.atk * (run.condition === 'glass_war' ? 1.3 : 1) - 1) * 100);
     const classDmg = {
       juggernaut: '+40% more on impact (class)',
-      cluster: 'fragments always deal 12',
+      cluster: 'fragments deal 9, less vs DEF',
       graviton: '+30% more when falling (class)',
     }[ball.id] || 'vs. a basic ball';
     const crit = Math.round((0.05 + (ball.id === 'striker' ? 0.1 : 0) + (perm.critChance || 0)) * 100);
