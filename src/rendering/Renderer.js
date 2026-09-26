@@ -557,7 +557,25 @@ export class Renderer {
     });
     ctx.setLineDash([]);
 
-    ctx.drawImage(this._ballSprite(ball, isFlashing), Math.round(ball.x - r), Math.round(ball.y - r), size, size);
+    // Alive: resting balls breathe, and landings / hits squash the sprite (anchored at its base)
+    const now = performance.now();
+    if ((ball._pvy || 0) > 260 && (ball.vy || 0) <= 0) ball._squashAt = now; // just bounced off something below
+    ball._pvy = ball.vy || 0;
+    let sx = 1;
+    let sy = 1;
+    const squashAge = now - (ball._squashAt || -1e9);
+    if (isFlashing || squashAge < 140) {
+      const k = isFlashing ? 1 : 1 - squashAge / 140;
+      sx += 0.16 * k;
+      sy -= 0.16 * k;
+    } else if (speed < 30) {
+      const b = Math.sin(now / 420 + (ball.team === 'player' ? 0 : ball.x * 0.013)) * 0.035;
+      sx += b;
+      sy -= b;
+    }
+    const dw = Math.round(size * sx);
+    const dh = Math.round(size * sy);
+    ctx.drawImage(this._ballSprite(ball, isFlashing), Math.round(ball.x - dw / 2), Math.round(ball.y + r - dh), dw, dh);
     if (ball.shieldCharges > 0) {
       ctx.strokeStyle = '#41a6f6';
       ctx.fillStyle = 'rgba(65, 166, 246, 0.2)';

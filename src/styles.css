@@ -2691,3 +2691,271 @@ canvas {
 .mod-down {
   color: var(--accent-red);
 }
+
+/* ============================================================
+   Gear
+   ============================================================ */
+
+.gear-slots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.gear-slot-name {
+  font-family: var(--font-display);
+  font-size: 10px;
+  color: var(--p-silver);
+  margin-bottom: 4px;
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.gear-slot-name span {
+  font-family: var(--font-body);
+  color: var(--p-slate);
+}
+
+.gear-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 64px;
+  border: 2px dashed var(--p-steel);
+  color: var(--p-slate);
+  font-family: var(--font-display);
+  font-size: 10px;
+}
+
+.gear-item {
+  position: relative;
+  padding: 6px 8px;
+  background: var(--bg-card);
+  border: 2px solid var(--p-steel);
+  border-left: 6px solid var(--rarity);
+  overflow: hidden;
+}
+
+.gear-item.worn {
+  border-color: var(--rarity);
+  border-left-width: 6px;
+}
+
+.gear-item.flash {
+  animation: gear-flash 0.5s ease-out;
+}
+
+.gear-item-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.gear-item-head strong {
+  font-family: var(--font-display);
+  font-size: 10px;
+  flex: 1;
+}
+
+.gear-item-head em {
+  font-style: normal;
+  color: var(--p-yellow);
+}
+
+.gear-slot-tag {
+  font-size: 10px;
+  color: var(--p-slate);
+}
+
+.gear-lines {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin-top: 3px;
+  font-size: 13px;
+  color: var(--p-white);
+}
+
+.gear-bar {
+  display: flex;
+  justify-content: space-between;
+  margin: 10px 0 6px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  color: var(--p-silver);
+}
+
+.gear-bar strong {
+  color: var(--p-yellow);
+}
+
+.gear-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 42vh;
+  overflow-y: auto;
+}
+
+.gear-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.gear-actions .btn {
+  flex: 1;
+  font-size: 10px;
+  padding: 6px 4px;
+  min-height: 0;
+}
+
+.gear-hint {
+  color: var(--p-silver);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Gear found in the battle report */
+.gear-drop {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 2px solid var(--rarity);
+  background: var(--bg-card);
+  overflow: hidden;
+  animation: gear-drop-in 0.45s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+.gear-drop span {
+  font-family: var(--font-display);
+  font-size: 9px;
+  color: var(--rarity);
+}
+
+.gear-drop strong {
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--p-white);
+}
+
+.gear-drop em {
+  font-style: normal;
+  font-size: 13px;
+  color: var(--p-silver);
+}
+
+/* Shine sweep across rare-or-better items */
+.gear-drop::after,
+.gear-item.worn::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -40%;
+  width: 30%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.18), transparent);
+  animation: gear-shine 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes gear-shine {
+  0%, 55% { left: -40%; }
+  100% { left: 140%; }
+}
+
+@keyframes gear-drop-in {
+  from { transform: scale(0.6) translateY(10px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes gear-flash {
+  from { box-shadow: 0 0 0 4px var(--rarity); }
+  to { box-shadow: 0 0 0 0 transparent; }
+}
+
+@media (max-width: 900px), (max-height: 500px) {
+  .gear-slots { gap: 5px; }
+  .gear-list { max-height: 34vh; }
+}
+
+/* ============================================================
+   Motion: small touches that make the UI feel alive
+   ============================================================ */
+
+/* Screens slide in when they appear */
+.screen:not(.hidden) {
+  animation: screen-in 0.28s ease-out;
+}
+
+@keyframes screen-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Title idles; the main call to action breathes */
+.game-title {
+  animation: title-bob 3.2s ease-in-out infinite;
+}
+
+@keyframes title-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+#btn-play:not(:disabled) {
+  animation: cta-breathe 2.2s ease-in-out infinite;
+}
+
+@keyframes cta-breathe {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.15); }
+}
+
+/* Buttons lift a pixel on hover (press already sinks them) */
+@media (hover: hover) {
+  .btn:hover:not(:disabled):not(:active) {
+    transform: translateY(calc(var(--px) * -1));
+  }
+}
+
+.btn {
+  transition: transform 0.08s ease-out, filter 0.12s;
+}
+
+/* Reward lines in reports slide in one after another */
+.reward-line {
+  animation: screen-in 0.35s ease-out 0.1s both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001s !important;
+  }
+}
+
+/* Gear pop-up needs more room than the default modal */
+.modal-content:has(.gear-slots) {
+  width: min(760px, 94vw);
+  max-width: none;
+}
+
+.gear-list > *,
+.gear-slot {
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.gear-slot .gear-slot-tag {
+  display: none;
+}
+
+.gear-slot .gear-item-head strong {
+  overflow-wrap: anywhere;
+}
