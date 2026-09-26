@@ -3,6 +3,7 @@
 > A tactical ballistic-combat roguelike built with HTML5 Canvas & JavaScript.
 
 [![Live Demo](https://img.shields.io/badge/Play_Now-Live_Demo-brightgreen?style=for-the-badge&logo=github)](https://boci0.github.io/Slingshot-OPS/)
+[![Download APK](https://img.shields.io/badge/Android-Download_APK-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/Boci0/Slingshot-OPS/raw/main/apk/Slingshot-OPS.apk)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 
 ---
@@ -20,6 +21,24 @@
 - **40+ Collectibles & Relics**: Build synergies across 8 unique categories (*Tactical*, *Gladiator*, *High-Tech*, *Frontier*, *Sanctuary*, etc.).
 - **Persistent Tech Tree**: Earn Tech Points to unlock permanent upgrades across Sharpshooter (ATK), Vitality (HP), and Aegis (DEF).
 - **Dynamic Quests & Encounters**: Interactive event choices with risk/reward mechanics and in-run objectives.
+
+---
+
+## Android
+
+**[Download Slingshot-OPS.apk](https://github.com/Boci0/Slingshot-OPS/raw/main/apk/Slingshot-OPS.apk)**
+
+1. Open the link above on your Android phone to download the APK.
+2. Open the downloaded file and allow installs from unknown sources if asked.
+3. The game runs in landscape.
+
+To rebuild the APK yourself (needs the Android SDK):
+
+```bash
+npm run build:android
+cd android && ./gradlew assembleDebug
+# output: android/app/build/outputs/apk/debug/app-debug.apk
+```
 
 ---
 
