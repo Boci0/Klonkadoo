@@ -11,6 +11,54 @@ import { CONFIG } from '../config.js';
 const W = CONFIG.world;
 const B = CONFIG.ball;
 
+// ---------- Terrain ----------
+// Optional per-arena height profile: control points { x, y } joined by
+// smooth (cosine) curves, so the ground is flat exactly at each point.
+// With no terrain the ground is the flat line W.groundY.
+
+let terrain = null;
+
+/** Set the active height profile (null / empty = flat ground). */
+export function setTerrain(points) {
+  terrain = points && points.length > 1 ? [...points].sort((a, b) => a.x - b.x) : null;
+}
+
+export function getTerrain() {
+  return terrain;
+}
+
+function segmentAt(x) {
+  for (let i = 1; i < terrain.length; i++) {
+    if (x <= terrain[i].x) return i;
+  }
+  return terrain.length - 1;
+}
+
+/** Ground surface height (y) at x. */
+export function groundAt(x) {
+  if (!terrain) return W.groundY;
+  if (x <= terrain[0].x) return terrain[0].y;
+  if (x >= terrain[terrain.length - 1].x) return terrain[terrain.length - 1].y;
+  const i = segmentAt(x);
+  const a = terrain[i - 1];
+  const b = terrain[i];
+  const t = (x - a.x) / (b.x - a.x);
+  return a.y + (b.y - a.y) * (1 - Math.cos(Math.PI * t)) / 2;
+}
+
+/** Ground slope dy/dx at x (positive = ground drops to the right, since y grows downward). */
+export function slopeAt(x) {
+  if (!terrain || x <= terrain[0].x || x >= terrain[terrain.length - 1].x) return 0;
+  const i = segmentAt(x);
+  const a = terrain[i - 1];
+  const b = terrain[i];
+  const t = (x - a.x) / (b.x - a.x);
+  return ((b.y - a.y) * Math.PI * Math.sin(Math.PI * t)) / (2 * (b.x - a.x));
+}
+
+// A slow ball stays put on slopes gentler than this (~24°), so turns can settle
+const STATIC_SLOPE = 0.45;
+
 /**
  * Apply gravity + air drag to a ball's velocity.
  */
@@ -22,7 +70,7 @@ export function applyForces(ball, dt) {
   }
   ball.vy += W.gravity * (ball.gravityMult || 1) * dt;
   // Arena wind pushes airborne balls sideways (W.wind is set per battle); Graviton is too dense to care
-  if (W.wind && ball.ballType !== 'graviton' && ball.y + (ball.radius || B.radius) < W.groundY - 2) ball.vx += W.wind * dt;
+  if (W.wind && ball.ballType !== 'graviton' && ball.y + (ball.radius || B.radius) < groundAt(ball.x) - 2) ball.vx += W.wind * dt;
   const drag = 1 - W.airDrag * dt;
   ball.vx *= drag;
   ball.vy *= drag;
@@ -49,17 +97,45 @@ export function resolveWorldCollisions(ball) {
   const groundE = Math.min(0.9, W.groundRestitution * bounce);
   const wallE = Math.min(0.95, W.wallRestitution * bounce);
 
-  // Ground
-  if (ball.y + r > W.groundY) {
-    ball.y = W.groundY - r;
-    if (ball.vy > 0) {
-      ball.vy = -ball.vy * groundE;
-      ball.vx *= W.groundFriction;
-      events.push({ type: 'ground', ball });
+  // Ground (flat, or the arena's terrain). On flat ground this is exactly the old rule.
+  const s = slopeAt(ball.x);
+  if (s === 0) {
+    const gy = groundAt(ball.x);
+    if (ball.y + r > gy) {
+      ball.y = gy - r;
+      if (ball.vy > 0) {
+        ball.vy = -ball.vy * groundE;
+        ball.vx *= W.groundFriction;
+        events.push({ type: 'ground', ball });
+      }
+      if (Math.abs(ball.vy) < 15) ball.vy = 0;
+      if (Math.abs(ball.vx) < 15) ball.vx *= 0.8;
+      if (Math.abs(ball.vx) < 4) ball.vx = 0;
     }
-    if (Math.abs(ball.vy) < 15) ball.vy = 0;
-    if (Math.abs(ball.vx) < 15) ball.vx *= 0.8;
-    if (Math.abs(ball.vx) < 4) ball.vx = 0;
+  } else {
+    // Sloped ground: collide along the surface normal
+    const len = Math.hypot(1, s);
+    const nx = s / len; // upward normal (y grows downward)
+    const ny = -1 / len;
+    const tx = 1 / len; // tangent, pointing right along the surface
+    const ty = s / len;
+    const dist = (groundAt(ball.x) - ball.y) / len; // centre-to-surface distance
+    if (dist < r) {
+      ball.x += nx * (r - dist);
+      ball.y += ny * (r - dist);
+      let vn = ball.vx * nx + ball.vy * ny;
+      let vt = ball.vx * tx + ball.vy * ty;
+      if (vn < 0) {
+        vn = -vn * groundE;
+        vt *= W.groundFriction;
+        events.push({ type: 'ground', ball });
+      }
+      if (Math.abs(vn) < 15) vn = 0;
+      // Static friction: a slow ball rests on gentle slopes; steep ones keep it rolling
+      if (vn === 0 && Math.abs(vt) < 20 && Math.abs(s) < STATIC_SLOPE) vt = 0;
+      ball.vx = vn * nx + vt * tx;
+      ball.vy = vn * ny + vt * ty;
+    }
   }
 
   // Left wall

@@ -5,7 +5,7 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
-import { resolvePads } from '../core/Physics.js';
+import { resolvePads, groundAt, slopeAt } from '../core/Physics.js';
 import { clamp, length, normalize } from '../utils/math.js';
 
 const S = CONFIG.slingshot;
@@ -42,7 +42,7 @@ export class SlingshotInput {
 
   startBarrierPlacement() {
     this.placementMode = 'barrier';
-    this.placementPos = { x: CONFIG.world.width * 0.5, y: CONFIG.world.groundY - 50 };
+    this.placementPos = { x: CONFIG.world.width * 0.5, y: groundAt(CONFIG.world.width * 0.5) - 50 };
   }
 
   cancelPlacement() {
@@ -184,7 +184,6 @@ export class SlingshotInput {
     const dt = S.trajectoryStep;
     const gravity = CONFIG.world.gravity;
     const airDrag = CONFIG.world.airDrag;
-    const groundY = CONFIG.world.groundY;
     const radius = this.ballRadius || CONFIG.ball.radius;
 
     let zeroG = this.zeroGTime || 0; // Graviton skill: straight flight first
@@ -192,7 +191,7 @@ export class SlingshotInput {
     const pads = this.pads || [];
     const sub = 6; // pad springs are stiff: integrate in small steps like the live game
     const h = dt / sub;
-    let airborne = ball.y + radius < groundY - 1;
+    let airborne = ball.y + radius < groundAt(ball.x) - 1;
     outer: for (let i = 0; i < S.trajectoryPoints; i++) {
       for (let j = 0; j < sub; j++) {
         if (zeroG > 0) {
@@ -208,12 +207,14 @@ export class SlingshotInput {
         ball.y += ball.vy * h;
         if (pads.length) resolvePads(ball, pads, h);
         if (ball._padContact) continue; // bouncing off a pad: the preview follows it
-        if (ball.y + radius > groundY) {
+        const gy = groundAt(ball.x);
+        if (ball.y + radius > gy) {
           // A real landing ends the preview; a launch from rest slides along the ground.
           if (airborne) break outer;
-          ball.y = groundY - radius;
-          if (ball.vy > 0) ball.vy = 0;
-        } else if (ball.y + radius < groundY - 1) {
+          ball.y = gy - radius;
+          const s = slopeAt(ball.x);
+          if (ball.vy > s * ball.vx) ball.vy = s * ball.vx; // follow the surface, don't dig in
+        } else if (ball.y + radius < gy - 1) {
           airborne = true;
         }
         if (ball.y < -600) break outer;
@@ -233,7 +234,7 @@ export class SlingshotInput {
       const bw = 14;
       const bh = 90;
       const bx = this.placementPos.x - bw / 2;
-      const by = Math.max(50, Math.min(CONFIG.world.groundY - bh, this.placementPos.y - bh / 2));
+      const by = Math.max(50, Math.min(groundAt(this.placementPos.x) - bh, this.placementPos.y - bh / 2));
 
       // Ghost wall (red while hovering the cancel zone); the hint text is drawn by the HUD
       const col = this.placementCancel ? '255, 93, 115' : '115, 239, 247';

@@ -7,7 +7,7 @@
 
 import { CONFIG } from '../config.js';
 import { Events } from './Events.js';
-import { stepWorld } from './Physics.js';
+import { stepWorld, setTerrain, groundAt } from './Physics.js';
 import { Ball } from '../entities/Ball.js';
 import { CollisionSystem } from '../systems/CollisionSystem.js';
 import { TurnSystem, TurnPhase } from '../systems/TurnSystem.js';
@@ -180,6 +180,9 @@ export class Game {
     this.obstacles = this.arena.obstacles;
     this.hazards = this.arena.hazards;
     W.wind = this.arena.wind;
+    // Uneven ground: set the height profile and seat every ball on it
+    setTerrain(this.arena.terrain);
+    for (const b of [this.player, ...this.enemies]) b.y = groundAt(b.x) - b.radius;
     this.arenaTime = 0;
     this.renderer.showArenaIntro?.(this.arena);
 
@@ -214,7 +217,7 @@ export class Game {
     // Silver Shield: a barrier already standing in front of the player
     if (this.relics.includes('rel_silver_shield')) {
       const hp = this._barrierHp();
-      this.barriers.push({ x: this.player.x + 150, y: W.groundY - 90, w: 14, h: 90, active: true, hp, maxHp: hp });
+      this.barriers.push({ x: this.player.x + 150, y: groundAt(this.player.x + 157) - 90, w: 14, h: 90, active: true, hp, maxHp: hp });
     }
     this.renderer.resetBattleFx?.();
   }
@@ -301,17 +304,17 @@ export class Game {
     this.addHitStop(0.08);
     soundEngine.playImpact(2);
     haptics.impact('heavy');
-    this.particles.push({ type: 'shockwave', x: this.player.x, y: W.groundY, radius: 20, maxRadius: 900, life: 0.5, maxLife: 0.5 });
+    this.particles.push({ type: 'shockwave', x: this.player.x, y: groundAt(this.player.x), radius: 20, maxRadius: 900, life: 0.5, maxLife: 0.5 });
     this._callout(this.player, 'SEISMIC SLAM', '#73eff7');
     let hitAny = false;
     for (const enemy of this.enemies) {
-      if (enemy.hp <= 0 || enemy.y + enemy.radius < W.groundY - 8) continue;
+      if (enemy.hp <= 0 || enemy.y + enemy.radius < groundAt(enemy.x) - 8) continue;
       hitAny = true;
       enemy.shieldCharges = 0;
       enemy.vy = -700;
       const dmg = Math.max(1, Math.round(raw - (enemy.def || 0) * 0.5));
       const killed = enemy.takeDamage(dmg);
-      this.particles.push({ type: 'shockwave', x: enemy.x, y: W.groundY, radius: 10, maxRadius: 120, life: 0.35, maxLife: 0.35 });
+      this.particles.push({ type: 'shockwave', x: enemy.x, y: groundAt(enemy.x), radius: 10, maxRadius: 120, life: 0.35, maxLife: 0.35 });
       this.events.emit('damage', { attacker: this.player, victim: enemy, damage: dmg, killed });
     }
     if (!hitAny) this._callout(this.player, 'NO TARGETS ON THE GROUND', '#94b0c2');
@@ -350,14 +353,14 @@ export class Game {
 
     const spot = plan?.hit ? this._wallSpot(enemy, plan.path) : null;
     const side = Math.sign(this.player.x - enemy.x) || -1;
-    const pos = spot || { x: enemy.x + side * 110, y: W.groundY - 50 };
+    const pos = spot || { x: enemy.x + side * 110, y: groundAt(enemy.x + side * 110) - 50 };
     const bw = 14;
     const bh = 90;
     if (wall) wall.active = false; // picked up and moved
     const hp = CONFIG.damage.barrierHp;
     const b = {
       x: Math.max(20, Math.min(W.width - 20 - bw, pos.x - bw / 2)),
-      y: Math.max(40, Math.min(W.groundY - bh, pos.y - bh / 2)),
+      y: Math.max(40, Math.min(groundAt(pos.x) - bh, pos.y - bh / 2)),
       w: bw,
       h: bh,
       active: true,
@@ -399,7 +402,7 @@ export class Game {
     const bw = 14;
     const bh = 90;
     const bx = Math.max(50, Math.min(CONFIG.world.width - 50, x)) - bw / 2;
-    const clampedY = Math.max(50, Math.min(CONFIG.world.groundY - bh, y - bh / 2));
+    const clampedY = Math.max(50, Math.min(groundAt(bx + bw / 2) - bh, y - bh / 2));
 
     this.barriers.push({
       x: bx,
@@ -647,7 +650,7 @@ export class Game {
           const x = Math.max(60, Math.min(W.width - 100, this.player.x + side * (90 + Math.random() * 140)));
           if (mines.some((m) => Math.abs(m.x + m.w / 2 - x) < 160)) continue;
           this.hazards.push({ type: 'mine', x: x - 24, w: 48, armed: true, born: performance.now() });
-          this.particles.push({ type: 'shockwave', x, y: W.groundY, radius: 6, maxRadius: 60, life: 0.3, maxLife: 0.3 });
+          this.particles.push({ type: 'shockwave', x, y: groundAt(x), radius: 6, maxRadius: 60, life: 0.3, maxLife: 0.3 });
           soundEngine.playUI(300);
           this._callout(enemy, 'MINE DROPPED', '#ef7d57');
           break;
@@ -748,7 +751,7 @@ export class Game {
   _applyHazards(balls) {
     for (const ball of balls) {
       if (ball.hp <= 0) continue;
-      const onGround = ball.y + ball.radius >= W.groundY - 3;
+      const onGround = ball.y + ball.radius >= groundAt(ball.x) - 3;
       let touching = null;
       for (const h of this.hazards) {
         if (h.type !== 'pad' && onGround && ball.x > h.x && ball.x < h.x + h.w) touching = h;
@@ -769,8 +772,8 @@ export class Game {
         ball.takeDamage(dmg);
         ball.vy = -600;
         this.battleStats.playerDamageTaken += dmg;
-        this.particles.push({ type: 'shockwave', x: ball.x, y: W.groundY, radius: 10, maxRadius: 160, life: 0.35, maxLife: 0.35 });
-        this._spawnDefeatParticles(ball.x, W.groundY, '#ef7d57');
+        this.particles.push({ type: 'shockwave', x: ball.x, y: groundAt(ball.x), radius: 10, maxRadius: 160, life: 0.35, maxLife: 0.35 });
+        this._spawnDefeatParticles(ball.x, groundAt(ball.x), '#ef7d57');
         soundEngine.playDefeat();
         this.renderer.addScreenShake(14);
         haptics.impact('heavy');
@@ -787,7 +790,7 @@ export class Game {
         const dmg = ball.team === 'player' ? this.collisionSystem.calculatePlayerDamage(raw, { bypassDef: true }) : raw;
         const killed = ball.takeDamage(dmg);
         ball.vy = -420;
-        this._spawnHitParticles(ball.x, W.groundY);
+        this._spawnHitParticles(ball.x, groundAt(ball.x));
         soundEngine.play('hurt');
         this._callout(ball, 'SPIKES', '#ff5d73');
         if (ball.team === 'player') {
@@ -1453,7 +1456,7 @@ export class Game {
       if (shot.hits.size === 0 && this.battleStats.wallBounced) shot.bank = true;
       shot.hits.add(victim);
       if (killed) shot.kills += 1;
-      if (victim.y + victim.radius < W.groundY - 40) shot.sky = true;
+      if (victim.y + victim.radius < groundAt(victim.x) - 40) shot.sky = true;
       if (Math.hypot(victim.x - shot.x0, victim.y - shot.y0) > 700) shot.long = true;
     }
   }

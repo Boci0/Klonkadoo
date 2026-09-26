@@ -12,6 +12,7 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
+import { getTerrain, groundAt } from '../core/Physics.js';
 import { fitCanvas, clientToWorld } from './viewport.js';
 import { paintBall, CLASS_PATTERN } from './ballSprite.js';
 
@@ -161,6 +162,7 @@ export class Renderer {
 
     // 2. World
     ctx.setTransform(view.k, 0, 0, view.k, view.ox + shakeX, view.oy + shakeY);
+    this._drawTerrain(ctx, floor);
     this._drawHazards(ctx, world.hazards || [], now);
     this._drawPlatformsAndObstacles(ctx, world.platforms || [], world.obstacles || []);
     this._drawBarriers(ctx, world.barriers || [], now);
@@ -432,11 +434,32 @@ export class Renderer {
   // ---------- World: balls ----------
 
   _drawBallShadow(ctx, ball) {
-    const heightAbove = Math.max(0, W.groundY - (ball.y + ball.radius));
+    const gy = groundAt(ball.x);
+    const heightAbove = Math.max(0, gy - (ball.y + ball.radius));
     const shrink = Math.max(0.35, 1 - heightAbove / 500);
     const sw = Math.round(ball.radius * 1.8 * shrink);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-    ctx.fillRect(Math.round(ball.x - sw / 2), W.groundY - 2, sw, 6);
+    ctx.fillRect(Math.round(ball.x - sw / 2), Math.round(gy) - 2, sw, 6);
+  }
+
+  /** Hills and plateaus above the flat backdrop ground, in 8px pixel columns. */
+  _drawTerrain(ctx, floor) {
+    if (!getTerrain()) return;
+    const [lip, mid, deep] = (THEMES[floor] || THEMES[1]).ground;
+    const step = 8;
+    for (let x = 0; x < W.width; x += step) {
+      const top = Math.round(groundAt(x + step / 2) / 4) * 4;
+      const depth = W.groundY + 2 - top;
+      if (depth <= 2) continue;
+      ctx.fillStyle = deep;
+      ctx.fillRect(x, top, step, depth);
+      ctx.fillStyle = mid;
+      ctx.fillRect(x, top, step, Math.min(24, depth));
+      ctx.fillStyle = INK;
+      for (let y = top + 28; y < W.groundY; y += 16) ctx.fillRect(x + ((y / 16) % 2 ? 4 : 0), y, 1, 1);
+      ctx.fillStyle = lip;
+      ctx.fillRect(x, top, step, 4);
+    }
   }
 
   /** 16×16 pixel sprite for a ball, cached per look. */
@@ -627,8 +650,8 @@ export class Renderer {
   // ---------- World: arena hazards ----------
 
   _drawHazards(ctx, hazards, now) {
-    const gy = W.groundY;
     for (const h of hazards) {
+      const gy = Math.round(groundAt(h.x + h.w / 2)); // mines can sit on hills
       if (h.type === 'spikes') {
         // Row of pixel spikes with a red warning base
         ctx.fillStyle = '#5d275d';
@@ -694,8 +717,8 @@ export class Renderer {
 
   /** Bobbing "!" over each mine, drawn above the balls so it's never hidden. */
   _drawMineMarkers(ctx, hazards, now) {
-    const gy = W.groundY;
     for (const h of hazards) {
+      const gy = Math.round(groundAt(h.x + h.w / 2)); // mines can sit on hills
       if (h.type !== 'mine') continue;
       const cx = Math.round(h.x + h.w / 2);
       const y = gy - 72 + Math.round(Math.sin(now / 200) * 4);
