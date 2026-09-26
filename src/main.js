@@ -17,6 +17,7 @@ import { RogueMapRenderer } from './rendering/RogueMapRenderer.js';
 import { Minigame } from './minigame/Minigame.js';
 import { UIManager } from './ui/UIManager.js';
 import { DevTools } from './dev/DevTools.js';
+import { icon } from './ui/icons.js';
 
 // ---------- Core systems ----------
 
@@ -224,9 +225,9 @@ function updateAbilityHud() {
   if (cdOverdrive) {
     const stacks = game.battleStats?.overdriveStacks || 0;
     if (stacks > 0) {
-      cdOverdrive.textContent = `${stacks}x STACK`;
+      cdOverdrive.textContent = `x${stacks}`;
     } else {
-      cdOverdrive.textContent = od.ready ? 'READY' : `${od.cooldownLeft}T`;
+      cdOverdrive.innerHTML = od.ready ? icon('check', 12) : `${od.cooldownLeft}`;
     }
   }
   if (btnBarrier) {
@@ -234,7 +235,7 @@ function updateAbilityHud() {
     btnBarrier.classList.toggle('ready', br.ready);
   }
   if (cdBarrier) {
-    cdBarrier.textContent = br.ready ? 'READY' : `${br.cooldownLeft}T`;
+    cdBarrier.innerHTML = br.ready ? icon('check', 12) : `${br.cooldownLeft}`;
   }
 }
 

@@ -5,21 +5,22 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
+import { drawIcon } from '../ui/icons.js';
 
 const M = CONFIG.map;
 const C = CONFIG.colors;
 
-// Node type → label + icon + color + subtitle
+// Node type → short label, long title (for modals), icon glyph + color
 export const NODE_STYLE = {
-  entry: { label: 'ENTRY POINT', tag: 'Start Sector', icon: 'S', color: '#7aa2ff' },
-  combat: { label: 'COMBAT ZONE', tag: 'Normal Sector', icon: 'X', color: '#e0655c' },
-  elite: { label: 'ELITE HOSTILE', tag: 'High Risk Area', icon: 'E', color: '#e8a94c' },
-  miniboss: { label: 'MINI-BOSS', tag: 'Commander', icon: 'M', color: '#ff6b6b' },
-  boss: { label: 'FINAL SECTOR', tag: 'Target Area', icon: 'B', color: '#e8a94c' },
-  encounter: { label: 'UNKNOWN FOG', tag: 'Dense Fog', icon: '?', color: '#c792ea' },
-  shop: { label: 'SUPPLY DEPOT', tag: 'Trading Post', icon: '$', color: '#5fd3a8' },
-  rest: { label: 'SAFE ZONE', tag: 'Outpost', icon: '+', color: '#5fd3a8' },
-  minigame: { label: 'DRILL ZONE', tag: 'Calibration', icon: '*', color: '#8fe3c1' },
+  entry: { label: 'START', title: 'ENTRY POINT', icon: 'flag', color: '#7aa2ff' },
+  combat: { label: 'COMBAT', title: 'COMBAT ZONE', icon: 'swords', color: '#e0655c' },
+  elite: { label: 'ELITE', title: 'ELITE HOSTILE', icon: 'skull', color: '#e8a94c' },
+  miniboss: { label: 'MINI-BOSS', title: 'MINI-BOSS', icon: 'crown', color: '#ff6b6b' },
+  boss: { label: 'BOSS', title: 'FINAL SECTOR', icon: 'crown', color: '#e8a94c' },
+  encounter: { label: 'UNKNOWN', title: 'UNKNOWN FOG', icon: 'question', color: '#c792ea' },
+  shop: { label: 'SHOP', title: 'SUPPLY DEPOT', icon: 'bag', color: '#5fd3a8' },
+  rest: { label: 'REST', title: 'SAFE ZONE', icon: 'tent', color: '#5fd3a8' },
+  minigame: { label: 'DRILL', title: 'DRILL ZONE', icon: 'target', color: '#8fe3c1' },
 };
 
 export class RogueMapRenderer {
@@ -208,12 +209,14 @@ export class RogueMapRenderer {
       ctx.globalAlpha = 0.5;
     }
 
-    // Main Card Background
+    // Card background, tinted with the node's color
     ctx.fillStyle = isCurrent ? '#192334' : 'rgba(14, 18, 26, 0.96)';
+    ctx.fillRect(x, y, cardW, cardH);
+    ctx.fillStyle = (node.cleared ? '#5fd3a8' : style.color) + '1f';
     ctx.fillRect(x, y, cardW, cardH);
 
     // Border styling & glow
-    let borderColor = 'rgba(255, 255, 255, 0.35)';
+    let borderColor = 'rgba(255, 255, 255, 0.25)';
     if (isCurrent) {
       borderColor = '#7aa2ff';
       ctx.shadowColor = '#7aa2ff';
@@ -229,44 +232,25 @@ export class RogueMapRenderer {
     ctx.strokeRect(x, y, cardW, cardH);
     ctx.shadowBlur = 0; // reset shadow
 
-    // 1. TOP TITLE BANNER (Crisp high-contrast font)
-    ctx.fillStyle = isCurrent || selectable ? '#ffffff' : 'rgba(255, 255, 255, 0.9)';
-    ctx.font = 'bold 12px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText(style.label, node.x, y + 7);
+    // Big node-type glyph: the icon carries the meaning, the label just confirms it
+    const iconColor = node.cleared ? '#5fd3a8' : style.color;
+    drawIcon(ctx, style.icon, node.x, node.y - 8, 34, iconColor, 2.4);
 
-    // 2. DIAMOND EMBLEM CONTAINER (Center)
-    const diamSize = 22;
-    const iconY = node.y + 4;
+    // Cleared badge in the corner
+    if (node.cleared) {
+      ctx.fillStyle = '#5fd3a8';
+      ctx.beginPath();
+      ctx.arc(x + cardW - 12, y + 12, 8, 0, Math.PI * 2);
+      ctx.fill();
+      drawIcon(ctx, 'check', x + cardW - 12, y + 12, 11, '#0e131f', 2.6);
+    }
 
-    ctx.save();
-    ctx.translate(node.x, iconY);
-    ctx.rotate(Math.PI / 4);
-
-    ctx.fillStyle = node.cleared ? 'rgba(95, 211, 168, 0.25)' : 'rgba(255, 255, 255, 0.14)';
-    ctx.fillRect(-diamSize / 2, -diamSize / 2, diamSize, diamSize);
-    ctx.strokeStyle = node.cleared ? '#5fd3a8' : style.color;
-    ctx.lineWidth = 2.0;
-    ctx.strokeRect(-diamSize / 2, -diamSize / 2, diamSize, diamSize);
-    ctx.restore();
-
-    // Node Type Icon inside Diamond
-    ctx.fillStyle = node.cleared ? '#5fd3a8' : style.color;
-    ctx.font = 'bold 16px sans-serif';
+    // Short label
+    ctx.fillStyle = isCurrent || selectable ? '#ffffff' : 'rgba(255, 255, 255, 0.75)';
+    ctx.font = 'bold 11px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(node.cleared ? '✓' : style.icon, node.x, iconY);
-
-    // 3. BLACK BOTTOM TAG BAR (Solid background, sharp typography)
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(x + 1, y + cardH - 22, cardW - 2, 21);
-
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = 'bold 11px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(style.tag, node.x, y + cardH - 11);
+    ctx.fillText(style.label, node.x, y + cardH - 13);
 
     ctx.restore();
   }

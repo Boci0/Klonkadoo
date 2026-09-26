@@ -8,8 +8,48 @@
 
 import { CONFIG } from '../config.js';
 import { NODE_STYLE } from '../rendering/RogueMapRenderer.js';
+import { icon } from './icons.js';
 
 const C = CONFIG.colors;
+
+// Tech upgrade id → icon glyph
+const TECH_ICONS = {
+  atk_sharpshooter: 'target', atk_base_power: 'sword', atk_armor_pen: 'swords', atk_risk_resonance: 'skull', atk_ballistic_apex: 'play',
+  vit_health: 'heart', vit_overflow_shield: 'shield', vit_emergency_medkit: 'sparkle', vit_titan_core: 'tent', vit_vampiric_vitality: 'flame',
+  def_aegis: 'shield', def_matrix_pct: 'shieldHalf', def_thorns_resist: 'wall', def_forcefield: 'target', def_fortified_matrix: 'layers', def_kinetic_dampener: 'bolt',
+  tac_war_chest: 'coin', tac_merchant: 'bag', tac_logistics: 'map', tac_intellect: 'chip', tac_relic_synergy: 'gem',
+};
+
+const BRANCH_ICONS = { atk: 'sword', vit: 'heart', def: 'shield', tac: 'map' };
+
+const RELIC_CATEGORY_COLORS = {
+  Tactical: '#7aa2ff', Economy: '#e8a94c', Gladiator: '#e0655c', 'High-Tech': '#4fc3f7',
+  Frontier: '#8fe3c1', Sanctuary: '#5fd3a8',
+};
+
+/** Colored gem glyph for a relic, tinted by its category. */
+function relicIcon(relic, size = 18) {
+  const color = RELIC_CATEGORY_COLORS[relic.category] || '#c792ea';
+  return `<span class="relic-ico" style="color:${color}" title="${relic.category || ''}">${icon('gem', size)}</span>`;
+}
+
+/** Row of filled / empty segments, e.g. rank 3 of 10. */
+function pips(filled, total, color) {
+  let html = '<div class="pips">';
+  for (let i = 0; i < total; i++) {
+    html += `<span class="pip ${i < filled ? 'on' : ''}" ${i < filled ? `style="background:${color}"` : ''}></span>`;
+  }
+  return html + '</div>';
+}
+
+/** Replace every [data-icon] placeholder inside root with its SVG. */
+function hydrateIcons(root = document) {
+  root.querySelectorAll('[data-icon]').forEach((el) => {
+    if (el.dataset.hydrated) return;
+    el.innerHTML = icon(el.dataset.icon, Number(el.dataset.size) || (el.classList.contains('ability-icon') ? 22 : 15));
+    el.dataset.hydrated = '1';
+  });
+}
 
 import { saveSystem } from '../meta/SaveSystem.js';
 import { soundEngine } from '../utils/SoundEngine.js';
@@ -32,6 +72,7 @@ export class UIManager {
     this.modalBody = document.getElementById('node-modal-body');
     this.modalActions = document.getElementById('node-modal-actions');
 
+    hydrateIcons();
     this.bindGlobalEvents();
   }
 
@@ -119,11 +160,11 @@ export class UIManager {
 
   updateAudioButtons() {
     const isMuted = soundEngine.muted;
-    const label = isMuted ? '[AUDIO: OFF]' : '[AUDIO: ON]';
+    const glyph = icon(isMuted ? 'soundOff' : 'soundOn', 18);
     const btn1 = document.getElementById('btn-audio-toggle');
     const btn2 = document.getElementById('btn-audio-menu');
-    if (btn1) btn1.textContent = label;
-    if (btn2) btn2.textContent = label;
+    if (btn1) btn1.innerHTML = glyph;
+    if (btn2) btn2.innerHTML = `${glyph}<span>${isMuted ? 'SOUND OFF' : 'SOUND ON'}</span>`;
   }
 
   // ---------- Generic screen switching ----------
@@ -133,9 +174,9 @@ export class UIManager {
     const el = document.getElementById('menu-stats');
     if (el) {
       el.innerHTML = `
-        <div class="menu-stat"><span>Runs</span><strong>${meta.totalRuns}</strong></div>
-        <div class="menu-stat"><span>Wins</span><strong>${meta.totalWins}</strong></div>
-        <div class="menu-stat"><span>Tech Pts</span><strong class="accent">${this._tp()}</strong></div>
+        <div class="menu-stat" title="Runs"><span class="menu-stat-ico" style="color:#7aa2ff">${icon('play', 22)}</span><strong>${meta.totalRuns}</strong><span>Runs</span></div>
+        <div class="menu-stat" title="Wins"><span class="menu-stat-ico" style="color:#5fd3a8">${icon('trophy', 22)}</span><strong>${meta.totalWins}</strong><span>Wins</span></div>
+        <div class="menu-stat" title="Tech Points"><span class="menu-stat-ico" style="color:#e8a94c">${icon('chip', 22)}</span><strong class="accent">${this._tp()}</strong><span>Tech</span></div>
       `;
     }
   }
@@ -156,7 +197,7 @@ export class UIManager {
     for (const branch of branches) {
       const col = document.createElement('div');
       col.className = 'tech-column';
-      col.innerHTML = `<h3 style="color:${branch.color}">${branch.title}</h3>`;
+      col.innerHTML = `<h3 style="color:${branch.color}">${icon(BRANCH_ICONS[branch.key], 18)}${branch.title}</h3>`;
 
       const nodes = techTree
         .getAllNodes()
@@ -171,16 +212,16 @@ export class UIManager {
         const nextCost = techTree.getNodeNextCost(node.id);
 
         const rankDots = maxLvl > 1
-          ? `<div style="font-size:11px;color:var(--accent);margin:2px 0;">${'[#]'.repeat(lvl)}${'[-]'.repeat(maxLvl - lvl)} <span style="font-size:10px;color:var(--text-dim);">(Rank ${lvl}/${maxLvl})</span></div>`
+          ? `<div class="tech-rank">${pips(lvl, maxLvl, branch.color)}<span>${lvl}/${maxLvl}</span></div>`
           : '';
 
         const row = document.createElement('div');
         row.className = `tech-node ${isMaxed ? 'owned' : lvl > 0 ? 'part-owned' : ''} ${!unlocked ? 'locked' : ''}`;
         row.innerHTML = `
           <div class="tech-node-head">
-            <span class="tech-icon">${node.icon || '[*]'}</span>
+            <span class="tech-icon" style="color:${branch.color}">${icon(unlocked ? (TECH_ICONS[node.id] || 'sparkle') : 'lock', 20)}</span>
             <span class="tech-name">${node.label}</span>
-            ${isMaxed ? '<span class="tech-owned">MAXED</span>' : `<span class="tech-cost">${nextCost} TP</span>`}
+            ${isMaxed ? `<span class="tech-owned">${icon('check', 14)}</span>` : ''}
           </div>
           ${rankDots}
           <div class="tech-desc">${node.desc}</div>
@@ -188,8 +229,9 @@ export class UIManager {
 
         if (!isMaxed && unlocked) {
           const btn = document.createElement('button');
-          btn.className = `btn ${affordable ? 'btn-accent' : 'btn-disabled'}`;
-          btn.textContent = affordable ? (lvl > 0 ? `UPGRADE (${nextCost} TP)` : `UNLOCK (${nextCost} TP)`) : 'NOT ENOUGH TP';
+          btn.className = `btn btn-tech-buy ${affordable ? 'btn-accent' : 'btn-disabled'}`;
+          btn.title = affordable ? (lvl > 0 ? 'Upgrade' : 'Unlock') : 'Not enough Tech Points';
+          btn.innerHTML = `${icon(affordable ? (lvl > 0 ? 'sparkle' : 'check') : 'lock', 14)}${icon('chip', 14)}<span>${nextCost}</span>`;
           btn.addEventListener('click', () => {
             if (affordable) {
               this.cb.onTechPurchase(node.id);
@@ -216,7 +258,7 @@ export class UIManager {
     if (stats.hasVampiricVitality) parts.push('25% Lifesteal');
     if (stats.hasRelicSynergy) parts.push('Relic Synergy');
 
-    document.getElementById('tech-apply').textContent = `Applied: ${parts.join(' - ')}`;
+    document.getElementById('tech-apply').innerHTML = `${icon('check', 14)} ${parts.join(' · ')}`;
   }
 
   // ---------- Run map screen ----------
@@ -236,9 +278,15 @@ export class UIManager {
 
   updateRunHud(run) {
     document.getElementById('run-hp').textContent = `${Math.ceil(run.hp)}/${run.maxHp}`;
+    const hpFill = document.getElementById('run-hp-fill');
+    if (hpFill) {
+      const pct = Math.max(0, Math.min(1, run.hp / run.maxHp));
+      hpFill.style.width = `${pct * 100}%`;
+      hpFill.style.background = pct > 0.3 ? '#5fd3a8' : '#e0655c';
+    }
     const actEl = document.getElementById('run-actions');
     if (actEl) actEl.textContent = `${run.floorActions ?? 5}`;
-    document.getElementById('run-gold').textContent = `${run.gold}G`;
+    document.getElementById('run-gold').textContent = `${run.gold}`;
     const atkBonusPct = Math.round((run.atkBonusPct || 0) * 100);
     const totalAtk = (run.atk * 10).toFixed(1).replace('.0', '');
     document.getElementById('run-atk').textContent = atkBonusPct > 0 ? `${totalAtk} (+${atkBonusPct}%)` : `${totalAtk}`;
@@ -272,7 +320,7 @@ export class UIManager {
       container.appendChild(chip);
     }
     if (run.boons.length === 0) {
-      container.innerHTML = '<span class="dim-text">No boons</span>';
+      container.innerHTML = '';
     }
 
     this.renderRelics(run);
@@ -290,40 +338,33 @@ export class UIManager {
     container.innerHTML = '';
     const quests = run.questSystem?.getActiveQuests?.() ?? [];
     if (quests.length === 0) {
-      container.innerHTML = '<span class="dim-text">No active quests</span>';
+      container.innerHTML = `<span class="empty-ico">${icon('clipboard', 22)}</span>`;
       return;
     }
     for (const q of quests) {
       const item = document.createElement('div');
       item.className = `quest-item ${q.completed ? 'done' : ''}`;
 
-      let counterText = '';
+      // Progress as a fraction so it can be drawn as a bar
+      let cur = q.completed ? 1 : 0;
+      let max = 1;
       if (q.id === 'quest_shopping') {
-        const spent = Math.min(40, run.totalGoldSpent || 0);
-        counterText = `${spent}/40 Gold`;
+        cur = Math.min(40, run.totalGoldSpent || 0); max = 40;
       } else if (q.id === 'quest_perfect') {
-        const fl = Math.min(5, (run.floor || 0) + 1);
-        counterText = `${fl}/5 Floors`;
+        cur = Math.min(5, (run.floor || 0) + 1); max = 5;
       } else if (q.id === 'quest_rest') {
-        const h = Math.min(40, run.maxRestHealed || 0);
-        counterText = `${h}/40 HP`;
-      } else {
-        counterText = q.completed ? '1/1' : '0/1';
+        cur = Math.min(40, run.maxRestHealed || 0); max = 40;
       }
+      const color = q.completed ? 'var(--green)' : 'var(--accent)';
 
+      item.title = `${q.desc} (${cur}/${max})`;
       item.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
-          <span class="quest-name" style="font-weight:600;font-size:12px;color:${q.completed ? 'var(--green)' : 'var(--text)'}">
-            ${q.completed ? '[x]' : '[-]'} ${q.name}
-          </span>
-          <span style="font-family:var(--mono);font-size:11px;color:${q.completed ? 'var(--green)' : 'var(--accent)'};font-weight:700;">
-            +${q.reward} TP
-          </span>
+        <div class="quest-head">
+          <span class="quest-ico" style="color:${color}">${icon(q.completed ? 'check' : 'clipboard', 14)}</span>
+          <span class="quest-name">${q.name}</span>
+          <span class="quest-tp" style="color:${color}">+${q.reward}${icon('chip', 12)}</span>
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text-dim);">
-          <span>${q.desc}</span>
-          <span style="font-family:var(--mono);font-weight:600;margin-left:6px;color:${q.completed ? 'var(--green)' : 'var(--accent)'}">[${counterText}]</span>
-        </div>
+        <div class="quest-bar"><div style="width:${(cur / max) * 100}%;background:${color}"></div></div>
       `;
       container.appendChild(item);
     }
@@ -367,7 +408,7 @@ export class UIManager {
     const title = labels[node.type] || node.type.toUpperCase();
 
     const body = `
-      <div class="modal-node-icon" style="color:${style.color}">${style.icon}</div>
+      <div class="modal-node-icon" style="color:${style.color}">${icon(style.icon, 56)}</div>
       <p>${this._nodeDescription(node)}</p>
     `;
 
@@ -491,7 +532,7 @@ export class UIManager {
   }
 
   showShop(run, shopItems = [], refreshesLeft = 3, refreshCost = 8) {
-    let body = '<div class="shop-header-info"><span class="accent">AVAILABLE COLLECTIBLES</span> • Refresh inventory up to 3 times per visit</div>';
+    let body = `<div class="shop-header-info"><span style="color:#e8a94c">${icon('coin', 16)} ${run.gold}</span></div>`;
     body += '<div class="shop-grid" style="margin-top: 14px;">';
 
     for (const relic of shopItems) {
@@ -502,18 +543,18 @@ export class UIManager {
       body += `
         <div class="shop-item" style="padding: 12px; margin-bottom: 10px; border: 1px solid var(--border); background: var(--bg-panel-2);">
           <div style="display: flex; gap: 10px; align-items: flex-start; flex: 1;">
-            <div style="font-size: 16px; font-weight: 700; color: var(--accent-gold); font-family: var(--mono);">${relic.icon || '[*]'}</div>
+            ${relicIcon(relic, 26)}
             <div style="flex: 1;">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <strong class="relic-name">${relic.name}</strong>
-                <span class="dim-text" style="font-size: 10px; text-transform: uppercase;">[${relic.category || 'Rhodes'}]</span>
+
               </div>
               <div class="shop-desc" style="margin-top: 4px; font-size: 12px; color: var(--text-dim);">${relic.desc}</div>
             </div>
           </div>
           <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
             <button class="btn ${alreadyOwned ? 'btn-disabled' : affordable ? 'btn-accent' : 'btn-disabled'}"
-              data-relic="${relic.id}" ${alreadyOwned ? 'disabled' : ''}>${alreadyOwned ? 'OWNED' : cost + ' G'}</button>
+              data-relic="${relic.id}" ${alreadyOwned ? 'disabled' : ''}>${alreadyOwned ? icon('check', 14) : `${icon('coin', 14)} ${cost}`}</button>
           </div>
         </div>
       `;
@@ -539,7 +580,7 @@ export class UIManager {
     this.modalActions.innerHTML = `
       <div class="btn-row" style="display: flex; gap: 12px; justify-content: flex-end; width: 100%;">
         <button class="btn ${canRefresh ? 'btn-outline' : 'btn-disabled'}" data-act="refresh" ${canRefresh ? '' : 'disabled'}>
-          ${refreshesLeft > 0 ? `REFRESH (${refreshesLeft}/3 • ${refreshCost}G)` : 'NO REFRESHES LEFT'}
+          ${icon('retreat', 14)} ${refreshesLeft > 0 ? `${refreshesLeft}/3 · ${icon('coin', 14)} ${refreshCost}` : '0/3'}
         </button>
         <button class="btn btn-primary" data-act="leave">LEAVE</button>
       </div>
@@ -569,7 +610,7 @@ export class UIManager {
     if (!container) return;
     container.innerHTML = '';
     if (run.relics.length === 0) {
-      container.innerHTML = '<span class="dim-text">No relics</span>';
+      container.innerHTML = `<span class="empty-ico">${icon('gem', 22)}</span>`;
       return;
     }
     for (const id of run.relics) {
@@ -577,10 +618,9 @@ export class UIManager {
       if (!relic) continue;
       const item = document.createElement('div');
       item.className = 'relic-item';
-      item.innerHTML = `
-        <div class="relic-name">◈ ${relic.name}</div>
-        <div class="relic-desc">${relic.desc}</div>
-      `;
+      // Icon grid; the full description lives in the tooltip
+      item.title = `${relic.name}\n${relic.desc}`;
+      item.innerHTML = relicIcon(relic, 20);
       container.appendChild(item);
     }
   }
@@ -714,20 +754,20 @@ export class UIManager {
       const item = document.createElement('div');
       item.className = `quest-item ${q.completed ? 'done' : ''}`;
       item.innerHTML = `
-        <span>${q.completed ? '✓' : '•'} ${q.name}</span>
-        <span class="quest-reward">${q.completed ? `+${q.reward} TP` : '—'}</span>
+        <span><span style="color:${q.completed ? 'var(--green)' : 'var(--text-dim)'}">${icon(q.completed ? 'check' : 'clipboard', 14)}</span> ${q.name}</span>
+        <span class="quest-reward">${q.completed ? `+${q.reward} ${icon('chip', 12)}` : '—'}</span>
       `;
       questList.appendChild(item);
     }
     const tp = meta?.techPoints ?? (this.cb.getTechPoints ? this.cb.getTechPoints() : 0);
-    document.getElementById('result-tp').textContent = `Total Tech Points: ${tp}`;
+    document.getElementById('result-tp').innerHTML = `${icon('chip', 18)} ${tp}`;
   }
 
   showBattleHud(run, nodeType) {
-    document.getElementById('battle-floor').textContent = `FLOOR ${run.floor + 1}`;
+    document.getElementById('battle-floor').textContent = `${run.floor + 1}`;
     document.getElementById('battle-node').textContent =
       nodeType === 'boss' ? 'BOSS' : nodeType === 'miniboss' ? 'MINI-BOSS' : nodeType === 'elite' ? 'ELITE' : 'COMBAT';
-    document.getElementById('battle-gold').textContent = `${run.gold}G`;
+    document.getElementById('battle-gold').textContent = `${run.gold}`;
 
     const mapView = document.getElementById('map-view');
     const battleView = document.getElementById('battle-view');
