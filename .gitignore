@@ -20,3 +20,10 @@ Thumbs.db
 *.jks
 *.keystore
 keystore.properties
+
+# Signed Play Store bundles (upload these, don't commit them)
+release/
+
+# Local APK builds (the game is distributed through Google Play)
+apk/
+*.apk

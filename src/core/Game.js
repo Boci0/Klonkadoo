@@ -413,6 +413,7 @@ export class Game {
     return Math.round(CONFIG.damage.barrierHp * (this.relics.includes('rel_graviton_lens') ? 2 : 1) * (1 + (this.techStats?.barrierHpPct || 0)));
   }
 
+  /** Your barrier cap (tech can raise it). */
   _maxBarriers() {
     return CONFIG.abilities.barrier.maxActive + (this.techStats?.barrierExtra || 0);
   }
@@ -1413,24 +1414,10 @@ export class Game {
     this.turnSystem.gameOver(null);
   }
 
-  _bindKeys() {
-    this._onKeyDown = (e) => {
-      if (this.turnSystem.phase === TurnPhase.GAME_OVER) {
-        if (e.key === 'r' || e.key === 'R' || e.key === 'Enter') {
-          this.events.emit('battle-continue');
-        }
-      }
-    };
-    window.addEventListener('keydown', this._onKeyDown);
-
-    this._onCanvasClick = () => {
-      if (!this.running) return;
-      if (this.turnSystem.phase === TurnPhase.GAME_OVER) {
-        this.events.emit('battle-continue');
-      }
-    };
-    this.canvas.addEventListener('click', this._onCanvasClick);
-  }
+  // After a battle the result pop-up's CONTINUE button moves on. (A global
+  // Enter/R hotkey used to do the same, which could skip a second move or
+  // fire while typing a save code.)
+  _bindKeys() {}
 
   update(dt) {
     dt = Math.min(dt, 0.1);
@@ -1735,8 +1722,6 @@ export class Game {
   }
 
   destroy() {
-    window.removeEventListener('keydown', this._onKeyDown);
-    this.canvas.removeEventListener('click', this._onCanvasClick);
     this.slingshotInput.destroy();
   }
 }

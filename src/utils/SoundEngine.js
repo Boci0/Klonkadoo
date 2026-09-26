@@ -22,7 +22,11 @@ const TRACKS = {
 class SoundEngine {
   constructor() {
     this.ctx = null;
-    this.sfxOn = this._readSetting('slingshot-sfx', localStorage.getItem('slingshot-sound-muted') !== 'true');
+    let legacyMuted = false;
+    try {
+      legacyMuted = localStorage.getItem('slingshot-sound-muted') === 'true';
+    } catch (_) {}
+    this.sfxOn = this._readSetting('slingshot-sfx', !legacyMuted);
     this.musicOn = this._readSetting('slingshot-music', true);
     this.volume = 0.5;
     this._track = null; // requested track name
@@ -75,8 +79,24 @@ class SoundEngine {
     for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
   }
 
+  /** App backgrounded: silence everything and stop the music clock (no timers left running). */
+  suspend() {
+    this._away = true;
+    this._stopSequencer();
+    this.ctx?.suspend?.().catch(() => {});
+  }
+
+  /** Back in the foreground: pick the current track up again. */
+  resume() {
+    this._away = false;
+    if (!this.ctx) return; // never unlocked: the next tap starts audio
+    this.ctx.resume().catch(() => {});
+    if (this._track && !this._seq) this._startSequencer(this._track);
+  }
+
   /** Call from any user gesture: browsers only start audio after one. */
   unlock() {
+    if (this._away) return;
     this._init();
     if (this.ctx?.state === 'suspended') this.ctx.resume().catch(() => {});
     if (this._track && !this._seq) this._startSequencer(this._track);
@@ -260,7 +280,7 @@ class SoundEngine {
 
   _startSequencer(name) {
     const track = TRACKS[name];
-    if (!track || !this.musicOn || !this.ctx) return;
+    if (!track || !this.musicOn || !this.ctx || this._away) return;
     const stepDur = 60 / track.bpm / 2; // eighth notes
     const seq = { track, step: 0, next: this.ctx.currentTime + 0.1, stepDur };
     seq.timer = setInterval(() => this._schedule(seq), 25);

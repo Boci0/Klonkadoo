@@ -7,6 +7,16 @@
 import { RELICS } from './meta/Relics.js';
 
 export const CONFIG = {
+  // --- Support page (menu ♥) ---
+  // Google Play forbids linking out to tip / donation pages from a Play app,
+  // so `donateUrl` is only ever shown in the web build (never on Android).
+  support: {
+    playUrl: 'https://play.google.com/store/apps/details?id=com.slingshotops.game',
+    webUrl: 'https://boci0.github.io/Slingshot-OPS/',
+    feedbackEmail: 'bocidev.support@gmail.com',
+    donateUrl: '', // e.g. 'https://ko-fi.com/yourname' (web build only; empty = hidden)
+  },
+
   // --- World ---
   world: {
     width: 1280,
