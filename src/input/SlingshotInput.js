@@ -6,6 +6,7 @@
 
 import { CONFIG } from '../config.js';
 import { clamp, length, normalize } from '../utils/math.js';
+import { applyForces, integrate, resolveWorldCollisions } from '../core/Physics.js';
 
 const S = CONFIG.slingshot;
 
@@ -22,6 +23,7 @@ export class SlingshotInput {
     this.trajectory = [];
     this.ballX = 0;
     this.ballY = 0;
+    this.ballRadius = CONFIG.ball.radius;
 
     this.placementMode = null; // null | 'barrier'
     this.placementPos = { x: 0, y: 0 };
@@ -56,9 +58,10 @@ export class SlingshotInput {
     }
   }
 
-  setAnchor(x, y) {
+  setAnchor(x, y, radius) {
     this.ballX = x;
     this.ballY = y;
+    if (radius) this.ballRadius = radius;
   }
 
   _getMousePos(e) {
@@ -162,27 +165,24 @@ export class SlingshotInput {
       y: this.ballY,
       vx: this.launchVelocity.x,
       vy: this.launchVelocity.y,
+      radius: this.ballRadius,
     };
 
     const points = [];
     const dt = S.trajectoryStep;
-    const gravity = CONFIG.world.gravity;
-    const airDrag = CONFIG.world.airDrag;
     const groundY = CONFIG.world.groundY;
-    const radius = CONFIG.ball.radius;
 
     for (let i = 0; i < S.trajectoryPoints; i++) {
-      ball.vy += gravity * dt;
-      const drag = 1 - airDrag * dt;
-      ball.vx *= drag;
-      ball.vy *= drag;
-      ball.x += ball.vx * dt;
-      ball.y += ball.vy * dt;
-
-      if (ball.y + radius > groundY) break;
-      if (ball.x < 0 || ball.x > CONFIG.world.width) break;
+      const airborne = ball.y + ball.radius < groundY - 1;
+      applyForces(ball, dt);
+      integrate(ball, dt);
+      const events = resolveWorldCollisions(ball);
 
       points.push({ x: ball.x, y: ball.y });
+
+      // Stop at a wall hit or once the ball lands after being in the air.
+      // Sliding along the ground from a resting launch keeps the preview going.
+      if (events.some((ev) => ev.type === 'wall' || (ev.type === 'ground' && airborne))) break;
     }
 
     this.trajectory = points;
