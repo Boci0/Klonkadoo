@@ -59,9 +59,10 @@ export class SlingshotInput {
     }
   }
 
-  setAnchor(x, y) {
+  setAnchor(x, y, radius) {
     this.ballX = x;
     this.ballY = y;
+    if (radius) this.ballRadius = radius; // ball classes scale the size
   }
 
   /** The renderer supplies the screen→world mapping for the full-bleed canvas. */
@@ -184,13 +185,14 @@ export class SlingshotInput {
     const gravity = CONFIG.world.gravity;
     const airDrag = CONFIG.world.airDrag;
     const groundY = CONFIG.world.groundY;
-    const radius = CONFIG.ball.radius;
+    const radius = this.ballRadius || CONFIG.ball.radius;
 
     let zeroG = this.zeroGTime || 0; // Graviton skill: straight flight first
     ball.radius = radius;
     const pads = this.pads || [];
     const sub = 6; // pad springs are stiff: integrate in small steps like the live game
     const h = dt / sub;
+    let airborne = ball.y + radius < groundY - 1;
     outer: for (let i = 0; i < S.trajectoryPoints; i++) {
       for (let j = 0; j < sub; j++) {
         if (zeroG > 0) {
@@ -206,7 +208,15 @@ export class SlingshotInput {
         ball.y += ball.vy * h;
         if (pads.length) resolvePads(ball, pads, h);
         if (ball._padContact) continue; // bouncing off a pad: the preview follows it
-        if (ball.y + radius > groundY || ball.y < -600) break outer;
+        if (ball.y + radius > groundY) {
+          // A real landing ends the preview; a launch from rest slides along the ground.
+          if (airborne) break outer;
+          ball.y = groundY - radius;
+          if (ball.vy > 0) ball.vy = 0;
+        } else if (ball.y + radius < groundY - 1) {
+          airborne = true;
+        }
+        if (ball.y < -600) break outer;
         if (ball.x < 0 || ball.x > CONFIG.world.width) break outer;
       }
       points.push({ x: ball.x, y: ball.y });

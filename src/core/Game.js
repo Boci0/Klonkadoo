@@ -202,7 +202,7 @@ export class Game {
     this.turnSystem.reset();
     this.turnSystem.enemyIndex = 0;
     this.slingshotInput.setActive(true);
-    this.slingshotInput.setAnchor(this.player.x, this.player.y);
+    this.slingshotInput.setAnchor(this.player.x, this.player.y, this.player.radius);
     this.slingshotInput.powerMult = config.maxPowerMult || 1;
     this.slingshotInput.zeroGTime = 0;
     this.slingshotInput.ignoreWind = ballType === 'graviton';
@@ -445,7 +445,7 @@ export class Game {
     this.slingshotInput.cancelPlacement();
     this.slingshotInput.setActive(true);
     if (this.player) {
-      this.slingshotInput.setAnchor(this.player.x, this.player.y);
+      this.slingshotInput.setAnchor(this.player.x, this.player.y, this.player.radius);
     }
 
     // Tick player burn (from pyromancer ignition)
@@ -1272,7 +1272,7 @@ export class Game {
     if (!this.running) return;
 
     if (this.turnSystem.isPlayerTurn && this.turnSystem.isAiming && this.player) {
-      this.slingshotInput.setAnchor(this.player.x, this.player.y);
+      this.slingshotInput.setAnchor(this.player.x, this.player.y, this.player.radius);
     }
 
     if (this.turnSystem.isEnemyTurn && this.turnSystem.isAiming) {
