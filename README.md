@@ -3,7 +3,10 @@
 > A tactical ballistic-combat roguelike built with HTML5 Canvas & JavaScript.
 
 [![Live Demo](https://img.shields.io/badge/Play_Now-Live_Demo-brightgreen?style=for-the-badge&logo=github)](https://boci0.github.io/Slingshot-OPS/)
+[![Download](https://img.shields.io/github/v/release/Boci0/Slingshot-OPS?style=for-the-badge&label=Download&logo=github)](https://github.com/Boci0/Slingshot-OPS/releases/latest)
+<!-- Google Play badge (hidden while the game ships on GitHub only):
 [![Google Play](https://img.shields.io/badge/Android-Google_Play-3DDC84?style=for-the-badge&logo=googleplay&logoColor=white)](https://play.google.com/store/apps/details?id=com.slingshotops.game)
+-->
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 
 ---
@@ -24,7 +27,34 @@
 
 ---
 
-## Android
+## Download
+
+Grab the latest build from **[Releases](https://github.com/Boci0/Slingshot-OPS/releases/latest)**:
+
+- **Android**: `SlingshotOps-x.y.z.apk`. Allow installs from your browser / file manager when asked.
+- **Windows**: `Slingshot Ops_x.y.z_x64-setup.exe`. If SmartScreen appears, choose *More info → Run anyway*.
+- **Browser**: play instantly at https://boci0.github.io/Slingshot-OPS/
+
+Both apps check GitHub for new versions on launch (and via *Settings → Updates*) and update themselves in place. The game runs in landscape. Feedback: bocidev.support@gmail.com
+
+### Releasing
+
+```bash
+npm version patch          # or minor / major: bumps package.json, commits, tags vX.Y.Z
+git push --follow-tags     # the Release workflow builds the APK + Windows installer, then publishes
+```
+
+Every build takes its version from `package.json`. The workflow needs the signing secrets listed at the top of `.github/workflows/release.yml`.
+
+### Local builds
+
+```bash
+npm run build:android && cd android && ./gradlew assembleDebug   # debug APK
+npm run desktop          # Windows app in dev mode (needs Rust: https://rustup.rs)
+npm run build:desktop    # Windows installer
+```
+
+<!-- Google Play (hidden while the game ships on GitHub only; set CONFIG.store = 'play' in src/config.js to restore the in-game links):
 
 The Android version is on **Google Play** (currently in closed testing).
 
@@ -43,6 +73,7 @@ npm run build:android
 cd android && ./gradlew assembleDebug
 # output: android/app/build/outputs/apk/debug/app-debug.apk
 ```
+-->
 
 ---
 

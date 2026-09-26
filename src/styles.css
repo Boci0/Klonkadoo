@@ -1737,6 +1737,21 @@ canvas {
 .save-status.ok { color: var(--accent-green) !important; }
 .save-status.err { color: var(--accent-red) !important; }
 
+/* In-app update download progress */
+.update-bar {
+  height: 12px;
+  margin: 10px 0 0;
+  border: 3px solid var(--p-sky);
+  background: var(--p-navy, #10111c);
+}
+.update-bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent-green);
+  transition: width 0.15s steps(4);
+}
+
 /* ---------- Node Modal & Encounters ---------- */
 
 .modal {

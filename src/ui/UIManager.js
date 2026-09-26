@@ -16,6 +16,8 @@ import { saveSystem } from '../meta/SaveSystem.js';
 import { soundEngine } from '../utils/SoundEngine.js';
 import pkg from '../../package.json';
 import { haptics } from '../platform/haptics.js';
+import { isDesktop, openExternal } from '../platform/desktop.js';
+import { canSelfUpdate, checkForUpdate, isSkipped, skipVersion } from '../platform/updater.js';
 import { RARITY } from '../meta/Relics.js';
 import { BALLS, skinsFor, isSkinUnlocked, skinProgress, skinColors, getSkill } from '../meta/Balls.js';
 import { ballDataUrl, CLASS_PATTERN } from '../rendering/ballSprite.js';
@@ -376,6 +378,7 @@ export class UIManager {
           <button class="btn btn-danger" data-act="reset">RESET</button>
         </div>`, `<div class="btn-row">
           <button class="btn btn-outline" data-act="credits">CREDITS</button>
+          ${canSelfUpdate ? '<button class="btn btn-outline" data-act="updates">UPDATES</button>' : ''}
           <button class="btn btn-accent" data-act="close">DONE</button>
         </div>`);
       this.modalBody.querySelectorAll('[data-setting]').forEach((btn) => {
@@ -410,6 +413,10 @@ export class UIManager {
         },
       }));
       this.modalActions.querySelector('[data-act="credits"]').addEventListener('click', () => this.showCredits());
+      this.modalActions.querySelector('[data-act="updates"]')?.addEventListener('click', () => {
+        soundEngine.playUI();
+        this.checkUpdates({ manual: true });
+      });
       this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => this.closeModal());
     };
     render();
@@ -512,19 +519,22 @@ export class UIManager {
   // ---------- Support ----------
 
   /**
-   * Ways to help the game. On Android there is deliberately no tip / donate
-   * link: Google Play only allows those through Play Billing. The web build
-   * shows CONFIG.support.donateUrl when one is set.
+   * Ways to help the game. With CONFIG.store === 'play' the Android build
+   * links to the Play listing and has no tip / donate link (Play only allows
+   * those through Play Billing). GitHub builds link to the releases page.
    */
   showSupport() {
     const S = CONFIG.support;
     const native = Capacitor.isNativePlatform();
+    const onPlay = CONFIG.store === 'play';
     const rows = [
-      { act: 'rate', ico: '&#9733;', title: native ? 'RATE ON GOOGLE PLAY' : 'GET IT ON GOOGLE PLAY', text: native ? 'A quick review helps more than anything.' : 'Play on your phone, and leave a review.' },
+      onPlay
+        ? { act: 'rate', ico: '&#9733;', title: native ? 'RATE ON GOOGLE PLAY' : 'GET IT ON GOOGLE PLAY', text: native ? 'A quick review helps more than anything.' : 'Play on your phone, and leave a review.' }
+        : { act: 'github', ico: '&#9733;', title: 'GET THE APPS', text: 'Android & Windows builds on GitHub.' },
       { act: 'share', ico: '&#10150;', title: 'SHARE THE GAME', text: 'Copy the link for a friend.' },
       { act: 'mail', ico: '&#9993;', title: 'SEND FEEDBACK', text: 'Bugs, ideas, balance: I read it all.' },
     ];
-    if (!native && S.donateUrl) rows.push({ act: 'donate', ico: '&#9829;', title: 'BUY ME A COFFEE', text: 'Optional. Keeps updates coming.' });
+    if (S.donateUrl && !(onPlay && native)) rows.push({ act: 'donate', ico: '&#9829;', title: 'BUY ME A COFFEE', text: 'Optional. Keeps updates coming.' });
 
     this.openModal('SUPPORT THE GAME', `
       <p class="dim-text">Slingshot Ops is made by one person, with no ads and no purchases.</p>
@@ -539,15 +549,17 @@ export class UIManager {
     const status = document.getElementById('support-status');
     const open = (url) => {
       // In the app, Capacitor hands any non-app URL to Android (Play Store, mail app, browser)
-      if (native || url.startsWith('mailto:')) window.location.href = url;
+      if (isDesktop) openExternal(url);
+      else if (native || url.startsWith('mailto:')) window.location.href = url;
       else window.open(url, '_blank', 'noopener');
     };
     const actions = {
       rate: () => open(S.playUrl),
+      github: () => open(S.releasesUrl),
       donate: () => open(S.donateUrl),
       mail: () => open(`mailto:${S.feedbackEmail}?subject=${encodeURIComponent(`Slingshot Ops v${pkg.version} feedback`)}`),
       share: async () => {
-        const link = native ? S.playUrl : S.webUrl;
+        const link = onPlay && native ? S.playUrl : S.webUrl;
         try {
           await navigator.clipboard.writeText(`Slingshot Ops, a pixel slingshot roguelike: ${link}`);
           status.textContent = 'LINK COPIED';
@@ -565,6 +577,74 @@ export class UIManager {
     this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => this.closeModal());
   }
 
+  // ---------- Updates (GitHub builds) ----------
+
+  /**
+   * Launch check (quiet: only speaks up when a new, un-skipped version exists
+   * and the menu is showing with nothing on top) or manual check from Settings.
+   */
+  async checkUpdates({ manual = false } = {}) {
+    if (manual) {
+      this.openModal('UPDATES', '<p class="dim-text">Checking GitHub...</p>',
+        '<div class="btn-row"><button class="btn btn-accent" data-act="close">CLOSE</button></div>');
+      this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => this.closeModal());
+    }
+    const update = await checkForUpdate();
+    if (!update) {
+      if (manual && this.modalTitle.textContent === 'UPDATES') {
+        this.modalBody.innerHTML = `<p>You're on the latest version.</p><p class="dim-text">v${pkg.version}</p>`;
+      }
+      return;
+    }
+    if (!manual) {
+      const onMenu = !document.getElementById('screen-menu')?.classList.contains('hidden');
+      if (!onMenu || this.nodeModal.classList.contains('open') || isSkipped(update.version)) return;
+    }
+    this.showUpdate(update);
+  }
+
+  showUpdate(update) {
+    // First real line of the release notes (skipping headings), without markdown noise
+    const note = update.notes.split('\n').filter((l) => !l.trim().startsWith('#'))
+      .map((l) => l.replace(/^[*\-\s]+/, '').replace(/[<>&*`]/g, '').trim()).find(Boolean) || '';
+    this.openModal('UPDATE READY', `
+      <p><strong class="accent-green">v${update.version}</strong> <span class="dim-text">(you have v${pkg.version})</span></p>
+      ${note ? `<p class="dim-text">${note}</p>` : ''}
+      <div class="update-bar hidden"><i></i></div>
+      <p class="save-status" id="update-status"></p>`,
+    `<div class="btn-row">
+      <button class="btn btn-outline" data-act="later">LATER</button>
+      <button class="btn btn-accent" data-act="update">UPDATE</button>
+    </div>`);
+
+    const bar = this.modalBody.querySelector('.update-bar');
+    const status = document.getElementById('update-status');
+    const btn = this.modalActions.querySelector('[data-act="update"]');
+    this.modalActions.querySelector('[data-act="later"]').addEventListener('click', () => {
+      soundEngine.playUI();
+      skipVersion(update.version);
+      this.closeModal();
+    });
+    btn.addEventListener('click', async () => {
+      soundEngine.playUI();
+      btn.disabled = true;
+      bar.classList.remove('hidden');
+      status.textContent = 'DOWNLOADING...';
+      status.className = 'save-status';
+      try {
+        await update.install((p) => { bar.firstElementChild.style.width = `${Math.round(p * 100)}%`; });
+        // Android: the system installer is now on top. Desktop relaunches itself.
+        status.textContent = 'INSTALLING...';
+        status.className = 'save-status ok';
+      } catch (e) {
+        status.textContent = e.needsPermission ? e.message : 'Update failed. Try again later.';
+        status.className = 'save-status err';
+        bar.classList.add('hidden');
+        btn.disabled = false;
+      }
+    });
+  }
+
   // ---------- Credits / legal ----------
 
   showCredits() {
@@ -573,7 +653,7 @@ export class UIManager {
       Design &amp; code by Boci.</p>
       <p class="dim-text">Fonts: Pixelify Sans &amp; Press Start 2P (SIL Open Font License 1.1).<br>
       Built with Capacitor (MIT License). Sound effects are synthesized in-game.</p>
-      <p class="dim-text">This game collects no personal data and works fully offline.</p>
+      <p class="dim-text">This game collects no personal data and works offline.${canSelfUpdate ? ' It only goes online to check GitHub for updates.' : ''}</p>
       <div id="credits-doc" class="credits-doc hidden"></div>
     `, `<div class="btn-row">
         <button class="btn btn-outline" data-doc="privacy">PRIVACY POLICY</button>

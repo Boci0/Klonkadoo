@@ -21,9 +21,9 @@ Thumbs.db
 *.keystore
 keystore.properties
 
-# Signed Play Store bundles (upload these, don't commit them)
+# Local release outputs and Play Store assets (not committed)
 release/
 
-# Local APK builds (the game is distributed through Google Play)
+# Local APK builds (CI attaches release APKs to GitHub Releases)
 apk/
 *.apk

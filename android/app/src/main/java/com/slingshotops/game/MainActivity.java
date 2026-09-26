@@ -14,6 +14,7 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(ApkInstallerPlugin.class);
         super.onCreate(savedInstanceState);
         // Draw edge-to-edge; the web layout pads itself with safe-area insets
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
