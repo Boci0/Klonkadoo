@@ -1,12 +1,12 @@
 import { defineConfig } from 'vite';
 
-// `vite build --mode android` produces a relative-path build for the
-// Capacitor Android app; the default build targets GitHub Pages.
+// `--mode android` (Capacitor) and `--mode app` (Tauri desktop) produce
+// relative-path builds; the default build targets GitHub Pages.
 export default defineConfig(({ mode }) => ({
-  base: mode === 'android' ? './' : '/Slingshot-OPS/',
+  base: mode === 'android' || mode === 'app' ? './' : '/Slingshot-OPS/',
   server: {
     port: 5173,
-    open: true,
+    open: mode !== 'app', // the Tauri window opens instead of a browser tab
     strictPort: true
   },
   build: {

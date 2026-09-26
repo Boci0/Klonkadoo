@@ -25,6 +25,7 @@ import { haptics } from './platform/haptics.js';
 import { DevTools } from './dev/DevTools.js';
 import { checkMedals } from './meta/Medals.js';
 import './platform/native.js';
+import './platform/desktop.js';
 import { withMech, tokenReward, enemyWeapons, CLEAN_WIN_KEYS } from './meta/Mech.js';
 import { partIcon } from './rendering/pixelIcons.js';
 import { ballDataUrl, CLASS_PATTERN } from './rendering/ballSprite.js';
@@ -1768,6 +1769,8 @@ new MenuBackground(document.getElementById('menu-bg'));
 setupRiskSlider();
 bindMapClicks();
 bindAbilityButtons();
+// GitHub builds: offer a newer release once the menu is up (no-op on the web)
+setTimeout(() => ui.checkUpdates(), 1500);
 
 // Expose for debugging
 // Debug handle for the dev server only; release builds don't expose game state

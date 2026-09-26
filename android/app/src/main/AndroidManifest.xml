@@ -42,5 +42,9 @@
         </provider>
     </application>
 
-    <!-- No INTERNET permission: the game runs fully offline. VIBRATE (haptics) is merged in from @capacitor/haptics. -->
+    <!-- The game itself runs offline. INTERNET is only used to check GitHub for a newer
+         release; REQUEST_INSTALL_PACKAGES lets the in-app updater open the downloaded APK.
+         VIBRATE (haptics) is merged in from @capacitor/haptics. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 </manifest>

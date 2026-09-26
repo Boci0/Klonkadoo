@@ -7,14 +7,23 @@
 import { RELICS } from './meta/Relics.js';
 
 export const CONFIG = {
+  // --- Distribution ---
+  // 'github': builds ship on GitHub Releases and every Google Play link is hidden.
+  // 'play': restores the Play Store links (rate / share point to the listing).
+  // Note Play forbids linking out to tip / donation pages from a Play app, so
+  // in 'play' mode `donateUrl` only ever shows in the web build.
+  store: 'github',
+  update: {
+    repo: 'Boci0/Slingshot-OPS', // GitHub owner/repo the in-app updater checks
+  },
+
   // --- Support page (menu ♥) ---
-  // Google Play forbids linking out to tip / donation pages from a Play app,
-  // so `donateUrl` is only ever shown in the web build (never on Android).
   support: {
     playUrl: 'https://play.google.com/store/apps/details?id=com.slingshotops.game',
+    releasesUrl: 'https://github.com/Boci0/Slingshot-OPS/releases/latest',
     webUrl: 'https://boci0.github.io/Slingshot-OPS/',
     feedbackEmail: 'bocidev.support@gmail.com',
-    donateUrl: '', // e.g. 'https://ko-fi.com/yourname' (web build only; empty = hidden)
+    donateUrl: '', // e.g. 'https://ko-fi.com/yourname' (empty = hidden)
   },
 
   // --- World ---
