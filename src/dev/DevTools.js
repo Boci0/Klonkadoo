@@ -82,6 +82,7 @@ export class DevTools {
           <button class="dev-btn" data-act="add-tp-1k">+1,000 TP</button>
           <button class="dev-btn" data-act="add-tp-50k">+50,000 TP</button>
           <button class="dev-btn" data-act="unlock-all-tech">Unlock All Techs</button>
+          <button class="dev-btn" data-act="unlock-risk-xi">Unlock Risk XI</button>
         </div>
       </div>
 
@@ -178,6 +179,13 @@ export class DevTools {
           }
           this.saveSystem.save();
           this._notify('All Tech Tree Nodes Unlocked!');
+        } else if (act === 'unlock-risk-xi') {
+          // Every Risk level plus the secret one, selected; reload to refresh the menu
+          this.saveSystem.data.maxRiskUnlocked = Math.max(10, this.saveSystem.data.maxRiskUnlocked || 0);
+          this.saveSystem.unlockSecretRisk();
+          this.saveSystem.setDifficultyLevel(11);
+          this._notify('Risk XI unlocked!');
+          setTimeout(() => location.reload(), 500);
         } else if (act === 'heal-full') {
           const run = this.getRun();
           if (run) {

@@ -15,6 +15,7 @@ import { CONFIG } from '../config.js';
 import { getTerrain, groundAt } from '../core/Physics.js';
 import { fitCanvas, clientToWorld } from './viewport.js';
 import { paintBall, CLASS_PATTERN } from './ballSprite.js';
+import { partCanvas, iconCanvas } from './pixelIcons.js';
 
 const C = CONFIG.colors;
 const W = CONFIG.world;
@@ -162,7 +163,6 @@ export class Renderer {
 
     // 2. World
     ctx.setTransform(view.k, 0, 0, view.k, view.ox + shakeX, view.oy + shakeY);
-    this._drawTerrain(ctx, floor);
     this._drawHazards(ctx, world.hazards || [], now);
     this._drawPlatformsAndObstacles(ctx, world.platforms || [], world.obstacles || []);
     this._drawBarriers(ctx, world.barriers || [], now);
@@ -175,6 +175,7 @@ export class Renderer {
     }
     if (player && player.hp > 0) this._drawBall(ctx, player);
     for (const enemy of livingEnemies) this._drawBall(ctx, enemy);
+    this._drawGear(ctx, world, player, livingEnemies);
     this._drawMineMarkers(ctx, world.hazards || [], now);
     this._drawMechRanges(ctx, world);
     if (world.slingshotInput) world.slingshotInput.draw(ctx);
@@ -231,7 +232,8 @@ export class Renderer {
   // ---------- Backdrop ----------
 
   _backdrop(view, floor) {
-    const key = `${view.w}x${view.h}@${floor}`;
+    const terrain = getTerrain();
+    const key = `${view.w}x${view.h}@${floor}@${terrain ? terrain.map((p) => `${p.x},${p.y}`).join(';') : ''}`;
     if (this._bgCache?.key === key) return this._bgCache.canvas;
 
     const theme = THEMES[floor] || THEMES[1];
@@ -323,6 +325,25 @@ export class Renderer {
       }
     }
 
+    // Hills: painted in the same backdrop pixels and brick courses as the
+    // flat ground, so a slope reads as the ground itself rising
+    if (terrain) {
+      const worldX = (i) => ((i + 0.5) * BG_PIXEL * view.dpr - view.ox) / view.k;
+      const mod = (n, m) => ((n % m) + m) % m;
+      for (let i = 0; i < pw; i++) {
+        const top = Math.round((view.oy + groundAt(worldX(i)) * view.k) / view.dpr / BG_PIXEL);
+        if (top >= groundPx) continue;
+        for (let y = top; y < ph; y++) {
+          const depth = y - top;
+          const row = y - groundPx - 2; // brick course, continued above the ground line
+          let col = depth < 2 ? lip : depth < 8 ? mid : deep;
+          if (depth >= 2 && (mod(row, 4) === 3 || mod(i - (mod(Math.floor(row / 4), 2) ? 4 : 0), 8) === 0)) col = INK;
+          g.fillStyle = col;
+          g.fillRect(i, y, 1, 1);
+        }
+      }
+    }
+
     this._bgCache = { key, canvas: c };
     return c;
   }
@@ -403,19 +424,37 @@ export class Renderer {
     for (const p of particles) {
       ctx.globalAlpha = Math.max(0, Math.min(1, p.life / p.maxLife));
       if (p.type === 'tracer') {
-        // Mech weapon shot: bright beam plus an impact flash at the target
+        // Gun shot: a bolt flies from the muzzle (first 45%), then an impact burst
+        const t = 1 - p.life / p.maxLife;
+        const fly = Math.min(1, t / 0.45);
+        const hx = p.x1 + (p.x2 - p.x1) * fly;
+        const hy = p.y1 + (p.y2 - p.y1) * fly;
+        const tail = Math.max(0, fly - 0.35);
+        const tx = p.x1 + (p.x2 - p.x1) * tail;
+        const ty = p.y1 + (p.y2 - p.y1) * tail;
+        ctx.globalAlpha = 1;
         ctx.strokeStyle = '#000';
-        ctx.lineWidth = 10;
+        ctx.lineWidth = 11;
         ctx.beginPath();
-        ctx.moveTo(p.x1, p.y1);
-        ctx.lineTo(p.x2, p.y2);
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(hx, hy);
         ctx.stroke();
         ctx.strokeStyle = p.color;
-        ctx.lineWidth = 5;
+        ctx.lineWidth = 6;
         ctx.stroke();
-        ctx.fillStyle = p.color;
-        const f = Math.round(18 * (p.life / p.maxLife)) + 6;
-        ctx.fillRect(Math.round(p.x2 - f / 2), Math.round(p.y2 - f / 2), f, f);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(Math.round(hx - 5), Math.round(hy - 5), 10, 10);
+        if (fly >= 1) {
+          const k = (t - 0.45) / 0.55;
+          const f = Math.round(10 + 30 * k);
+          ctx.globalAlpha = 1 - k;
+          ctx.strokeStyle = p.color;
+          ctx.lineWidth = 5;
+          ctx.strokeRect(Math.round(p.x2 - f / 2), Math.round(p.y2 - f / 2), f, f);
+          ctx.fillStyle = '#fff';
+          const c = Math.round(14 * (1 - k)) + 2;
+          ctx.fillRect(Math.round(p.x2 - c / 2), Math.round(p.y2 - c / 2), c, c);
+        }
       } else if (p.type === 'shockwave') {
         const radius = p.radius + (p.maxRadius - p.radius) * (1 - p.life / p.maxLife);
         ctx.strokeStyle = '#ef7d57';
@@ -480,6 +519,71 @@ export class Renderer {
     ctx.restore();
   }
 
+  /**
+   * Equipped gear on the balls: guns hover on the flanks and turn toward the
+   * nearest target (recoil + muzzle flash when they fire), drones orbit
+   * above. Stowed (faded out) while the ball is flying. Each part's muzzle
+   * position is stored so Game can start the shot there.
+   */
+  _drawGear(ctx, world, player, enemies) {
+    const now = performance.now();
+    const S = 4;
+    const turn = (a, b, k) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * k;
+    const flash = (x, y, color) => {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(Math.round(x - 7), Math.round(y - 7), 14, 14);
+      ctx.fillStyle = color;
+      ctx.fillRect(Math.round(x - 4), Math.round(y - 4), 8, 8);
+    };
+    const mount = (ball, guns, foes, drones = []) => {
+      if (!ball || ball.hp <= 0 || (!guns.length && !drones.length)) return;
+      const speed = Math.hypot(ball.vx || 0, ball.vy || 0);
+      const alpha = Math.max(0, Math.min(1, 1 - (speed - 60) / 220));
+      const r = ball.radius;
+      const nearest = foes.filter((f) => f && f.hp > 0).sort((a, b) => Math.hypot(a.x - ball.x, a.y - ball.y) - Math.hypot(b.x - ball.x, b.y - ball.y))[0];
+      guns.forEach((g, i) => {
+        const side = guns.length === 1 ? (nearest && nearest.x < ball.x ? -1 : 1) : i % 2 === 0 ? -1 : 1;
+        const mx = ball.x + side * (r + 2);
+        const my = ball.y - r * 0.45 - Math.floor(i / 2) * 22;
+        const since = now - (g.firedAt || -1e9);
+        const tgt = since < 700 && g.aimAt?.hp > 0 ? g.aimAt : nearest;
+        const want = tgt ? Math.atan2(tgt.y - my, tgt.x - mx) : side < 0 ? Math.PI : 0;
+        g._ang = g._ang === undefined ? want : turn(g._ang, want, since < 700 ? 0.5 : 0.12);
+        const ic = partCanvas(g.id);
+        const w = ic.width * S;
+        const h = ic.height * S;
+        const recoil = since < 180 ? (1 - since / 180) * 10 : 0;
+        ctx.save();
+        ctx.translate(Math.round(mx), Math.round(my));
+        ctx.rotate(g._ang);
+        if (Math.cos(g._ang) < 0) ctx.scale(1, -1); // keep the sprite upright
+        ctx.globalAlpha = alpha * (g.cdLeft > 0 ? 0.6 : 1);
+        ctx.drawImage(ic, Math.round(-6 - recoil), Math.round(-h / 2), w, h);
+        ctx.globalAlpha = alpha;
+        if (since < 110) flash(w - 2 - recoil, 0, g.color || '#ffcd75');
+        ctx.restore();
+        g._muzzle = { x: mx + Math.cos(g._ang) * (w - 6), y: my + Math.sin(g._ang) * (w - 6) };
+      });
+      drones.forEach((d, i) => {
+        const t = now / 1000 + i * Math.PI;
+        const since = now - (d.firedAt || -1e9);
+        const dx = ball.x + Math.cos(t * 1.3) * r * 1.5;
+        const dy = ball.y - r * 1.9 + Math.sin(t * 2.6) * 5 - (since < 150 ? 4 : 0);
+        const ic = partCanvas(d.id);
+        const w = ic.width * S;
+        const h = ic.height * S;
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(ic, Math.round(dx - w / 2), Math.round(dy - h / 2), w, h);
+        if (since < 120) flash(dx, dy + h / 2, d.color || '#ffcd75');
+        ctx.globalAlpha = 1;
+        d._muzzle = { x: dx, y: dy + h / 2 };
+      });
+      ctx.globalAlpha = 1;
+    };
+    mount(player, world.playerWeapons || [], enemies, world.playerDrones || []);
+    for (const e of enemies) mount(e, e.weapons || [], player ? [player] : []);
+  }
+
   _drawMechRanges(ctx, world) {
     const now = performance.now();
     // While aiming: where your ready guns will reach from the predicted landing spot
@@ -498,6 +602,10 @@ export class Renderer {
     });
   }
 
+  /**
+   * Weapon card above an inspected ball: one row per gun with its icon,
+   * damage, a range strip (the band it can hit), cooldown and effect.
+   */
   _drawInspectCard(ctx, world) {
     const ins = world.inspected;
     if (!ins) return;
@@ -505,53 +613,85 @@ export class Renderer {
     const isPlayer = ball === world.player;
     let guns = isPlayer ? world.playerWeapons || [] : ball.weapons || [];
     if (ins.weapon !== undefined) guns = guns.filter((_, i) => i === ins.weapon);
-    const rows = guns.length ? guns.map((w) => {
-      const fx = w.fx ? Object.keys(w.fx).map((k) => k.toUpperCase()).join(' ') : '';
-      const status = w.cdLeft > 0 ? `${w.cdLeft}T` : 'READY';
-      return { color: w.color || '#f4f4f4', text: `${w.name}  ${Math.round(w.dmg)} DMG  ${w.range[0]}-${w.range[1]}  CD ${w.cd}  ${status}${fx ? '  ' + fx : ''}` };
-    }) : [{ color: '#94b0c2', text: 'NO WEAPONS' }];
-    ctx.font = `700 18px ${FONT}`;
-    const title = isPlayer ? 'YOUR WEAPONS' : `${ball.displayName || 'ENEMY'} WEAPONS`;
-    const w = Math.max(ctx.measureText(title).width, ...rows.map((r) => ctx.measureText(r.text).width)) + 28;
-    const h = 36 + rows.length * 24;
+    if (isPlayer && ins.weapon === undefined) guns = [...guns, ...(world.playerDrones || []).map((d) => ({ ...d, drone: true }))];
+
+    // Sized for phones: the world is drawn at roughly 0.6x on a small screen
+    const S = 4; // icon scale
+    const rowH = 56;
+    const w = 640;
+    const h = 52 + Math.max(1, guns.length) * rowH;
     const x = Math.round(Math.max(8, Math.min(W.width - w - 8, ball.x - w / 2)));
-    const y = Math.round(Math.max(70, ball.y - ball.radius - 40 - h));
+    const above = ball.y - ball.radius - 30 - h;
+    const y = Math.round(above > 60 ? above : Math.min(W.height - h - 8, ball.y + ball.radius + 30));
     ctx.fillStyle = '#000';
-    ctx.fillRect(x + 4, y + 4, w, h);
-    ctx.fillStyle = 'rgba(26, 28, 44, 0.95)';
+    ctx.fillRect(x + 5, y + 5, w, h);
+    ctx.fillStyle = 'rgba(26, 28, 44, 0.96)';
     ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = '#566c86';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 4;
     ctx.strokeRect(x, y, w, h);
+    ctx.fillStyle = isPlayer ? '#41a6f6' : '#ff5d73';
+    ctx.fillRect(x, y, w, 6);
     ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
+    ctx.textBaseline = 'middle';
+    ctx.font = `700 22px ${FONT}`;
     ctx.fillStyle = '#ffcd75';
-    ctx.fillText(title, x + 14, y + 8);
-    rows.forEach((r, i) => {
-      ctx.fillStyle = r.color;
-      ctx.fillText(r.text, x + 14, y + 34 + i * 24);
+    ctx.fillText(isPlayer ? 'YOUR RIG' : fitText(ctx, ball.displayName || 'ENEMY', w - 40), x + 16, y + 30);
+    if (!guns.length) {
+      ctx.fillStyle = '#94b0c2';
+      ctx.fillText('UNARMED', x + 16, y + 52 + rowH / 2);
+    }
+    const icon = (name, ix, iy) => {
+      const c = iconCanvas(name);
+      ctx.drawImage(c, ix, Math.round(iy - c.height * 1.5), c.width * 3, c.height * 3);
+    };
+    guns.forEach((g, i) => {
+      const ry = y + 52 + i * rowH;
+      const cy = ry + rowH / 2;
+      if (i) {
+        ctx.fillStyle = '#2a3048';
+        ctx.fillRect(x + 10, ry, w - 20, 2);
+      }
+      const ic = partCanvas(g.id);
+      ctx.globalAlpha = g.cdLeft > 0 ? 0.5 : 1;
+      ctx.drawImage(ic, x + 16, Math.round(cy - (ic.height * S) / 2), ic.width * S, ic.height * S);
+      ctx.globalAlpha = 1;
+      let cx = x + 80;
+      ctx.font = `700 20px ${FONT}`;
+      if (g.drone) {
+        icon(g.heal ? 'heal' : 'dmg', cx, cy);
+        ctx.fillStyle = '#f4f4f4';
+        ctx.fillText(g.heal ? `${Math.round(g.heal)}/T` : `${Math.round(g.dmg || 0)}`, cx + 30, cy);
+        ctx.fillStyle = '#94b0c2';
+        ctx.fillText('DRONE · EVERY TURN', cx + 110, cy);
+        return;
+      }
+      icon('dmg', cx, cy);
+      ctx.fillStyle = '#f4f4f4';
+      ctx.fillText(`${Math.round(g.dmg)}`, cx + 30, cy);
+      cx += 86;
+      // Range strip: 0 .. 1400 world px, the hittable band in the gun's colour
+      icon('range', cx, cy);
+      const bx = cx + 32;
+      const bw = 170;
+      ctx.fillStyle = '#10111c';
+      ctx.fillRect(bx, cy - 8, bw, 16);
+      ctx.fillStyle = g.color || '#f4f4f4';
+      const r0 = Math.min(1, g.range[0] / 1400);
+      const r1 = Math.min(1, g.range[1] / 1400);
+      ctx.fillRect(Math.round(bx + r0 * bw), cy - 5, Math.max(4, Math.round((r1 - r0) * bw)), 10);
+      cx = bx + bw + 16;
+      icon('cd', cx, cy);
+      ctx.fillStyle = g.cdLeft > 0 ? '#94b0c2' : '#a7f070';
+      ctx.fillText(g.cdLeft > 0 ? `${g.cdLeft}T` : 'READY', cx + 30, cy);
+      cx += 120;
+      const fx = g.fx ? Object.keys(g.fx)[0] : '';
+      if (fx) {
+        ctx.fillStyle = g.color || '#f4f4f4';
+        ctx.fillText(fx.toUpperCase(), cx, cy);
+      }
     });
     ctx.textBaseline = 'alphabetic';
-  }
-
-  /** Hills and plateaus above the flat backdrop ground, in 8px pixel columns. */
-  _drawTerrain(ctx, floor) {
-    if (!getTerrain()) return;
-    const [lip, mid, deep] = (THEMES[floor] || THEMES[1]).ground;
-    const step = 8;
-    for (let x = 0; x < W.width; x += step) {
-      const top = Math.round(groundAt(x + step / 2) / 4) * 4;
-      const depth = W.groundY + 2 - top;
-      if (depth <= 2) continue;
-      ctx.fillStyle = deep;
-      ctx.fillRect(x, top, step, depth);
-      ctx.fillStyle = mid;
-      ctx.fillRect(x, top, step, Math.min(24, depth));
-      ctx.fillStyle = INK;
-      for (let y = top + 28; y < W.groundY; y += 16) ctx.fillRect(x + ((y / 16) % 2 ? 4 : 0), y, 1, 1);
-      ctx.fillStyle = lip;
-      ctx.fillRect(x, top, step, 4);
-    }
   }
 
   /** 16×16 pixel sprite for a ball, cached per look. */
@@ -922,6 +1062,8 @@ export class Renderer {
   _drawHpPanels(ctx, view, player, enemies) {
     const pad = 8;
     const panelW = Math.min(200, Math.max(150, view.cssW * 0.22));
+    // Screen-space tap targets: tapping a panel inspects that ball's weapons
+    this.panelHits = [];
 
     if (player) {
       const x = pad;
@@ -937,6 +1079,7 @@ export class Renderer {
       ctx.fillText(`${Math.ceil(player.hp)}/${player.maxHp}${shieldHp > 0 ? ` +${Math.ceil(shieldHp)}` : ''}`, x + panelW - 8, y + 14);
       this._hpBar(ctx, x + 8, y + 20, panelW - 16, 12, player, '#41a6f6');
       this._drawStatusTags(ctx, player, x, y + 46, panelW, false);
+      this.panelHits.push({ x, y, w: panelW, h: 40, ball: player });
     }
 
     enemies.forEach((enemy, i) => {
@@ -953,7 +1096,37 @@ export class Renderer {
       ctx.fillText(`${Math.ceil(enemy.hp)}/${enemy.maxHp}`, x + panelW - 8, y + 14);
       this._hpBar(ctx, x + 8, y + 20, panelW - 16, 12, enemy, '#ef7d57');
       this._drawStatusTags(ctx, enemy, x, y + 44, panelW, true);
+      const bw = this._drawGunBadges(ctx, enemy, x, y);
+      this.panelHits.push({ x: x - bw, y, w: panelW + bw, h: 40, ball: enemy });
     });
+  }
+
+  /**
+   * Small weapon icons to the left of an enemy's HP panel, so you can see
+   * who is armed at a glance (tap to inspect). Returns the width used.
+   */
+  _drawGunBadges(ctx, enemy, panelX, panelY) {
+    const guns = enemy.weapons || [];
+    const inspected = this.worldRef?.inspected?.ball === enemy;
+    const size = 30;
+    guns.forEach((g, i) => {
+      const bx = panelX - (i + 1) * (size + 3);
+      ctx.fillStyle = 'rgba(26, 28, 44, 0.92)';
+      ctx.fillRect(bx, panelY + 5, size, size);
+      ctx.fillStyle = inspected ? '#ffcd75' : g.color || '#566c86';
+      ctx.fillRect(bx, panelY + 5 + size - 3, size, 3);
+      const ic = partCanvas(g.id);
+      ctx.globalAlpha = g.cdLeft > 0 ? 0.45 : 1;
+      ctx.drawImage(ic, Math.round(bx + (size - ic.width * 2) / 2), Math.round(panelY + 5 + (size - 3 - ic.height * 2) / 2), ic.width * 2, ic.height * 2);
+      ctx.globalAlpha = 1;
+      if (g.cdLeft > 0) {
+        ctx.font = `700 10px ${FONT}`;
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#f4f4f4';
+        ctx.fillText(`${g.cdLeft}`, bx + size - 3, panelY + 16);
+      }
+    });
+    return guns.length ? guns.length * (size + 3) : 0;
   }
 
   _drawStatusTags(ctx, ball, panelX, tagY, panelW, alignRight) {

@@ -25,7 +25,10 @@ import { haptics } from './platform/haptics.js';
 import { DevTools } from './dev/DevTools.js';
 import { checkMedals } from './meta/Medals.js';
 import './platform/native.js';
-import { withMech, tokenReward, enemyWeapons } from './meta/Mech.js';
+import { withMech, tokenReward, enemyWeapons, CLEAN_WIN_KEYS } from './meta/Mech.js';
+import { partIcon } from './rendering/pixelIcons.js';
+import { ballDataUrl, CLASS_PATTERN } from './rendering/ballSprite.js';
+import { withMastery, masteryLevel, runXp } from './meta/Mastery.js';
 
 // Canvas text only uses a web font once it's loaded: fetch the digit face up front
 document.fonts?.load('16px "Pixel Digits"', '0123456789').catch(() => {});
@@ -104,6 +107,7 @@ const ui = new UIManager({
     setState(State.TECH);
     ui.showTech(techTree, saveSystem);
   },
+  onBallChanged: () => updateRiskDisplay(saveSystem.getDifficultyLevel()),
   onBackToMenu: () => {
     setState(State.MENU);
     ui.showMenu(saveSystem.getProfile(), saveSystem.getMeta());
@@ -313,7 +317,7 @@ function bindBarrierDrag(btn) {
   btn.addEventListener('click', (e) => e.preventDefault());
 }
 
-// ---------- Mech weapon chips (tap one to see its range) ----------
+// ---------- Rig weapon chips (tap one to see its range) ----------
 
 let mechHudSig = '';
 function updateMechHud() {
@@ -325,9 +329,9 @@ function updateMechHud() {
   const sig = guns.map((w) => w.cdLeft).join(',') + '|' + guns.length + '|' + drones.length + '|' + focus;
   if (sig === mechHudSig) return;
   mechHudSig = sig;
-  el.innerHTML = guns.map((w, i) => `<button class="mech-chip ${w.cdLeft ? 'cooling' : 'ready'} ${focus === i ? 'focus' : ''}" data-gun="${i}" style="--c:${w.color}">
-      <b>${w.name.split(' ').pop()}</b><span>${w.cdLeft ? `${w.cdLeft}T` : 'READY'}</span></button>`).join('')
-    + drones.map((d) => `<span class="mech-chip drone" style="--c:${d.color}"><b>${d.name.split(' ')[0]}</b><span>DRONE</span></span>`).join('');
+  el.innerHTML = guns.map((w, i) => `<button class="mech-chip ${w.cdLeft ? 'cooling' : 'ready'} ${focus === i ? 'focus' : ''}" data-gun="${i}" style="--c:${w.color}" title="${w.name}">
+      <img src="${partIcon(w.id)}" alt=""><span>${w.cdLeft ? `${w.cdLeft}T` : 'READY'}</span></button>`).join('')
+    + drones.map((d) => `<span class="mech-chip drone" style="--c:${d.color}" title="${d.name}"><img src="${partIcon(d.id)}" alt=""><span>AUTO</span></span>`).join('');
   el.querySelectorAll('[data-gun]').forEach((b) => b.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
     game.inspectWeapon(Number(b.dataset.gun));
@@ -370,13 +374,20 @@ function updateAbilityHud() {
 
 function startNewRun(ballType = 'vanguard', skin = 'default') {
   runSeed = Math.floor(Math.random() * 100000) + 1;
-  run = new RunState(withMech(techTree.getPermanentStats(), saveSystem.getLoadoutParts()), ballType);
+  saveSystem.setSelectedBall(ballType); // Risk is per ball
+  const perm = withMastery(withMech(techTree.getPermanentStats(), saveSystem.getLoadoutParts()), masteryLevel(saveSystem.getMasteryXp(ballType)).level);
+  run = new RunState(perm, ballType);
   run.skin = skin;
   // One random operation condition per run
   const cond = CONFIG.runConditions[Math.floor(Math.random() * CONFIG.runConditions.length)];
   run.condition = cond.id;
   CONFIG.world.gravity = BASE_GRAVITY * (cond.id === 'heavy_gravity' ? 1.2 : cond.id === 'low_gravity' ? 0.8 : 1);
   map = new RogueMap(runSeed);
+  // Risk 11 (ABYSS): every common hostile on the map becomes an elite
+  if (saveSystem.getRiskData().allElite) {
+    for (const f of map.floors) for (const n of f.nodes || []) if (n.type === 'combat') n.type = 'elite';
+  }
+  run.normalFights = 0; // the secret Risk unlock needs a run with none
   questSystem = new QuestSystem(saveSystem, runSeed);
   currentFloorView = 0;
   pendingBoon = null;
@@ -410,13 +421,15 @@ function findEntryNode(floorIndex) {
 function buildFloorTabs() {
   const container = document.getElementById('run-floortabs');
   container.innerHTML = '';
-  for (let f = 0; f < CONFIG.map.floors; f++) {
+  const last = Math.max(run.floor, CONFIG.map.floors - 1);
+  for (let f = Math.max(0, last - 4); f <= last; f++) {
     const isCleared = f < run.floor; // floors fully completed
     const isCurrent = f === run.floor; // floor the player is on
     const isLocked = f > run.floor;
     const tab = document.createElement('div');
     tab.className = `floor-tab ${f === currentFloorView ? 'active' : ''} ${isCleared ? 'cleared' : ''} ${isCurrent ? 'current' : ''} ${isLocked ? 'locked' : ''}`;
-    tab.textContent = `F${f + 1}`;
+    tab.textContent = f >= CONFIG.map.floors ? `A${f - CONFIG.map.floors + 1}` : `F${f + 1}`;
+    tab.classList.toggle('abyss', f >= CONFIG.map.floors);
     if (!isLocked) {
       tab.addEventListener('click', () => {
         currentFloorView = f;
@@ -650,7 +663,7 @@ function advanceFloorIfNeeded() {
     if (run.floor === 4 && !run.floor5BossCleared) {
       if (node && node.type === 'boss') {
         run.floor5BossCleared = true;
-        endRun(true);
+        sectorCleared();
         return true;
       } else {
         const bossNode = {
@@ -665,6 +678,16 @@ function advanceFloorIfNeeded() {
         startCombat(bossNode);
         return true;
       }
+    }
+
+    // Abyss floors: out of moves, the floor's warden attacks
+    if (run.floor >= CONFIG.map.floors) {
+      const bossNode = { id: `abyss-${run.floor}-boss`, floor: run.floor, type: 'boss', displayName: 'ABYSS WARDEN' };
+      run.currentNode = bossNode;
+      run.currentNodeId = bossNode.id;
+      addFeedEntry('<span class="feed-enemy-ability">OUT OF MOVES — THE ABYSS WARDEN ATTACKS!</span>');
+      startCombat(bossNode);
+      return true;
     }
 
     // Advance floor after miniboss or for standard floors
@@ -693,6 +716,7 @@ function advanceFloorIfNeeded() {
 
 function startCombat(node) {
   ui.closeModal();
+  if (node.type === 'combat') run.normalFights += 1;
   setState(State.BATTLE);
   ui.showBattleHud(run, node.type);
 
@@ -705,7 +729,9 @@ function startCombat(node) {
   const riskLevel = saveSystem.getDifficultyLevel();
   const riskData = saveSystem.getRiskData();
 
-  const tierKey = node.type === 'boss' ? 'boss' : node.type === 'miniboss' ? 'miniboss' : node.type === 'elite' ? 'elite' : String(run.floor + 1);
+  const floorKey = Math.min(CONFIG.map.floors, run.floor + 1); // Abyss floors reuse floor 5's tables
+  const abyssDepth = Math.max(0, run.floor - CONFIG.map.floors + 1);
+  const tierKey = node.type === 'boss' ? 'boss' : node.type === 'miniboss' ? 'miniboss' : node.type === 'elite' ? 'elite' : String(floorKey);
   const tier = CONFIG.enemyTiers[tierKey] || CONFIG.enemyTiers[1];
 
   // Risk rules (elite/boss rules only hit elites, mini-bosses and bosses)
@@ -713,15 +739,16 @@ function startCombat(node) {
   const cond = run.condition;
   const condHp = cond === 'gold_rush' ? 1.1 : 1;
   const condAtk = (cond === 'glass_war' ? 1.3 : 1) * (cond === 'blood_moon' ? 1.15 : 1) * (1 + 0.1 * run.curseCount('curse_hunted'));
-  const hpMult = (1 + (riskData.hpPct + (isEliteTier ? riskData.eliteHpPct : 0)) / 100) * condHp;
-  const atkMult = (1 + (riskData.atkPct + (isEliteTier ? riskData.eliteAtkPct : 0)) / 100) * condAtk;
+  // Abyss: +8% HP and +5% ATK per depth, on top of the normal per-floor scaling
+  const hpMult = (1 + (riskData.hpPct + (isEliteTier ? riskData.eliteHpPct : 0)) / 100) * condHp * (1 + ABYSS_HP_PER_DEPTH * abyssDepth);
+  const atkMult = (1 + (riskData.atkPct + (isEliteTier ? riskData.eliteAtkPct : 0)) / 100) * condAtk * (1 + ABYSS_ATK_PER_DEPTH * abyssDepth);
   const defMult = 1 + riskData.defPct / 100;
   // Visible floor scaling: +X% HP / +Y% ATK per floor above the first
-  const floorsAbove = run.floor;
+  const floorsAbove = Math.min(run.floor, CONFIG.map.floors - 1); // capped at floor 5: the Abyss scales by depth instead
   const floorHp = 1 + CONFIG.floorScaling.hpPerFloor * floorsAbove;
   const floorAtk = 1 + CONFIG.floorScaling.atkPerFloor * floorsAbove;
 
-  const count = (CONFIG.enemyCounts[node.type] || {})[run.floor + 1] || 1;
+  const count = (CONFIG.enemyCounts[node.type] || {})[floorKey] || 1;
   // Every enemy fires each round, so multi-enemy waves trim ATK harder than HP.
   const waveHpScale = count === 3 ? 0.65 : count === 2 ? 0.8 : 1.0;
   const waveAtkScale = count === 3 ? 0.55 : count === 2 ? 0.7 : 1.0;
@@ -731,7 +758,7 @@ function startCombat(node) {
   const devDef = devTools?.overrides?.enemyDefOffset ?? 0;
 
   for (let i = 0; i < count; i++) {
-    const archetype = pickArchetype(node.type, run.floor + 1, i);
+    const archetype = pickArchetype(node.type, floorKey, i);
     const arch = CONFIG.enemyArchetypes[archetype];
     const isBoss = node.type === 'boss';
 
@@ -745,13 +772,13 @@ function startCombat(node) {
       maxHp: finalHp,
       atk: finalAtk,
       def: finalDef,
-      displayName: isBoss ? 'SECTOR COMMANDER' : arch.name,
+      displayName: isBoss ? (abyssDepth ? `ABYSS WARDEN ${abyssDepth}` : 'SECTOR COMMANDER') : arch.name,
       rank: node.type === 'boss' || node.type === 'miniboss' ? node.type : null,
       archetype,
       aiDifficulty: Math.min(0.95, tier.aiDifficulty + arch.aiShift + riskData.aiBonus),
       thinkDelay: arch.ability === 'aggressive' ? Math.max(0.3, thinkDelay - 0.2) : thinkDelay,
       xPct,
-      weapons: enemyWeapons(node.type, run.floor + 1),
+      weapons: enemyWeapons(node.type, run.floor + 1, Math.random, { atkMult: atkMult * waveAtkScale, cdCut: riskData.gunCdCut || 0 }),
     });
   }
 
@@ -773,6 +800,7 @@ function startCombat(node) {
     techStats: run.permanent, // tech tree + equipped gear, fixed for the run
     riskLevel: riskLevel,
     riskPlusDmgTaken: riskData.plusDmgTaken || 0,
+    riskDefPierce: riskData.defPierce || 0,
     floor: run.floor + 1,
     maxPowerMult,
   };
@@ -847,7 +875,7 @@ function startCombat(node) {
     const arch = CONFIG.enemyArchetypes[boss.archetype];
     battlePaused = true;
     ui.showBossIntro({
-      title: node.type === 'boss' ? 'FINAL BOSS' : `FLOOR ${run.floor + 1} MINI-BOSS`,
+      title: node.type === 'boss' ? (run.floor >= CONFIG.map.floors ? `ABYSS ${run.floor - CONFIG.map.floors + 1}` : 'FINAL BOSS') : `FLOOR ${run.floor + 1} MINI-BOSS`,
       name: boss.displayName,
       desc: node.type === 'boss' ? `Sends out a shockwave every turn. ${arch?.abilityDesc || ''}` : arch?.abilityDesc || '',
       color: arch?.color,
@@ -946,13 +974,18 @@ function onBattleEnd(won, node) {
       heal += extra;
     }
 
-    // Gear: elites sometimes, mini-boss and boss always. Saved at once, so it's kept even if the run is lost.
-    // Tokens buy crates on the Mech screen (saved at once, kept even if the run is lost)
-    const tokens = tokenReward(node.type, saveSystem.getDifficultyLevel());
+    // Keys (saved as `tokens`) open supply pods on the Rig screen; saved at once, so they're kept even if the run is lost
+    // Normal fights won without a scratch: bonus Keys and gold
+    const clean = node.type === 'combat' && damageTaken === 0;
+    const tokens = tokenReward(node.type, saveSystem.getDifficultyLevel()) + (clean ? CLEAN_WIN_KEYS : 0) + (run.permanent?.keyBonus || 0);
+    if (clean) {
+      gold += run.gainGold(8);
+      addFeedEntry('<span class="feed-gold">CLEAN WIN</span>');
+    }
     if (tokens > 0) {
       saveSystem.addTokens(tokens);
       run.tokensEarned = (run.tokensEarned || 0) + tokens;
-      addFeedEntry(`<span class="feed-gold">+${tokens} TOKENS</span>`);
+      addFeedEntry(`<span class="feed-gold">+${tokens} KEYS</span>`);
     }
 
     // Elite nodes reward 1 collectible; mini-boss rewards 2; boss gives none
@@ -978,10 +1011,10 @@ function onBattleEnd(won, node) {
     if (node.type === 'boss') {
       run.floor5BossCleared = true;
       pendingBoon = null;
-      setTimeout(() => endRun(true), 1400);
+      setTimeout(() => sectorCleared(), 1400);
       return;
     }
-    ui.showCombatResult(true, { gold, tech, heal, relic: rewardRelic, relics: rewardRelics, tokens }, run);
+    ui.showCombatResult(true, { gold, tech, heal, relic: rewardRelic, relics: rewardRelics, tokens, clean }, run);
   } else {
     ui.updateRunHud(run);
     ui.showCombatResult(false, null, run);
@@ -1219,25 +1252,100 @@ function finishMinigame() {
 
 // ---------- Run end ----------
 
-function endRun(victory) {
-  run.runOver = true;
-  run.runResult = victory ? 'victory' : 'defeat';
-  saveSystem.recordRun(victory);
-  saveSystem.recordBallRun(run.ballType, victory, run.floor + 1, saveSystem.getDifficultyLevel());
-  if (victory) saveSystem.bumpLifetime('bestRiskWin', saveSystem.getDifficultyLevel());
+// Endless Abyss: extra enemy scaling per floor below floor 5
+const ABYSS_HP_PER_DEPTH = 0.08;
+const ABYSS_ATK_PER_DEPTH = 0.05;
+
+/**
+ * A boss is down. The first time (floor 5) the run counts as won right
+ * away; after that each Abyss warden pays Keys and TP. Either way the
+ * player chooses: extract with the win, or descend one floor deeper.
+ */
+function sectorCleared() {
+  const depth = Math.max(0, run.floor - CONFIG.map.floors + 1);
+  let rewards = null;
+  if (!run.victoryRecorded) {
+    recordVictory();
+  } else {
+    run.abyssDepth = depth;
+    saveSystem.recordAbyssDepth(run.ballType, depth);
+    const keys = 3 + depth * 2;
+    const tp = Math.round((2 + depth) * saveSystem.getTpMultiplier());
+    saveSystem.addTokens(keys);
+    saveSystem.addTechPoints(tp);
+    rewards = { keys, tp };
+  }
+  ui.updateRunHud(run);
+  ui.showDescend({ depth, next: depth + 1, rewards, hp: run.hp, maxHp: run.maxHp }, descend, () => endRun(true));
+}
+
+/** Endless Abyss: a new floor laid out like floor 5, deeper and harder. */
+function descend() {
+  ui.closeModal();
+  const idx = map.addAbyssFloor();
+  // Risk XI: common hostiles become elites here too
+  if (saveSystem.getRiskData().allElite) for (const n of map.floors[idx].nodes) if (n.type === 'combat') n.type = 'elite';
+  run.floor = idx;
+  run.resetFloorActions();
+  currentFloorView = idx;
+  const entry = findEntryNode(idx);
+  run.currentNodeId = entry?.id;
+  run.currentNode = entry;
+  const depth = idx - CONFIG.map.floors + 1;
+  addFeedEntry(`<span class="feed-enemy-ability">ABYSS ${depth}: enemies +${Math.round(depth * ABYSS_HP_PER_DEPTH * 100)}% HP, +${Math.round(depth * ABYSS_ATK_PER_DEPTH * 100)}% ATK</span>`);
+  returnToMap();
+}
+
+/** Win bookkeeping, done once per run (when the floor 5 boss falls). */
+function recordVictory() {
+  run.victoryRecorded = true;
+  const lvl = saveSystem.getDifficultyLevel();
+  saveSystem.recordRun(true);
+  saveSystem.recordBallRun(run.ballType, true, CONFIG.map.floors, lvl);
+  saveSystem.bumpLifetime('bestRiskWin', lvl);
   ui.celebrateMedals(checkMedals(saveSystem));
+  // Risk progression: a win on the ball's highest unlocked level unlocks its next
+  run.riskUnlocked = saveSystem.recordRiskWin(lvl, run.ballType);
+  // Secret Risk XI: a Risk 10 win that skipped every common hostile
+  if (lvl === CONFIG.risk.levels.length && !saveSystem.data.secretRisk) {
+    run.secretResult = run.normalFights === 0 && saveSystem.unlockSecretRisk() ? { unlocked: true } : { unlocked: false, fights: run.normalFights };
+  }
+}
+
+function endRun(victory) {
+  // Dying in the Abyss after clearing the sector still counts as a win
+  const won = victory || !!run.victoryRecorded;
+  run.runOver = true;
+  run.runResult = won ? 'victory' : 'defeat';
+  if (!run.victoryRecorded) {
+    if (won) recordVictory();
+    else {
+      saveSystem.recordRun(false);
+      saveSystem.recordBallRun(run.ballType, false, run.floor + 1, saveSystem.getDifficultyLevel());
+      ui.celebrateMedals(checkMedals(saveSystem));
+    }
+  }
+  // Mastery XP for the ball, win or lose
+  const xp = runXp({
+    floorsReached: Math.min(CONFIG.map.floors, run.floor + 1),
+    fightsWon: run.combatsWon,
+    victory: won,
+    risk: saveSystem.getDifficultyLevel(),
+    abyssDepth: run.abyssDepth || 0,
+  });
+  const levels = saveSystem.addMasteryXp(run.ballType, xp);
+
   activeNode = null;
   ui.closeModal();
   setState(State.RESULT);
   ui.showRunResult(run, questSystem.getActiveQuests(), { ...saveSystem.getMeta(), techPoints: saveSystem.data.techPoints });
+  ui.showMasteryResult(run.ball, xp, levels, saveSystem.getMasteryXp(run.ballType));
 
-  // Risk progression: a win on the highest unlocked level unlocks the next
-  const unlocked = victory ? saveSystem.recordRiskWin(saveSystem.getDifficultyLevel()) : null;
-  if (unlocked) {
-    const rule = CONFIG.risk.levels[unlocked - 1];
-    ui.showRiskUnlocked(unlocked, rule);
-    setupRiskSlider();
+  if (run.riskUnlocked) {
+    ui.showRiskUnlocked(run.riskUnlocked, CONFIG.risk.levels[run.riskUnlocked - 1]);
   }
+  if (run.secretResult) ui.showSecretRisk(run.secretResult.unlocked, run.secretResult.fights);
+  setupRiskSlider();
 }
 
 // ---------- Encounters (small pool, can expand) ----------
@@ -1474,6 +1582,14 @@ function setupRiskSlider() {
   if (!down || !up) return;
   const change = (delta) => {
     const next = saveSystem.getDifficultyLevel() + delta;
+    const levels = CONFIG.risk.levels.length;
+    // Past Risk 10 with the secret still sealed: a glitch and a clue
+    if (next === levels + 1 && !saveSystem.hasSecretRisk() && saveSystem.getMaxRiskUnlocked() >= levels) {
+      soundEngine.play('error');
+      haptics.impact('heavy');
+      ui.glitchRiskHint(CONFIG.risk.secret.hint);
+      return;
+    }
     if (next < 0 || next > saveSystem.getMaxRiskUnlocked()) {
       soundEngine.play('error');
       return;
@@ -1492,24 +1608,40 @@ function setupRiskSlider() {
   updateRiskDisplay(saveSystem.getDifficultyLevel());
 }
 
-/** Compact Risk panel: level, TP bonus, and only the newest rule (the rest are in RULES). */
+/** Compact Risk panel for the selected ball: level, TP bonus, newest rule (the rest are in RULES). */
 function updateRiskDisplay(val) {
   const max = saveSystem.getMaxRiskUnlocked();
+  const ball = getBall(saveSystem.getSelectedBall());
+  const title = document.querySelector('.risk-title');
+  if (title) {
+    const look = skinColors(ball, 'default');
+    title.innerHTML = `<img class="risk-ball" src="${ballDataUrl({ ...look, pattern: look.pattern || CLASS_PATTERN[ball.id] }, ball.radiusMult)}" alt="" title="${ball.name}">RISK`;
+  }
   const levels = CONFIG.risk.levels;
   const valEl = document.getElementById('risk-level-val');
   const summary = document.getElementById('risk-level-bonus');
-  if (valEl) valEl.textContent = max === 0 ? 'LOCKED' : `${val}/${levels.length}`;
+  const secretOpen = saveSystem.hasSecretRisk();
+  if (valEl) {
+    valEl.textContent = max === 0 ? 'LOCKED' : val > levels.length ? 'XI' : `${val}/${levels.length}`;
+    valEl.classList.toggle('secret', val > levels.length);
+  }
   document.getElementById('risk-down').disabled = val <= 0;
-  document.getElementById('risk-up').disabled = val >= max;
+  // At 10/10 the + stays live while the secret is sealed (it glitches and hints)
+  const sealed = !secretOpen && max >= levels.length;
+  const up = document.getElementById('risk-up');
+  up.disabled = val >= max && !sealed;
+  up.classList.toggle('risk-sealed', sealed && val >= max);
+  document.querySelector('.difficulty-panel')?.classList.toggle('abyss', val > levels.length);
   if (!summary) return;
   if (max === 0) {
-    summary.textContent = 'Win a run to unlock Risk: harder rules for bonus Tech Points.';
+    summary.innerHTML = `<span class="dim-text">Win a run with ${ball.name} to unlock</span>`;
   } else if (val === 0) {
-    summary.textContent = max < levels.length ? `No extra rules. Win on Risk ${max} to unlock Risk ${max + 1}.` : 'No extra rules.';
+    summary.innerHTML = '<span class="dim-text">No extra rules</span>';
   } else {
-    const rule = levels[val - 1];
-    const more = val > 1 ? ` +${val - 1} more` : '';
-    summary.innerHTML = `<span class="risk-tp-inline">+${val * CONFIG.risk.tpPerLevel}% TP</span> <b>${rule.name}:</b> ${rule.desc}<span class="dim-text">${more}</span>`;
+    // Newest rule name only; RULES lists them all
+    const rule = saveSystem.riskLevels()[val - 1];
+    const more = val > 1 ? ` <span class="dim-text">+${val - 1}</span>` : '';
+    summary.innerHTML = `<span class="risk-tp-inline">+${val * CONFIG.risk.tpPerLevel}% TP</span> <b class="${rule.allElite ? 'abyss-text' : ''}" title="${rule.desc}">${rule.name}</b>${more}`;
   }
 }
 
@@ -1524,4 +1656,4 @@ bindAbilityButtons();
 
 // Expose for debugging
 // Debug handle for the dev server only; release builds don't expose game state
-if (import.meta.env.DEV) window.__SLINGSHOT__ = { game, saveSystem, techTree, ui, run, map };
+if (import.meta.env.DEV) window.__SLINGSHOT__ = { game, saveSystem, techTree, ui, get run() { return run; }, get map() { return map; }, sectorCleared, descend, endRun };

@@ -52,7 +52,8 @@ export class RunState {
   resetFloorActions(bonus = 0) {
     const scouted = this.condition === 'scouted' ? 1 : 0;
     const lost = this.curseCount('curse_lost');
-    this.floorActions = Math.max(2, (CONFIG.map.baseFloorActions || 5) + bonus + scouted - lost);
+    const tech = this.permanent?.extraMoves || 0; // Scout (tech)
+    this.floorActions = Math.max(2, (CONFIG.map.baseFloorActions || 5) + bonus + scouted + tech - lost);
   }
 
   curseCount(id) {
@@ -123,7 +124,7 @@ export class RunState {
   }
 
   get floorProgress() {
-    return `${this.floor + 1}/${CONFIG.map.floors}`;
+    return this.floor >= CONFIG.map.floors ? `ABYSS ${this.floor - CONFIG.map.floors + 1}` : `${this.floor + 1}/${CONFIG.map.floors}`;
   }
 
   /** Get count of a specific boon owned. */

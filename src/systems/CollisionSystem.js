@@ -100,7 +100,8 @@ export class CollisionSystem {
 
       const stacks = (bs && bs.overdriveStacks) ? bs.overdriveStacks : (bs && bs.overdriveActive ? 1 : 0);
       if (stacks > 0) {
-        const baseMult = rels.includes('rel_energy_well') ? 2.0 : CONFIG.abilities.overdrive.damageMult;
+        const raw = rels.includes('rel_energy_well') || bs.overdriveEmpowered ? 2.0 : CONFIG.abilities.overdrive.damageMult;
+        const baseMult = 1 + (raw - 1) * (1 + (tech.skillPotency || 0));
         const totalMult = baseMult + (stacks - 1) * 0.5;
         baseDamage *= totalMult;
         if (bs.overdriveStacks && bs.overdriveStacks > 0) {
@@ -244,7 +245,9 @@ export class CollisionSystem {
     // 1. Flat DEF reduction (unless bypassing DEF, e.g. status DOTs)
     if (!bypassDef) {
       const def = this.stats.playerTotalDef || this.stats.playerDef || 0;
-      const effectiveDef = def * 0.75; // Enemies pierce 25% DEF
+      // Enemies pierce 25% DEF; only the first 12 DEF blocks flat damage
+      // (so stacked tech + armor can't erase hits), and Risk XI pierces half
+      const effectiveDef = Math.min(12, def) * 0.75 * (1 - (this.stats.riskDefPierce || 0));
       const maxDefReduction = damage * 0.70; // 30% min damage floor
       const actualDefReduction = Math.min(maxDefReduction, effectiveDef);
       damage = Math.max(damage * 0.30, damage - actualDefReduction);
@@ -257,6 +260,11 @@ export class CollisionSystem {
     }
     redPct = Math.max(-0.5, Math.min(0.85, redPct)); // negative = extra damage taken
     damage = Math.max(1, Math.round(damage * (1 - redPct)));
+
+    // 2b. Bulwark (tech): less damage while one of your barriers stands
+    if (this.stats.techStats?.bulwarkPct > 0 && this.stats.hasBarrierUp?.()) {
+      damage = Math.max(1, Math.round(damage * (1 - this.stats.techStats.bulwarkPct)));
+    }
 
     // 3. Risk Modifier (+X% DMG TAKEN)
     if (this.stats.riskPlusDmgTaken > 0) {

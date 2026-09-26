@@ -10,7 +10,6 @@ import { CONFIG } from '../config.js';
 import { NODE_STYLE } from '../rendering/RogueMapRenderer.js';
 
 const C = CONFIG.colors;
-const RANK = { common: 0, rare: 1, epic: 2, legendary: 3 };
 
 import { saveSystem } from '../meta/SaveSystem.js';
 import { soundEngine } from '../utils/SoundEngine.js';
@@ -20,7 +19,10 @@ import { RARITY } from '../meta/Relics.js';
 import { BALLS, skinsFor, isSkinUnlocked, skinProgress, skinColors, getSkill } from '../meta/Balls.js';
 import { ballDataUrl, CLASS_PATTERN } from '../rendering/ballSprite.js';
 import { MEDALS, medalProgress, checkMedals } from '../meta/Medals.js';
-import { SLOTS as MECH_SLOTS, PARTS, CRATES, getPart, describePart, rarityColor, rarityName, upgradeCost, salvageValue, loadoutTotals, MAX_LEVEL as MECH_MAX_LEVEL, INVENTORY_CAP as MECH_CAP } from '../meta/Mech.js';
+import { masteryLevel, MILESTONES, MAX_MASTERY } from '../meta/Mastery.js';
+import { getPart, loadoutTotals } from '../meta/Mech.js';
+import { RigScreen } from './RigScreen.js';
+import { ico, partIcon } from '../rendering/pixelIcons.js';
 
 export class UIManager {
   /**
@@ -34,7 +36,9 @@ export class UIManager {
       run: document.getElementById('screen-run'),
       battleHud: document.getElementById('battle-hud'),
       result: document.getElementById('screen-result'),
+      rig: document.getElementById('screen-rig'),
     };
+    this.rig = new RigScreen({ onBack: () => this.cb.onBackToMenu() });
     this.nodeModal = document.getElementById('node-modal');
     this.modalTitle = document.getElementById('node-modal-title');
     this.modalBody = document.getElementById('node-modal-body');
@@ -48,14 +52,14 @@ export class UIManager {
     const btnPlay = document.getElementById('btn-play');
     const btnTech = document.getElementById('btn-tech');
     if (btnPlay) btnPlay.addEventListener('click', () => {
-      // An overweight mech can't deploy (SuperMechs rule)
+      // An overloaded rig can't deploy
       const t = loadoutTotals(saveSystem.getLoadoutParts());
       if (t.overweight) {
         soundEngine.play('error');
         this.showConfirm({
-          title: 'MECH OVERWEIGHT',
-          text: `Your loadout weighs ${t.weight} but the frame carries ${t.capacity}. Remove or swap parts on the Mech screen.`,
-          confirmLabel: 'OPEN MECH',
+          title: 'RIG OVERLOADED',
+          text: `${ico('load')} ${t.weight}/${t.capacity}. Lighten your rig to deploy.`,
+          confirmLabel: 'OPEN RIG',
           onConfirm: () => this.showMech(),
         });
         return;
@@ -71,40 +75,6 @@ export class UIManager {
     document.getElementById('btn-gear')?.addEventListener('click', () => {
       soundEngine.playUI();
       this.showMech();
-    });
-
-    // Save Export & Import buttons
-    const btnExportSave = document.getElementById('btn-export-save');
-    const btnImportSave = document.getElementById('btn-import-save');
-    const btnResetData = document.getElementById('btn-reset-data');
-
-    btnExportSave?.addEventListener('click', () => {
-      soundEngine.playUI();
-      this.showExportSave(saveSystem.exportSaveData());
-    });
-
-    btnImportSave?.addEventListener('click', () => {
-      soundEngine.playUI();
-      this.showImportSave();
-    });
-
-    btnResetData?.addEventListener('click', () => {
-      soundEngine.playUI();
-      this.showConfirm({
-        title: 'RESET ALL DATA?',
-        text: 'This permanently deletes your Tech Points, upgrades and stats. Export your save first if you want a backup.',
-        confirmLabel: 'DELETE EVERYTHING',
-        danger: true,
-        onConfirm: () => {
-          saveSystem.reset();
-          location.reload();
-        },
-      });
-    });
-
-    document.getElementById('btn-credits')?.addEventListener('click', () => {
-      soundEngine.playUI();
-      this.showCredits();
     });
 
     // Audio Mute Toggle buttons (Menu + HUD)
@@ -132,7 +102,7 @@ export class UIManager {
         this.closeDrawers();
         this.showConfirm({
           title: 'ABANDON RUN?',
-          text: 'The current operation ends immediately. Tech Points from completed quests are kept.',
+          text: 'The run ends now. Quest TP is kept.',
           confirmLabel: 'ABANDON RUN',
           danger: true,
           onConfirm: () => this.cb.onRetreat(),
@@ -175,7 +145,7 @@ export class UIManager {
         </div>
         <div class="shop-desc">${r.desc}</div>
       </button>`).join('');
-    this.openModal('TREASURE CACHE', `<p>Choose one relic to keep.</p><div class="shop-grid">${cards}</div>`,
+    this.openModal('TREASURE CACHE', `<p>Pick one.</p><div class="shop-grid">${cards}</div>`,
       `<div class="btn-row"><button class="btn btn-outline" data-act="skip">LEAVE IT</button></div>`);
     this.modalBody.querySelectorAll('[data-relic]').forEach((b) => b.addEventListener('click', () => {
       this.closeModal();
@@ -243,28 +213,34 @@ export class UIManager {
 
   /** Pick a ball for the run. Remembers the last choice. */
   showBallSelect(onStart) {
-    let selected = 'vanguard';
-    try {
-      selected = localStorage.getItem('slingshot-ball') || 'vanguard';
-    } catch (_) {}
+    let selected = saveSystem.getSelectedBall();
     if (!BALLS.some((b) => b.id === selected)) selected = 'vanguard';
 
     const bars = (n) => Array.from({ length: 5 }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('');
-    const cards = BALLS.map((b) => `
+    // Each card: mastery level + XP bar, and the ball's own Risk ladder
+    const cards = BALLS.map((b) => {
+      const m = masteryLevel(saveSystem.getMasteryXp(b.id));
+      const risk = saveSystem.getMaxRiskUnlocked(b.id);
+      return `
       <button class="ball-card" data-ball="${b.id}" style="--ball:${b.color}">
+        <span class="ball-lv ${m.level >= MAX_MASTERY ? 'max' : ''}">LV ${m.level}</span>
+        <span class="ball-risk" title="Highest Risk unlocked">R${risk > 10 ? 'XI' : risk}</span>
         <img class="ball-sprite" data-sprite="${b.id}" src="${ballDataUrl({ color: b.color, darkColor: b.darkColor, pattern: CLASS_PATTERN[b.id] }, b.radiusMult)}" alt="">
         <strong>${b.name}</strong>
         <span class="ball-role">${b.role}</span>
         <span class="ball-stat">HP<em>${bars(b.rating.hp)}</em></span>
         <span class="ball-stat">ATK<em>${bars(b.rating.atk)}</em></span>
         <span class="ball-stat">PWR<em>${bars(b.rating.power)}</em></span>
-      </button>`).join('');
+        <i class="ball-xp"><i style="width:${m.need ? Math.round((m.into / m.need) * 100) : 100}%"></i></i>
+      </button>`;
+    }).join('');
 
     this.openModal('CHOOSE YOUR BALL', `
       <div class="ball-grid">${cards}</div>
       <p class="ball-trait" id="ball-trait"></p>
-      <div class="skin-row" id="skin-row"></div>`, `<div class="btn-row">
+      <div class="ball-sub-row"><div class="skin-row" id="skin-row"></div><span class="ball-mastery" id="ball-mastery"></span></div>`, `<div class="btn-row">
         <button class="btn btn-outline" data-act="cancel">BACK</button>
+        <div class="ball-risk-row" id="ball-risk-row"></div>
         <button class="btn btn-primary" data-act="start">&#9654; START</button>
       </div>`);
 
@@ -278,13 +254,38 @@ export class UIManager {
         b.hpBonus ? `<span class="${b.hpBonus > 0 ? 'mod-up' : 'mod-down'}">${b.hpBonus > 0 ? '+' : ''}${b.hpBonus} HP</span>` : '',
         b.defBonus ? `<span class="mod-up">+${b.defBonus} DEF</span>` : '',
         b.atkPct ? `<span class="${b.atkPct > 0 ? 'mod-up' : 'mod-down'}">${pct(b.atkPct)} ATK</span>` : '',
-        b.powerPct ? `<span class="${b.powerPct > 0 ? 'mod-up' : 'mod-down'}">${pct(b.powerPct)} launch power</span>` : '',
-        b.dmgTakenPct ? `<span class="mod-down">+${Math.round(b.dmgTakenPct * 100)}% damage taken</span>` : '',
-      ].filter(Boolean).join(' · ');
+        b.powerPct ? `<span class="${b.powerPct > 0 ? 'mod-up' : 'mod-down'}">${pct(b.powerPct)} PWR</span>` : '',
+      ].filter(Boolean).join('');
       const skill = getSkill(b.id);
-      traitEl.innerHTML = `<strong style="color:${b.color}">${b.name}:</strong> ${b.trait} <span class="dim-text">${b.feel}</span>${mods ? `<span class="ball-mods">${mods}</span>` : ''}
-        <span class="ball-skill"><b style="color:${skill.color}">SKILL · ${skill.name}</b> <span class="dim-text">(${skill.cooldown - (b.id === 'vanguard' ? 1 : 0)} turn cooldown)</span> ${skill.desc}</span>`;
+      const cd = skill.cooldown - (b.id === 'vanguard' ? 1 : 0);
+      traitEl.innerHTML = `<span class="ball-tag" title="${b.trait} ${b.feel}">${b.tag}</span>${mods ? `<span class="ball-mods">${mods}</span>` : ''}
+        <span class="ball-skill" title="${skill.desc}" style="--skill:${skill.color}"><b>${skill.name}</b>${ico('cd')}${cd}T <span>${skill.brief}</span></span>`;
+      saveSystem.setSelectedBall(id);
+      this.cb.onBallChanged?.();
+      renderRisk(b);
       renderSkins(b);
+    };
+
+    // Risk for the selected ball (each ball climbs its own ladder) + next mastery milestone
+    const riskRow = this.modalActions.querySelector('#ball-risk-row');
+    const renderRisk = (b) => {
+      const max = saveSystem.getMaxRiskUnlocked(b.id);
+      const val = saveSystem.getDifficultyLevel(b.id);
+      const m = masteryLevel(saveSystem.getMasteryXp(b.id));
+      const next = MILESTONES.find((x) => x.level > m.level);
+      riskRow.innerHTML = `<span class="skin-label">RISK</span>
+        <button class="btn btn-outline risk-step" data-risk="-1" ${val <= 0 ? 'disabled' : ''}>&minus;</button>
+        <b class="ball-risk-val ${val > 10 ? 'secret' : ''}">${max === 0 ? 'LOCKED' : `RISK <span>${val > 10 ? 'XI' : val}</span>`}</b>
+        <button class="btn btn-outline risk-step" data-risk="1" ${val >= max ? 'disabled' : ''}>+</button>`;
+      // Mastery progress + next milestone sit beside the skins (keeps the trait line to one row)
+      const bar = m.need ? `<i class="bm-bar" title="${m.into}/${m.need} XP"><i style="width:${Math.round((m.into / m.need) * 100)}%"></i></i>` : '<em>MAX</em>';
+      document.getElementById('ball-mastery').innerHTML = `<b>${ico('star')}MASTERY ${m.level}</b> ${bar}${next ? `<span class="dim-text">Next (Lv ${next.level}): ${next.label}</span>` : ''}`;
+      riskRow.querySelectorAll('[data-risk]').forEach((btn) => btn.addEventListener('click', () => {
+        saveSystem.setDifficultyLevel(val + Number(btn.dataset.risk), b.id);
+        soundEngine.playUI();
+        this.cb.onBallChanged?.();
+        renderRisk(b);
+      }));
     };
 
     // Skins for the selected ball: each class has its own set (locked ones show progress)
@@ -300,14 +301,27 @@ export class UIManager {
       skinRow.innerHTML = '<span class="skin-label">SKIN</span>' + list.map((s) => {
         const open = isSkinUnlocked(s, stats);
         const look = skinColors(b, s.id);
-        return `<button class="skin-btn ${s.id === skin ? 'selected' : ''} ${open ? '' : 'locked'}" data-skin="${s.id}" ${open ? '' : 'disabled'} title="${open ? s.name : s.hint}">
-          <img src="${ballDataUrl(look, b.radiusMult)}" alt=""><span>${open ? s.name : `<b>${s.name}</b> ${s.hint} <em>${skinProgress(s, stats)}</em>`}</span>
+        const [cur, max] = open ? [1, 1] : skinProgress(s, stats).split('/').map(Number);
+        return `<button class="skin-btn ${s.id === skin ? 'selected' : ''} ${open ? '' : 'locked'}" data-skin="${s.id}" title="${open ? s.name : `${s.name}: ${s.hint}`}">
+          <img src="${ballDataUrl(look, b.radiusMult)}" alt="">${open ? '' : `${ico('lock')}<i class="skin-prog"><i style="width:${Math.round((cur / max) * 100)}%"></i></i>`}
         </button>`;
-      }).join('');
+      }).join('') + '<span class="skin-info" id="skin-info"></span>';
+      const info = document.getElementById('skin-info');
+      const describe = (s) => {
+        const open = isSkinUnlocked(s, stats);
+        info.innerHTML = open ? `<b>${s.name}</b>` : `<b>${s.name}</b> ${s.hint} <em>${skinProgress(s, stats)}</em>`;
+      };
+      describe(list.find((s) => s.id === skin) || list[0]);
       // The class card previews the chosen skin
       const card = this.modalBody.querySelector(`[data-sprite="${b.id}"]`);
       if (card) card.src = ballDataUrl(skinColors(b, skin), b.radiusMult);
-      skinRow.querySelectorAll('[data-skin]:not([disabled])').forEach((btn) => btn.addEventListener('click', () => {
+      skinRow.querySelectorAll('[data-skin]').forEach((btn) => btn.addEventListener('click', () => {
+        const s = list.find((x) => x.id === btn.dataset.skin);
+        // Locked skins just show what unlocks them
+        if (!isSkinUnlocked(s, stats)) {
+          soundEngine.playUI();
+          return describe(s);
+        }
         skin = btn.dataset.skin;
         try {
           localStorage.setItem(`slingshot-skin-${b.id}`, skin);
@@ -327,9 +341,6 @@ export class UIManager {
 
     this.modalActions.querySelector('[data-act="cancel"]').addEventListener('click', () => this.closeModal());
     this.modalActions.querySelector('[data-act="start"]').addEventListener('click', () => {
-      try {
-        localStorage.setItem('slingshot-ball', selected);
-      } catch (_) {}
       soundEngine.play('confirm');
       this.closeModal();
       onStart(selected, skin);
@@ -349,6 +360,12 @@ export class UIManager {
           ${row('sfx', 'SOUND EFFECTS', soundEngine.sfxOn)}
           ${row('music', 'MUSIC', soundEngine.musicOn)}
           ${row('haptics', 'VIBRATION', haptics.enabled)}
+        </div>
+        <div class="settings-data">
+          <span>SAVE</span>
+          <button class="btn btn-outline" data-act="export">EXPORT</button>
+          <button class="btn btn-outline" data-act="import">IMPORT</button>
+          <button class="btn btn-danger" data-act="reset">RESET</button>
         </div>`, `<div class="btn-row">
           <button class="btn btn-outline" data-act="credits">CREDITS</button>
           <button class="btn btn-accent" data-act="close">DONE</button>
@@ -367,6 +384,22 @@ export class UIManager {
           render();
         });
       });
+      const on = (act, fn) => this.modalBody.querySelector(`[data-act="${act}"]`)?.addEventListener('click', () => {
+        soundEngine.playUI();
+        fn();
+      });
+      on('export', () => this.showExportSave(saveSystem.exportSaveData()));
+      on('import', () => this.showImportSave());
+      on('reset', () => this.showConfirm({
+        title: 'RESET ALL DATA?',
+        text: 'Deletes all progress for good. Export first for a backup.',
+        confirmLabel: 'DELETE EVERYTHING',
+        danger: true,
+        onConfirm: () => {
+          saveSystem.reset();
+          location.reload();
+        },
+      }));
       this.modalActions.querySelector('[data-act="credits"]').addEventListener('click', () => this.showCredits());
       this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => this.closeModal());
     };
@@ -395,7 +428,7 @@ export class UIManager {
   showRetreatConfirm(cost, { onConfirm, onCancel }) {
     this.showConfirm({
       title: 'RETREAT?',
-      text: `Fall back to your previous tile. You lose <strong class="accent">${cost} HP</strong> and 1 move, and get no rewards. The hostile stays on the map, so you can come back for it later.`,
+      text: `Back to your last tile: <strong class="accent">-${cost} HP</strong>, -1 move, no rewards. The enemy stays.`,
       confirmLabel: `RETREAT (-${cost} HP)`,
       cancelLabel: 'KEEP FIGHTING',
       danger: true,
@@ -408,7 +441,7 @@ export class UIManager {
 
   showExportSave(code) {
     this.openModal('EXPORT SAVE', `
-      <p>Your save code is below. Keep it somewhere safe (notes app, a message to yourself) and use <strong>IMPORT SAVE</strong> on any device to restore it.</p>
+      <p>Keep this code safe. <strong>IMPORT</strong> it on any device.</p>
       <textarea class="save-code" readonly>${code}</textarea>
       <p class="save-status" id="save-status"></p>
     `, `<div class="btn-row">
@@ -426,7 +459,7 @@ export class UIManager {
       } catch {
         box.focus();
         box.select();
-        status.textContent = 'Could not copy automatically: long-press the code and choose Copy.';
+        status.textContent = 'Long-press the code to copy it.';
         status.className = 'save-status err';
       }
     };
@@ -437,7 +470,7 @@ export class UIManager {
 
   showImportSave() {
     this.openModal('IMPORT SAVE', `
-      <p>Paste a save code (starts with <strong>SLING1-</strong>): long-press the box and choose Paste. <span class="accent">This replaces your current progress.</span></p>
+      <p>Paste a <strong>SLING1-</strong> code. <span class="accent">Replaces current progress.</span></p>
       <textarea class="save-code" placeholder="SLING1-..." spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
       <p class="save-status" id="save-status"></p>
     `, `<div class="btn-row">
@@ -459,7 +492,7 @@ export class UIManager {
         soundEngine.play('confirm');
         setTimeout(() => location.reload(), 700);
       } else {
-        status.textContent = 'That code is incomplete or damaged. Copy the whole code and try again.';
+        status.textContent = 'Code is incomplete or damaged.';
         status.className = 'save-status err';
         soundEngine.play('error');
       }
@@ -554,10 +587,18 @@ export class UIManager {
       `;
     }
     this._renderDaily();
-    const medals = document.getElementById('btn-medals');
-    if (medals) {
-      const owned = MEDALS.filter((m) => saveSystem.hasMedal(m.id)).length;
-      medals.innerHTML = `MEDALS <span class="btn-count">${owned}/${MEDALS.length}</span>`;
+    // Icon tiles: tech chip, your first gun, medal star (with counts)
+    const owned = MEDALS.filter((m) => saveSystem.hasMedal(m.id)).length;
+    const gun = saveSystem.getLoadoutParts().find((o) => o && getPart(o.id).type === 'weapon');
+    const rig = loadoutTotals(saveSystem.getLoadoutParts());
+    const tiles = {
+      'btn-tech': { img: ico('tp'), label: 'TECH', count: '' },
+      'btn-gear': { img: gun ? `<img class="pxi" src="${partIcon(gun.id)}" alt="">` : ico('gun'), label: 'RIG', count: rig.overweight ? '!' : '', warn: rig.overweight },
+      'btn-medals': { img: ico('star'), label: 'MEDALS', count: `${owned}/${MEDALS.length}` },
+    };
+    for (const [id, t] of Object.entries(tiles)) {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = `${t.img}<span>${t.label}</span>${t.count !== '' ? `<em class="${t.warn ? 'warn' : ''}">${t.count}</em>` : ''}`;
     }
   }
 
@@ -567,8 +608,8 @@ export class UIManager {
     const d = saveSystem.getDailyStatus();
     el.classList.toggle('ready', d.canClaim);
     el.innerHTML = d.canClaim
-      ? `<strong>DAILY SUPPLY READY</strong><span>TAP TO CLAIM +${d.reward} TP · DAY ${d.streak} STREAK</span>`
-      : `<strong>SUPPLY CLAIMED</strong><span>DAY ${d.streak} STREAK · COME BACK TOMORROW</span>`;
+      ? `${ico('pod', '#ffcd75')}<strong>DAILY SUPPLY</strong><span>${ico('tp')}+${d.reward} · DAY ${d.streak}</span>`
+      : `${ico('pod', '#566c86')}<strong>CLAIMED</strong><span>DAY ${d.streak} · BACK TOMORROW</span>`;
   }
 
   _claimDaily() {
@@ -592,101 +633,11 @@ export class UIManager {
     if (list?.length) soundEngine.play('confirm');
   }
 
-  /** Mech screen: loadout (slots, weight, parts) and crates. */
+  /** Rig screen (loadout + supply pods). */
   showMech(opts = {}) {
-    const tab = opts.tab || this._mechTab || 'loadout';
-    this._mechTab = tab;
-    const m = saveSystem.getMech();
-    const parts = saveSystem.getLoadoutParts();
-    const t = loadoutTotals(parts);
-    const worn = new Set(Object.values(m.loadout));
-    const selSlot = opts.slot || this._mechSlot || 'weapon1';
-    this._mechSlot = selSlot;
-
-    const partCard = (owned, actions = '', extraClass = '') => {
-      const p = getPart(owned.id);
-      return `<div class="mech-part ${extraClass}" style="--rarity:${rarityColor(p.rarity)}">
-        <div class="mech-part-head"><strong>${p.name}</strong><em>LV ${owned.level}</em></div>
-        <div class="mech-part-sub">${rarityName(p.rarity)} ${p.type.toUpperCase()}</div>
-        <div class="mech-lines">${describePart(owned).map((l) => `<span>${l}</span>`).join('')}</div>
-        ${actions}
-      </div>`;
-    };
-
-    const tabs = `<div class="mech-tabs">
-      <button class="btn ${tab === 'loadout' ? 'btn-accent' : 'btn-outline'}" data-mtab="loadout">LOADOUT</button>
-      <button class="btn ${tab === 'crates' ? 'btn-accent' : 'btn-outline'}" data-mtab="crates">CRATES</button>
-      <span class="mech-wallet"><b>&#9670; ${m.tokens}</b> TOKENS · <b>${m.scrap}</b> SCRAP</span>
-    </div>`;
-
-    let body = tabs;
-    if (tab === 'loadout') {
-      const pct = Math.min(100, Math.round((t.weight / Math.max(1, t.capacity)) * 100));
-      body += `<div class="mech-weight ${t.overweight ? 'over' : ''}">
-          <span>WEIGHT ${t.weight} / ${t.capacity}${t.overweight ? ' · OVERWEIGHT' : ''}</span>
-          <div class="mech-weight-bar"><i style="width:${pct}%"></i></div>
-          <span>HP +${Math.round(t.hp)} · DEF +${t.def.toFixed(1)} · ${t.weapons.length} GUNS</span>
-        </div>
-        <div class="mech-slots">${MECH_SLOTS.map((slot, i) => {
-          const owned = parts[i];
-          const p = owned && getPart(owned.id);
-          return `<button class="mech-slot ${slot.id === selSlot ? 'sel' : ''}" data-mslot="${slot.id}" style="--rarity:${p ? rarityColor(p.rarity) : 'var(--p-steel)'}">
-            <span>${slot.name}</span><strong>${p ? p.name : 'EMPTY'}</strong>${p ? `<em>LV ${owned.level}${p.weight ? ` · WT ${p.weight}` : ''}</em>` : ''}
-          </button>`;
-        }).join('')}</div>`;
-      const slotDef = MECH_SLOTS.find((x) => x.id === selSlot);
-      const fits = m.owned.filter((o) => getPart(o.id)?.type === slotDef.type)
-        .sort((a, b) => (m.loadout[selSlot] === b.uid) - (m.loadout[selSlot] === a.uid) || RANK[getPart(b.id).rarity] - RANK[getPart(a.id).rarity] || b.level - a.level);
-      const list = fits.map((o) => {
-        const inThis = m.loadout[selSlot] === o.uid;
-        const elsewhere = !inThis && worn.has(o.uid);
-        const cost = upgradeCost(o);
-        const maxed = o.level >= MECH_MAX_LEVEL;
-        return partCard(o, `<div class="mech-actions">
-          ${inThis
-            ? (selSlot === 'frame' ? '<button class="btn btn-disabled" disabled>EQUIPPED</button>' : `<button class="btn btn-outline" data-mact="unequip">REMOVE</button>`)
-            : `<button class="btn btn-accent" data-mact="equip" data-uid="${o.uid}">${elsewhere ? 'MOVE HERE' : 'EQUIP'}</button>`}
-          <button class="btn ${!maxed && m.scrap >= cost ? 'btn-primary' : 'btn-disabled'}" data-mact="upgrade" data-uid="${o.uid}" ${maxed || m.scrap < cost ? 'disabled' : ''}>${maxed ? 'MAX' : `UPGRADE ${cost}`}</button>
-          <button class="btn ${worn.has(o.uid) ? 'btn-disabled' : 'btn-danger'}" data-mact="salvage" data-uid="${o.uid}" ${worn.has(o.uid) ? 'disabled' : ''}>SALVAGE +${salvageValue(o)}</button>
-        </div>`, inThis ? 'worn' : '');
-      }).join('') || `<p class="mech-hint">No ${slotDef.type} parts yet. Open crates to find more.</p>`;
-      body += `<div class="mech-list">${list}</div>`;
-    } else {
-      const reveal = opts.revealUid ? saveSystem.getOwnedPart(opts.revealUid) : null;
-      body += reveal ? `<div class="mech-reveal">${partCard(reveal, '', 'reveal')}</div>` : '';
-      body += `<div class="mech-crates">${CRATES.map((c) => `<div class="mech-crate">
-          <strong>${c.name}</strong>
-          <div class="mech-odds">${Object.entries(c.odds).map(([r, pc]) => `<span style="color:${rarityColor(r)}">${rarityName(r)} ${pc}%</span>`).join('')}</div>
-          <button class="btn ${m.tokens >= c.cost ? 'btn-primary' : 'btn-disabled'}" data-crate="${c.id}" ${m.tokens >= c.cost ? '' : 'disabled'}>OPEN · &#9670; ${c.cost}</button>
-        </div>`).join('')}</div>
-        <p class="mech-hint">Earn Tokens by winning fights in runs (elites and bosses give more; Risk adds 10% per level). ${PARTS.length} parts to collect · ${m.owned.length}/${MECH_CAP} owned.</p>`;
-    }
-
-    this.openModal('MECH', body, `<div class="btn-row"><button class="btn btn-accent" data-act="close">CLOSE</button></div>`);
-    this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => this.closeModal());
-    const q = (sel) => this.modalBody.querySelectorAll(sel);
-    q('[data-mtab]').forEach((b) => b.addEventListener('click', () => { soundEngine.playUI(); this.showMech({ tab: b.dataset.mtab }); }));
-    q('[data-mslot]').forEach((b) => b.addEventListener('click', () => { soundEngine.playUI(); this.showMech({ slot: b.dataset.mslot }); }));
-    q('[data-mact]').forEach((b) => b.addEventListener('click', () => {
-      const act = b.dataset.mact;
-      const uid = b.dataset.uid;
-      const ok = act === 'equip' ? saveSystem.equipPart(selSlot, uid)
-        : act === 'unequip' ? saveSystem.unequipSlot(selSlot)
-          : act === 'upgrade' ? saveSystem.upgradePart(uid)
-            : saveSystem.salvagePart(uid) > 0;
-      soundEngine.play(ok ? 'confirm' : 'error');
-      const scroll = this.modalBody.querySelector('.mech-list')?.scrollTop || 0;
-      this.showMech();
-      const el = this.modalBody.querySelector('.mech-list');
-      if (el) el.scrollTop = scroll;
-    }));
-    q('[data-crate]').forEach((b) => b.addEventListener('click', () => {
-      const part = saveSystem.buyCrate(b.dataset.crate);
-      if (!part) return soundEngine.play('error');
-      soundEngine.play('confirm');
-      haptics?.impact?.('heavy');
-      this.showMech({ tab: 'crates', revealUid: part.uid });
-    }));
+    this.closeModal();
+    this._setVisible('rig');
+    this.rig.show(opts);
   }
 
   showMedals() {
@@ -711,6 +662,12 @@ export class UIManager {
 
   showTech(techTree) {
     this._setVisible('tech');
+    // One-time notice after the skill-tree rebuild refunded the old tree
+    if (saveSystem.data.techRefund) {
+      this.toast(`<span class="feed-boon">TECH TREE REBUILT: +${saveSystem.data.techRefund} TP REFUNDED</span>`);
+      saveSystem.data.techRefund = 0;
+      saveSystem.save();
+    }
     document.getElementById('tech-points').textContent = this._tp();
     this._renderTechTree(document.getElementById('tech-tree'), techTree);
 
@@ -1063,7 +1020,7 @@ export class UIManager {
     const taken = Math.round(((1 - red) * (1 + (risk.plusDmgTaken || 0) / 100) - 1) * 100);
     const power = Math.round((run.launchPowerMult - 1) * 100);
     const skill = getSkill(run.ballType);
-    const cd = Math.max(1, skill.cooldown - (ball.id === 'vanguard' ? 1 : 0) - (run.hasRelic('rel_overcharge') ? 1 : 0) - Math.floor(perm.cdReductionTurns || 0));
+    const cd = Math.max(1, skill.cooldown - (ball.id === 'vanguard' ? 1 : 0) - (run.hasRelic('rel_overcharge') ? 1 : 0) - (perm.skillCdCut || 0));
 
     const rows = [
       { label: 'HP', value: `${Math.ceil(run.hp)}/${run.maxHp}${run.shieldHp > 0 ? ` +${Math.ceil(run.shieldHp)}` : ''}`, hint: run.shieldHp > 0 ? 'includes shield' : ball.name },
@@ -1174,7 +1131,7 @@ export class UIManager {
 
     const body = `
       <div class="modal-node-icon" style="color:${style.color}">${style.icon}</div>
-      <p>${this._nodeDescription(node)}</p>
+      ${this._nodeDescription(node)}
     `;
 
     let actions = '';
@@ -1211,61 +1168,41 @@ export class UIManager {
     });
   }
 
+  /** One short line plus reward chips for a map tile. */
   _nodeDescription(node) {
-    switch (node.type) {
-      case 'combat':
-        return 'A hostile unit blocks the path. Eliminate it to earn gold and tech data.';
-      case 'elite':
-        return 'A heavily armed elite unit. High risk, high reward.';
-      case 'miniboss':
-        return 'A sector mini-boss. Defeat it for 2 relics and +50 gold.';
-      case 'boss':
-        return 'The sector commander. Eliminate it to complete the operation.';
-      case 'encounter':
-        return 'An anomalous signal. Approaching may yield rewards — or damage.';
-      case 'shop':
-        return 'A supply depot. Spend gold on run-scoped enhancements.';
-      case 'rest':
-        return 'A safe zone. Restore HP before continuing.';
-      case 'minigame':
-        return 'A calibration drill. Precision yields bonus supplies.';
-      case 'treasure':
-        return 'An unguarded cache. Take one of two relics for free.';
-      case 'gamble':
-        return 'A shady dealer runs a coin game. Bet 15 gold: 50% to win 45 gold or a relic.';
-      case 'shrine':
-        return 'A shrine hums with bad energy. Accept a curse to claim an epic relic.';
-      default:
-        return 'Proceed.';
-    }
+    const chip = (icon, text, cls = '') => `<span class="node-chip ${cls}">${ico(icon)}${text}</span>`;
+    const R = {
+      combat: ['Win clean for a bonus.', [chip('key', 'KEYS x3'), chip('gold', 'GOLD'), chip('tp', 'TP')]],
+      elite: ['Tough. Worth it.', [chip('relic', 'RELIC'), chip('gold', 'GOLD'), chip('tp', 'TP x2'), chip('key', 'KEYS')]],
+      miniboss: ['Sector guardian.', [chip('gold', '+50'), chip('relic', 'RELIC x2'), chip('key', 'KEYS')]],
+      boss: ['Win the operation.', [chip('skull', 'BOSS', 'bad'), chip('key', 'KEYS')]],
+      encounter: ['Unknown signal.', [chip('star', 'REWARD?'), chip('hp', 'RISK?', 'bad')]],
+      shop: ['Spend gold on relics.', [chip('relic', 'RELICS')]],
+      rest: ['Catch your breath.', [chip('heal', 'HEAL')]],
+      minigame: ['Timing test.', [chip('gold', 'GOLD'), chip('heal', 'HEAL')]],
+      treasure: ['Unguarded.', [chip('relic', '1 OF 2 FREE')]],
+      gamble: ['Coin flip.', [chip('gold', '-15', 'bad'), chip('gold', '50%: +45')]],
+      shrine: ['Power, for a price.', [chip('skull', 'CURSE', 'bad'), chip('relic', 'EPIC RELIC')]],
+    }[node.type];
+    if (!R) return '';
+    return `<p class="node-line">${R[0]}</p><div class="node-chips">${R[1].join('')}</div>`;
   }
 
   showCombatResult(win, rewards, run) {
-    const title = win ? 'CONTACT ELIMINATED' : 'CONTACT LOST';
-    const color = win ? '#5fd3a8' : '#e0655c';
-    let body = `<p style="color:${color};font-weight:700">${win ? 'Objective complete.' : 'Retreat successful.'}</p>`;
+    const tiles = [];
+    const tile = (icon, value, label, color) => tiles.push(`<div class="reward-tile" style="--c:${color}">${icon}<strong>${value}</strong><span>${label}</span></div>`);
     if (rewards) {
-      const parts = [];
-      if (rewards.gold) parts.push(`+${rewards.gold} Gold`);
-      if (rewards.tech) parts.push(`+${rewards.tech} TP`);
-      if (rewards.heal) parts.push(`+${rewards.heal} HP`);
-      if (rewards.relics && rewards.relics.length) {
-        for (const r of rewards.relics) {
-          parts.push(`<span style="color:var(--accent)">+ RELIC: ${r.name}</span>`);
-        }
-      } else if (rewards.relic) {
-        parts.push(`<span style="color:var(--accent)">+ RELIC: ${rewards.relic.name}</span>`);
-      }
-      if (parts.length) body += `<p class="reward-line">${parts.join(' • ')}</p>`;
-      if (rewards.tokens) {
-        body += `<div class="gear-drop" style="--rarity:#ffcd75">
-          <span>CRATE TOKENS</span>
-          <strong>&#9670; +${rewards.tokens}</strong>
-          <em>Spend them on crates in the Mech screen.</em>
-        </div>`;
-      }
+      if (rewards.gold) tile(ico('gold'), `+${rewards.gold}`, 'GOLD', '#ffcd75');
+      if (rewards.tech) tile(ico('tp'), `+${rewards.tech}`, 'TP', '#73eff7');
+      if (rewards.heal) tile(ico('hp'), `+${rewards.heal}`, 'HP', '#ff5d73');
+      if (rewards.tokens) tile(ico('key'), `+${rewards.tokens}`, 'KEYS', '#ffcd75');
+      const relics = rewards.relics?.length ? rewards.relics : rewards.relic ? [rewards.relic] : [];
+      for (const r of relics) tile(ico('relic'), '+1', r.name, RARITY[r.rarity]?.color || '#c46fd6');
     }
-    this.openModal('BATTLE REPORT', body,
+    const body = win
+      ? `${rewards?.clean ? '<p class="node-line clean">CLEAN WIN: +2 KEYS</p>' : ''}<div class="reward-tiles">${tiles.join('')}</div>`
+      : `<p class="node-line bad">You fell back.</p>`;
+    this.openModal(win ? 'VICTORY' : 'RETREATED', body,
       `<div class="btn-row"><button class="btn btn-accent" data-act="continue">CONTINUE</button></div>`
     );
     const btn = this.modalActions.querySelector('button[data-act="continue"]');
@@ -1319,7 +1256,7 @@ export class UIManager {
   }
 
   showShop(run, shopItems = [], refreshesLeft = 3, refreshCost = 8) {
-    let body = `<div class="shop-header-info"><span class="accent">YOUR GOLD: ${run.gold}G</span> · Refresh stock up to 3 times per visit</div>`;
+    let body = `<div class="shop-header-info">${ico('gold')}<span class="accent">${run.gold}G</span></div>`;
     body += '<div class="shop-grid">';
 
     for (const relic of shopItems) {
@@ -1440,11 +1377,11 @@ export class UIManager {
     }
 
     const noteHtml = notes.length
-      ? `<br><span style="font-size:12px;color:var(--accent);font-weight:600;">Active Bonuses: ${notes.join(' • ')}</span>`
+      ? `<span style="font-size:12px;color:var(--accent);font-weight:600;">${notes.join(' • ')}</span>`
       : '';
 
     this.openModal('SAFE ZONE',
-      `<p style="margin-bottom:12px;">Take a moment to recover. Choose an option:${noteHtml}</p>`,
+      `<div class="modal-node-icon">${ico('heal')}</div>${noteHtml ? `<p>${noteHtml}</p>` : ''}`,
       `<div class="btn-row"><button class="btn btn-accent" data-rest="heal">${buttonText}</button></div>
        <div class="btn-row"><button class="btn" data-rest="leave">CONTINUE</button></div>`
     );
@@ -1471,7 +1408,7 @@ export class UIManager {
   showMinigameIntro() {
     this.openModal(
       'PRECISION DRILL',
-      `<p>Calibrate your timing. Land 3 of 5 in the green band. Every PERFECT speeds the marker up and shrinks the target. Rewards scale with accuracy.</p>`,
+      `<p>Land <strong class="accent">3 of 5</strong> in the green. PERFECTs speed it up.</p>`,
       `<div class="btn-row"><button class="btn btn-accent" data-act="start">START</button></div>`
     );
     this.modalActions.querySelector('button[data-act="start"]').addEventListener('click', () => {
@@ -1533,10 +1470,11 @@ export class UIManager {
     document.getElementById('result-title').style.color =
       run.runResult === 'victory' ? '#5fd3a8' : '#e0655c';
     const cond = CONFIG.runConditions.find((c) => c.id === run.condition);
-    document.getElementById('result-sub').textContent = run.runResult === 'victory' ? 'The sector is clear.' : run.hp > 0 ? 'Operation abandoned.' : 'Your ball was destroyed.';
+    const depth = run.abyssDepth || 0;
+    document.getElementById('result-sub').textContent = depth ? `Sector clear, then ${depth} floor${depth > 1 ? 's' : ''} into the Abyss.` : run.runResult === 'victory' ? 'The sector is clear.' : run.hp > 0 ? 'Operation abandoned.' : 'Your ball was destroyed.';
     const tile = (label, value) => `<div class="result-stat"><span>${label}</span><strong>${value}</strong></div>`;
     document.getElementById('result-stats').innerHTML = [
-      tile('FLOOR', `${run.floor + 1}/${CONFIG.map.floors}`),
+      depth ? tile('ABYSS', depth) : tile('FLOOR', `${Math.min(run.floor + 1, CONFIG.map.floors)}/${CONFIG.map.floors}`),
       tile('BATTLES WON', run.combatsWon),
       tile('BALL', run.ball?.name || 'VANGUARD'),
       tile('RELICS', run.relics.length),
@@ -1558,6 +1496,56 @@ export class UIManager {
     if (!quests.length) questList.innerHTML = '<span class="dim-text">No quests this run.</span>';
     const tp = meta?.techPoints ?? (this.cb.getTechPoints ? this.cb.getTechPoints() : 0);
     document.getElementById('result-tp').textContent = `TECH POINTS: ${tp}`;
+  }
+
+  /** Mastery XP line on the result screen: +XP, level bar, level-ups and milestones reached. */
+  showMasteryResult(ball, xp, { before, after }, totalXp) {
+    const main = document.querySelector('.result-main');
+    if (!main || !ball) return;
+    let el = document.getElementById('result-mastery');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'result-mastery';
+      el.className = 'result-mastery';
+      document.getElementById('result-tp')?.after(el);
+    }
+    const m = masteryLevel(totalXp);
+    const hit = MILESTONES.filter((x) => x.level > before && x.level <= after);
+    el.innerHTML = `
+      <div class="rm-head">${ico('star')}<b style="color:${ball.color}">${ball.name}</b> LV ${after}${after > before ? ' <em class="rm-up">LEVEL UP!</em>' : ''}<span class="rm-xp">+${xp} XP</span></div>
+      <i class="rm-bar"><i style="width:${m.need ? Math.round((m.into / m.need) * 100) : 100}%"></i></i>
+      ${hit.map((x) => `<span class="rm-milestone">LV ${x.level}: ${x.label}</span>`).join('')}`;
+    if (after > before) soundEngine.play('confirm');
+  }
+
+  /** After a boss: extract with the win, or descend deeper into the Abyss. */
+  showDescend({ depth, next, rewards, hp, maxHp }, onDescend, onExtract) {
+    const first = depth === 0;
+    const reward = rewards ? `<div class="reward-tiles">
+        <div class="reward-tile" style="--c:#ffcd75">${ico('key')}<strong>+${rewards.keys}</strong><span>KEYS</span></div>
+        <div class="reward-tile" style="--c:#73eff7">${ico('tp')}<strong>+${rewards.tp}</strong><span>TP</span></div>
+      </div>` : '';
+    this.openModal(first ? 'SECTOR CLEAR' : `ABYSS ${depth} CLEARED`, `
+      ${first ? '<p class="node-line">The run counts as a win. Something waits below.</p>' : reward}
+      <div class="node-chips">
+        <span class="node-chip">${ico('hp')}${Math.ceil(hp)}/${maxHp}</span>
+        <span class="node-chip bad">${ico('skull')}ABYSS ${next}: +${next * 8}% HP</span>
+        <span class="node-chip">${ico('key')}${3 + next * 2} per floor</span>
+      </div>`,
+    `<div class="btn-row">
+      <button class="btn btn-accent" data-act="extract">EXTRACT</button>
+      <button class="btn btn-danger" data-act="descend">DESCEND</button>
+    </div>`);
+    this.modalActions.querySelector('[data-act="extract"]').addEventListener('click', () => {
+      soundEngine.play('confirm');
+      this.closeModal();
+      onExtract();
+    });
+    this.modalActions.querySelector('[data-act="descend"]').addEventListener('click', () => {
+      soundEngine.play('alarm');
+      haptics.impact('heavy');
+      onDescend();
+    });
   }
 
   /** Full-screen warning card before mini-boss / boss fights. Tap (or wait) to begin. */
@@ -1587,16 +1575,58 @@ export class UIManager {
     setTimeout(() => el.addEventListener('pointerdown', finish, { once: true }), 500);
   }
 
-  /** Every Risk rule: active ones highlighted, locked ones dimmed. */
+  /** Every Risk rule: active ones highlighted, locked ones dimmed, plus the sealed 11th. */
   showRiskRules(level, maxUnlocked) {
-    const rows = CONFIG.risk.levels.map((rule, i) => {
+    let rows = CONFIG.risk.levels.map((rule, i) => {
       const n = i + 1;
       const state = n <= level ? 'on' : n <= maxUnlocked ? '' : 'locked';
       return `<div class="risk-rule-row ${state}"><b>${n}</b><span><strong>${rule.name}</strong> ${rule.desc}</span></div>`;
     }).join('');
+    const secret = CONFIG.risk.secret;
+    const n = CONFIG.risk.levels.length + 1;
+    if (saveSystem.hasSecretRisk()) {
+      rows += `<div class="risk-rule-row abyss ${level >= n ? 'on' : ''}"><b>XI</b><span><strong>${secret.name}</strong> ${secret.desc}</span></div>`;
+    } else {
+      // Scrambled until you reach Risk 10; then the clue becomes readable
+      const clue = maxUnlocked >= n - 1 ? secret.hint : '&#9618;&#9618;&#9618; &#9618;&#9618; &#9618;&#9618;&#9618;&#9618; &#9618;&#9618; &#9618;&#9618;&#9618;&#9618;&#9618;';
+      rows += `<div class="risk-rule-row sealed"><b>??</b><span><strong class="glitch-text" data-text="&#9618;&#9618;&#9618;&#9618;&#9618;">&#9618;&#9618;&#9618;&#9618;&#9618;</strong> ${clue}</span></div>`;
+    }
     this.openModal('RISK RULES', `<p class="dim-text">Rules stack: Risk ${level || 'N'} applies rules 1 to ${level || 'N'}. Each level: +${CONFIG.risk.tpPerLevel}% Tech Points.</p><div class="risk-rule-list">${rows}</div>`,
       `<div class="btn-row"><button class="btn btn-accent" data-act="close">CLOSE</button></div>`);
     this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => this.closeModal());
+  }
+
+  /** Result-screen line for the secret Risk: unlocked, or a hint of how close you were. */
+  showSecretRisk(unlocked, normalFights = 0) {
+    const el = document.getElementById('result-risk');
+    if (!el) return;
+    const secret = CONFIG.risk.secret;
+    el.innerHTML = unlocked
+      ? `<b class="abyss-text">RISK XI: ${secret.name}</b><br><span>${secret.desc}</span>`
+      : `<b class="glitch-text" data-text="&#9618; SIGNAL &#9618;">&#9618; SIGNAL &#9618;</b><br><span>Something watched you fight ${normalFights} common hostile${normalFights === 1 ? '' : 's'}.</span>`;
+    el.classList.remove('hidden');
+    el.classList.toggle('abyss', unlocked);
+    if (unlocked) {
+      soundEngine.play('alarm');
+      haptics.impact('heavy');
+    }
+  }
+
+  /** Tapping + past Risk 10 while the secret is sealed: the value glitches and a clue flashes. */
+  glitchRiskHint(hint) {
+    const val = document.getElementById('risk-level-val');
+    const summary = document.getElementById('risk-level-bonus');
+    if (!val || !summary) return;
+    const before = { v: val.textContent, s: summary.innerHTML };
+    val.textContent = '??';
+    val.classList.add('glitch');
+    summary.innerHTML = `<span class="abyss-text">${hint}</span>`;
+    clearTimeout(this._glitchT);
+    this._glitchT = setTimeout(() => {
+      val.textContent = before.v;
+      val.classList.remove('glitch');
+      summary.innerHTML = before.s;
+    }, 2600);
   }
 
   showRiskUnlocked(level, rule) {
@@ -1610,7 +1640,7 @@ export class UIManager {
   showBattleHud(run, nodeType) {
     // Bosses can't be fled; everything else can
     document.getElementById('btn-retreat-battle')?.classList.toggle('hidden', nodeType === 'miniboss' || nodeType === 'boss');
-    document.getElementById('battle-floor').textContent = `FLOOR ${run.floor + 1}`;
+    document.getElementById('battle-floor').textContent = run.floor >= CONFIG.map.floors ? `ABYSS ${run.floor - CONFIG.map.floors + 1}` : `FLOOR ${run.floor + 1}`;
     document.getElementById('battle-node').textContent =
       nodeType === 'boss' ? 'BOSS' : nodeType === 'miniboss' ? 'MINI-BOSS' : nodeType === 'elite' ? 'ELITE' : 'COMBAT';
     document.getElementById('battle-gold').textContent = `${run.gold}G`;
@@ -1674,9 +1704,9 @@ export class UIManager {
 // Four branches grow out of the CORE like an X; `col` is how far along the
 // branch a node sits, `row` (0-2) which side of the branch it forks to.
 const TECH_BRANCHES = [
-  { key: 'atk', title: 'ATTACK', color: '#e0556d', angle: (-150 * Math.PI) / 180 },
-  { key: 'vit', title: 'VITALITY', color: '#a7f070', angle: (-30 * Math.PI) / 180 },
-  { key: 'def', title: 'DEFENSE', color: '#41a6f6', angle: (30 * Math.PI) / 180 },
+  { key: 'skl', title: 'SKILL', color: '#ffcd75', angle: (-150 * Math.PI) / 180 },
+  { key: 'sur', title: 'SURVIVAL', color: '#a7f070', angle: (-30 * Math.PI) / 180 },
+  { key: 'bar', title: 'BARRIER', color: '#41a6f6', angle: (30 * Math.PI) / 180 },
   { key: 'tac', title: 'TACTICS', color: '#c46fd6', angle: (150 * Math.PI) / 180 },
 ];
 const TECH_WORLD = { w: 1500, h: 1000 };
@@ -1717,31 +1747,29 @@ function techBonusList(st) {
   const out = [];
   const add = (cond, label, value) => { if (cond) out.push({ label, value }); };
   const pct = (v) => Math.round(v * 1000) / 10;
-  const dmg = ((10 + (st.baseAtkBonus || 0)) / 10) * (1 + (st.atkBonus || 0)) - 1;
-  add(dmg > 0, 'Damage', `+${pct(dmg)}%`);
-  add(st.critChance, 'Crit chance', `+${pct(st.critChance)}%`);
-  add(st.armorPenPct, 'Armor pierce', `${pct(Math.min(0.9, st.armorPenPct))}%`);
-  add(st.ballisticApexMaxPct, 'Fast-hit damage', `up to +${pct(st.ballisticApexMaxPct)}%`);
-  add(st.riskResonanceBonusPerLevel, 'Damage per Risk level', `+${pct(st.riskResonanceBonusPerLevel)}%`);
-  add(st.hpBonus, 'Max HP', `+${st.hpBonus}`);
-  add(st.overflowShieldCapPct, 'Overflow shield cap', `${pct(st.overflowShieldCapPct)}% HP`);
+  add(st.skillPotency, 'Skill power', `+${pct(st.skillPotency)}%`);
+  add(st.skillCdCut, 'Skill cooldown', `-${st.skillCdCut}T`);
+  add(st.skillEchoPct, 'Echo chance', `${pct(st.skillEchoPct)}%`);
+  add(st.skillOpener, 'First skill', 'empowered');
+  add(st.skillMomentum, 'Kills', 'skill -1T');
+  add(st.skillOverload, 'Skill', 'always empowered');
+  add(st.barrierHpPct, 'Barrier HP', `+${pct(st.barrierHpPct)}%`);
+  add(st.barrierCdCut, 'Barrier cooldown', `-${st.barrierCdCut}T`);
+  add(st.barrierSpikeDmg, 'Barrier spikes', `${st.barrierSpikeDmg} dmg`);
+  add(st.barrierExtra, 'Barriers on field', `+${st.barrierExtra}`);
+  add(st.bulwarkPct, 'Behind a barrier', `-${pct(st.bulwarkPct)}% dmg`);
+  add(st.barrierForcefield, 'Barrier', 'grants Forcefield');
   add(st.emergencyMedkitHeal, 'Emergency heal', `${st.emergencyMedkitHeal} HP`);
-  add(st.titanCoreHealBonusPct, 'Safe Zone healing', `+${pct(st.titanCoreHealBonusPct)}%, +${st.titanCoreMaxHpBonus} max HP`);
-  add(st.vampiricVitalityPct, 'Lifesteal', `${pct(st.vampiricVitalityPct)}%`);
-  add(st.secondWindPct, 'Second Wind', `revive at ${pct(st.secondWindPct)}%`);
-  add(st.defBonus, 'DEF', `+${st.defBonus}`);
-  add(st.defPctBonus, 'Total DEF', `+${pct(st.defPctBonus)}%`);
-  add(st.kineticDampenerPct, 'Damage taken', `-${pct(st.kineticDampenerPct)}%`);
-  add(st.thornsResistPct, 'Thorns taken', `-${pct(Math.min(1, st.thornsResistPct))}%`);
+  add(st.overflowShieldCapPct, 'Overflow shield cap', `${pct(st.overflowShieldCapPct)}% HP`);
   add(st.forcefieldTurnInterval, 'Forcefield', `every ${st.forcefieldTurnInterval} turns`);
-  add(st.fortifiedMatrixBonusDef, 'DEF per heavy hit', `+${st.fortifiedMatrixBonusDef} (x3 max)`);
+  add(st.vampiricVitalityPct, 'Lifesteal', `${pct(st.vampiricVitalityPct)}%`);
   add(st.counterPct, 'Counter damage', `${pct(st.counterPct)}%`);
+  add(st.secondWindPct, 'Second Wind', `revive at ${pct(st.secondWindPct)}%`);
   add(st.startGoldBonus, 'Start gold', `+${st.startGoldBonus}`);
   add(st.shopDiscountBonus, 'Shop prices', `-${pct(st.shopDiscountBonus)}%`);
-  add(st.rerollDiscountBonus, 'Reroll price', `-${pct(st.rerollDiscountBonus)}%`);
-  add(Math.floor(st.cdReductionTurns || 0), 'Cooldowns', `-${Math.floor(st.cdReductionTurns)} turn${Math.floor(st.cdReductionTurns) > 1 ? 's' : ''}`);
+  add(st.extraMoves, 'Moves per floor', `+${st.extraMoves}`);
   add(st.tpBonusPct, 'Battle TP', `+${pct(st.tpBonusPct)}%`);
-  add(st.relicAtkPctPerItem, 'Per relic', `+${pct(st.relicAtkPctPerItem)}% ATK/HP, +${Math.round(st.relicDefPerItem * 100) / 100} DEF`);
+  add(st.keyBonus, 'Keys per win', `+${st.keyBonus}`);
   add(st.supplyDropRelics, 'Starting relics', `${st.supplyDropRelics}`);
   return out;
 }
