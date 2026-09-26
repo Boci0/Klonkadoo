@@ -176,7 +176,9 @@ export class Renderer {
     if (player && player.hp > 0) this._drawBall(ctx, player);
     for (const enemy of livingEnemies) this._drawBall(ctx, enemy);
     this._drawMineMarkers(ctx, world.hazards || [], now);
+    this._drawMechRanges(ctx, world);
     if (world.slingshotInput) world.slingshotInput.draw(ctx);
+    this._drawInspectCard(ctx, world);
 
     // 3. HUD (CSS px)
     ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
@@ -400,7 +402,21 @@ export class Renderer {
   _drawParticles(ctx, particles) {
     for (const p of particles) {
       ctx.globalAlpha = Math.max(0, Math.min(1, p.life / p.maxLife));
-      if (p.type === 'shockwave') {
+      if (p.type === 'tracer') {
+        // Mech weapon shot: bright beam plus an impact flash at the target
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.moveTo(p.x1, p.y1);
+        ctx.lineTo(p.x2, p.y2);
+        ctx.stroke();
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = 5;
+        ctx.stroke();
+        ctx.fillStyle = p.color;
+        const f = Math.round(18 * (p.life / p.maxLife)) + 6;
+        ctx.fillRect(Math.round(p.x2 - f / 2), Math.round(p.y2 - f / 2), f, f);
+      } else if (p.type === 'shockwave') {
         const radius = p.radius + (p.maxRadius - p.radius) * (1 - p.life / p.maxLife);
         ctx.strokeStyle = '#ef7d57';
         ctx.lineWidth = 6;
@@ -440,6 +456,82 @@ export class Renderer {
     const sw = Math.round(ball.radius * 1.8 * shrink);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
     ctx.fillRect(Math.round(ball.x - sw / 2), Math.round(gy) - 2, sw, 6);
+  }
+
+  // ---------- Mech weapons: range rings and the inspect card ----------
+
+  _rangeRing(ctx, x, y, w, alpha, now) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = w.color || '#f4f4f4';
+    ctx.lineWidth = 4;
+    ctx.setLineDash([14, 10]);
+    ctx.lineDashOffset = -now / 40;
+    ctx.beginPath();
+    ctx.arc(x, y, Math.min(w.range[1], 1500), 0, Math.PI * 2);
+    ctx.stroke();
+    if (w.range[0] > 0) {
+      ctx.globalAlpha = alpha * 0.6;
+      ctx.setLineDash([4, 10]);
+      ctx.beginPath();
+      ctx.arc(x, y, w.range[0], 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  _drawMechRanges(ctx, world) {
+    const now = performance.now();
+    // While aiming: where your ready guns will reach from the predicted landing spot
+    const traj = world.slingshotInput?.dragging ? world.slingshotInput.trajectory : null;
+    if (traj && traj.length) {
+      const land = traj[traj.length - 1];
+      for (const w of world.playerWeapons || []) {
+        if (w.cdLeft === 0 && w.range[1] < 1400) this._rangeRing(ctx, land.x, land.y, w, 0.45, now);
+      }
+    }
+    const ins = world.inspected;
+    if (!ins) return;
+    const guns = ins.ball === world.player ? world.playerWeapons || [] : ins.ball.weapons || [];
+    guns.forEach((w, i) => {
+      if (ins.weapon === undefined || ins.weapon === i) this._rangeRing(ctx, ins.ball.x, ins.ball.y, w, 0.8, now);
+    });
+  }
+
+  _drawInspectCard(ctx, world) {
+    const ins = world.inspected;
+    if (!ins) return;
+    const ball = ins.ball;
+    const isPlayer = ball === world.player;
+    let guns = isPlayer ? world.playerWeapons || [] : ball.weapons || [];
+    if (ins.weapon !== undefined) guns = guns.filter((_, i) => i === ins.weapon);
+    const rows = guns.length ? guns.map((w) => {
+      const fx = w.fx ? Object.keys(w.fx).map((k) => k.toUpperCase()).join(' ') : '';
+      const status = w.cdLeft > 0 ? `${w.cdLeft}T` : 'READY';
+      return { color: w.color || '#f4f4f4', text: `${w.name}  ${Math.round(w.dmg)} DMG  ${w.range[0]}-${w.range[1]}  CD ${w.cd}  ${status}${fx ? '  ' + fx : ''}` };
+    }) : [{ color: '#94b0c2', text: 'NO WEAPONS' }];
+    ctx.font = `700 18px ${FONT}`;
+    const title = isPlayer ? 'YOUR WEAPONS' : `${ball.displayName || 'ENEMY'} WEAPONS`;
+    const w = Math.max(ctx.measureText(title).width, ...rows.map((r) => ctx.measureText(r.text).width)) + 28;
+    const h = 36 + rows.length * 24;
+    const x = Math.round(Math.max(8, Math.min(W.width - w - 8, ball.x - w / 2)));
+    const y = Math.round(Math.max(70, ball.y - ball.radius - 40 - h));
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x + 4, y + 4, w, h);
+    ctx.fillStyle = 'rgba(26, 28, 44, 0.95)';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#566c86';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x, y, w, h);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#ffcd75';
+    ctx.fillText(title, x + 14, y + 8);
+    rows.forEach((r, i) => {
+      ctx.fillStyle = r.color;
+      ctx.fillText(r.text, x + 14, y + 34 + i * 24);
+    });
+    ctx.textBaseline = 'alphabetic';
   }
 
   /** Hills and plateaus above the flat backdrop ground, in 8px pixel columns. */

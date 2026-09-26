@@ -10,6 +10,7 @@ import { CONFIG } from '../config.js';
 import { NODE_STYLE } from '../rendering/RogueMapRenderer.js';
 
 const C = CONFIG.colors;
+const RANK = { common: 0, rare: 1, epic: 2, legendary: 3 };
 
 import { saveSystem } from '../meta/SaveSystem.js';
 import { soundEngine } from '../utils/SoundEngine.js';
@@ -19,7 +20,7 @@ import { RARITY } from '../meta/Relics.js';
 import { BALLS, skinsFor, isSkinUnlocked, skinProgress, skinColors, getSkill } from '../meta/Balls.js';
 import { ballDataUrl, CLASS_PATTERN } from '../rendering/ballSprite.js';
 import { MEDALS, medalProgress, checkMedals } from '../meta/Medals.js';
-import { SLOTS, describeItem, itemName, rarityColor, rarityName, upgradeCost, salvageValue, MAX_LEVEL as GEAR_MAX_LEVEL, INVENTORY_CAP as GEAR_CAP } from '../meta/Gear.js';
+import { SLOTS as MECH_SLOTS, PARTS, CRATES, getPart, describePart, rarityColor, rarityName, upgradeCost, salvageValue, loadoutTotals, MAX_LEVEL as MECH_MAX_LEVEL, INVENTORY_CAP as MECH_CAP } from '../meta/Mech.js';
 
 export class UIManager {
   /**
@@ -46,7 +47,21 @@ export class UIManager {
     // Menu buttons
     const btnPlay = document.getElementById('btn-play');
     const btnTech = document.getElementById('btn-tech');
-    if (btnPlay) btnPlay.addEventListener('click', () => this.cb.onPlay());
+    if (btnPlay) btnPlay.addEventListener('click', () => {
+      // An overweight mech can't deploy (SuperMechs rule)
+      const t = loadoutTotals(saveSystem.getLoadoutParts());
+      if (t.overweight) {
+        soundEngine.play('error');
+        this.showConfirm({
+          title: 'MECH OVERWEIGHT',
+          text: `Your loadout weighs ${t.weight} but the frame carries ${t.capacity}. Remove or swap parts on the Mech screen.`,
+          confirmLabel: 'OPEN MECH',
+          onConfirm: () => this.showMech(),
+        });
+        return;
+      }
+      this.cb.onPlay();
+    });
     if (btnTech) btnTech.addEventListener('click', () => this.cb.onOpenTech());
     document.getElementById('btn-medals')?.addEventListener('click', () => {
       soundEngine.playUI();
@@ -55,7 +70,7 @@ export class UIManager {
     document.getElementById('menu-daily')?.addEventListener('click', () => this._claimDaily());
     document.getElementById('btn-gear')?.addEventListener('click', () => {
       soundEngine.playUI();
-      this.showGear();
+      this.showMech();
     });
 
     // Save Export & Import buttons
@@ -577,67 +592,101 @@ export class UIManager {
     if (list?.length) soundEngine.play('confirm');
   }
 
-  /** Gear screen: worn slots, scrap, and the inventory with equip / upgrade / salvage. */
-  showGear(focusUid = null) {
-    const g = saveSystem.getGear();
-    const worn = new Set(Object.values(g.equipped));
-    const card = (item, extraHtml = '') => {
-      const color = rarityColor(item.rarity);
-      return `<div class="gear-item ${worn.has(item.uid) ? 'worn' : ''} ${item.uid === focusUid ? 'flash' : ''}" style="--rarity:${color}">
-        <div class="gear-item-head">
-          <span class="gear-slot-tag">${item.slot.toUpperCase()}</span>
-          <strong style="color:${color}">${itemName(item)}</strong>
-          <em>+${item.level}</em>
-        </div>
-        <div class="gear-lines">${describeItem(item).map((l) => `<span>${l}</span>`).join('')}</div>
-        ${extraHtml}
+  /** Mech screen: loadout (slots, weight, parts) and crates. */
+  showMech(opts = {}) {
+    const tab = opts.tab || this._mechTab || 'loadout';
+    this._mechTab = tab;
+    const m = saveSystem.getMech();
+    const parts = saveSystem.getLoadoutParts();
+    const t = loadoutTotals(parts);
+    const worn = new Set(Object.values(m.loadout));
+    const selSlot = opts.slot || this._mechSlot || 'weapon1';
+    this._mechSlot = selSlot;
+
+    const partCard = (owned, actions = '', extraClass = '') => {
+      const p = getPart(owned.id);
+      return `<div class="mech-part ${extraClass}" style="--rarity:${rarityColor(p.rarity)}">
+        <div class="mech-part-head"><strong>${p.name}</strong><em>LV ${owned.level}</em></div>
+        <div class="mech-part-sub">${rarityName(p.rarity)} ${p.type.toUpperCase()}</div>
+        <div class="mech-lines">${describePart(owned).map((l) => `<span>${l}</span>`).join('')}</div>
+        ${actions}
       </div>`;
     };
 
-    const slots = SLOTS.map((slot) => {
-      const item = g.items.find((i) => i.uid === g.equipped[slot.id]);
-      return `<div class="gear-slot">
-        <div class="gear-slot-name">${slot.name}<span>${slot.hint}</span></div>
-        ${item ? card(item) : '<div class="gear-empty">EMPTY</div>'}
-      </div>`;
-    }).join('');
+    const tabs = `<div class="mech-tabs">
+      <button class="btn ${tab === 'loadout' ? 'btn-accent' : 'btn-outline'}" data-mtab="loadout">LOADOUT</button>
+      <button class="btn ${tab === 'crates' ? 'btn-accent' : 'btn-outline'}" data-mtab="crates">CRATES</button>
+      <span class="mech-wallet"><b>&#9670; ${m.tokens}</b> TOKENS · <b>${m.scrap}</b> SCRAP</span>
+    </div>`;
 
-    const order = { legendary: 0, epic: 1, rare: 2, common: 3 };
-    const items = [...g.items].sort((a, b) =>
-      (worn.has(b.uid) - worn.has(a.uid)) || a.slot.localeCompare(b.slot) || order[a.rarity] - order[b.rarity] || b.level - a.level);
-    const list = items.length
-      ? items.map((item) => {
-        const isWorn = worn.has(item.uid);
-        const cost = upgradeCost(item);
-        const maxed = item.level >= GEAR_MAX_LEVEL;
-        return card(item, `<div class="gear-actions">
-          <button class="btn ${isWorn ? 'btn-outline' : 'btn-accent'}" data-gear="equip" data-uid="${item.uid}">${isWorn ? 'UNEQUIP' : 'EQUIP'}</button>
-          <button class="btn ${!maxed && g.scrap >= cost ? 'btn-primary' : 'btn-disabled'}" data-gear="upgrade" data-uid="${item.uid}" ${maxed || g.scrap < cost ? 'disabled' : ''}>${maxed ? 'MAX' : `UPGRADE ${cost}`}</button>
-          <button class="btn ${isWorn ? 'btn-disabled' : 'btn-danger'}" data-gear="salvage" data-uid="${item.uid}" ${isWorn ? 'disabled' : ''}>SALVAGE +${salvageValue(item)}</button>
-        </div>`);
-      }).join('')
-      : '<p class="gear-hint">No gear yet. Elites sometimes drop gear; mini-bosses and bosses always do. Higher Risk drops higher levels.</p>';
+    let body = tabs;
+    if (tab === 'loadout') {
+      const pct = Math.min(100, Math.round((t.weight / Math.max(1, t.capacity)) * 100));
+      body += `<div class="mech-weight ${t.overweight ? 'over' : ''}">
+          <span>WEIGHT ${t.weight} / ${t.capacity}${t.overweight ? ' · OVERWEIGHT' : ''}</span>
+          <div class="mech-weight-bar"><i style="width:${pct}%"></i></div>
+          <span>HP +${Math.round(t.hp)} · DEF +${t.def.toFixed(1)} · ${t.weapons.length} GUNS</span>
+        </div>
+        <div class="mech-slots">${MECH_SLOTS.map((slot, i) => {
+          const owned = parts[i];
+          const p = owned && getPart(owned.id);
+          return `<button class="mech-slot ${slot.id === selSlot ? 'sel' : ''}" data-mslot="${slot.id}" style="--rarity:${p ? rarityColor(p.rarity) : 'var(--p-steel)'}">
+            <span>${slot.name}</span><strong>${p ? p.name : 'EMPTY'}</strong>${p ? `<em>LV ${owned.level}${p.weight ? ` · WT ${p.weight}` : ''}</em>` : ''}
+          </button>`;
+        }).join('')}</div>`;
+      const slotDef = MECH_SLOTS.find((x) => x.id === selSlot);
+      const fits = m.owned.filter((o) => getPart(o.id)?.type === slotDef.type)
+        .sort((a, b) => (m.loadout[selSlot] === b.uid) - (m.loadout[selSlot] === a.uid) || RANK[getPart(b.id).rarity] - RANK[getPart(a.id).rarity] || b.level - a.level);
+      const list = fits.map((o) => {
+        const inThis = m.loadout[selSlot] === o.uid;
+        const elsewhere = !inThis && worn.has(o.uid);
+        const cost = upgradeCost(o);
+        const maxed = o.level >= MECH_MAX_LEVEL;
+        return partCard(o, `<div class="mech-actions">
+          ${inThis
+            ? (selSlot === 'frame' ? '<button class="btn btn-disabled" disabled>EQUIPPED</button>' : `<button class="btn btn-outline" data-mact="unequip">REMOVE</button>`)
+            : `<button class="btn btn-accent" data-mact="equip" data-uid="${o.uid}">${elsewhere ? 'MOVE HERE' : 'EQUIP'}</button>`}
+          <button class="btn ${!maxed && m.scrap >= cost ? 'btn-primary' : 'btn-disabled'}" data-mact="upgrade" data-uid="${o.uid}" ${maxed || m.scrap < cost ? 'disabled' : ''}>${maxed ? 'MAX' : `UPGRADE ${cost}`}</button>
+          <button class="btn ${worn.has(o.uid) ? 'btn-disabled' : 'btn-danger'}" data-mact="salvage" data-uid="${o.uid}" ${worn.has(o.uid) ? 'disabled' : ''}>SALVAGE +${salvageValue(o)}</button>
+        </div>`, inThis ? 'worn' : '');
+      }).join('') || `<p class="mech-hint">No ${slotDef.type} parts yet. Open crates to find more.</p>`;
+      body += `<div class="mech-list">${list}</div>`;
+    } else {
+      const reveal = opts.revealUid ? saveSystem.getOwnedPart(opts.revealUid) : null;
+      body += reveal ? `<div class="mech-reveal">${partCard(reveal, '', 'reveal')}</div>` : '';
+      body += `<div class="mech-crates">${CRATES.map((c) => `<div class="mech-crate">
+          <strong>${c.name}</strong>
+          <div class="mech-odds">${Object.entries(c.odds).map(([r, pc]) => `<span style="color:${rarityColor(r)}">${rarityName(r)} ${pc}%</span>`).join('')}</div>
+          <button class="btn ${m.tokens >= c.cost ? 'btn-primary' : 'btn-disabled'}" data-crate="${c.id}" ${m.tokens >= c.cost ? '' : 'disabled'}>OPEN · &#9670; ${c.cost}</button>
+        </div>`).join('')}</div>
+        <p class="mech-hint">Earn Tokens by winning fights in runs (elites and bosses give more; Risk adds 10% per level). ${PARTS.length} parts to collect · ${m.owned.length}/${MECH_CAP} owned.</p>`;
+    }
 
-    this.openModal(`GEAR`,
-      `<div class="gear-slots">${slots}</div>
-       <div class="gear-bar"><span>SCRAP <strong>${g.scrap}</strong></span><span>${g.items.length}/${GEAR_CAP}</span></div>
-       <div class="gear-list">${list}</div>`,
-      `<div class="btn-row"><button class="btn btn-accent" data-act="close">CLOSE</button></div>`);
+    this.openModal('MECH', body, `<div class="btn-row"><button class="btn btn-accent" data-act="close">CLOSE</button></div>`);
     this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => this.closeModal());
-    this.modalBody.querySelectorAll('button[data-gear]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const uid = btn.dataset.uid;
-        const act = btn.dataset.gear;
-        const ok = act === 'equip' ? saveSystem.equipGear(uid)
-          : act === 'upgrade' ? saveSystem.upgradeGear(uid)
-            : saveSystem.salvageGear(uid) > 0;
-        soundEngine.play(ok ? 'confirm' : 'error');
-        const scroll = this.modalBody.querySelector('.gear-list')?.scrollTop || 0;
-        this.showGear(act === 'salvage' ? null : uid);
-        const listEl = this.modalBody.querySelector('.gear-list');
-        if (listEl) listEl.scrollTop = scroll;
-      });
-    });
+    const q = (sel) => this.modalBody.querySelectorAll(sel);
+    q('[data-mtab]').forEach((b) => b.addEventListener('click', () => { soundEngine.playUI(); this.showMech({ tab: b.dataset.mtab }); }));
+    q('[data-mslot]').forEach((b) => b.addEventListener('click', () => { soundEngine.playUI(); this.showMech({ slot: b.dataset.mslot }); }));
+    q('[data-mact]').forEach((b) => b.addEventListener('click', () => {
+      const act = b.dataset.mact;
+      const uid = b.dataset.uid;
+      const ok = act === 'equip' ? saveSystem.equipPart(selSlot, uid)
+        : act === 'unequip' ? saveSystem.unequipSlot(selSlot)
+          : act === 'upgrade' ? saveSystem.upgradePart(uid)
+            : saveSystem.salvagePart(uid) > 0;
+      soundEngine.play(ok ? 'confirm' : 'error');
+      const scroll = this.modalBody.querySelector('.mech-list')?.scrollTop || 0;
+      this.showMech();
+      const el = this.modalBody.querySelector('.mech-list');
+      if (el) el.scrollTop = scroll;
+    }));
+    q('[data-crate]').forEach((b) => b.addEventListener('click', () => {
+      const part = saveSystem.buyCrate(b.dataset.crate);
+      if (!part) return soundEngine.play('error');
+      soundEngine.play('confirm');
+      haptics?.impact?.('heavy');
+      this.showMech({ tab: 'crates', revealUid: part.uid });
+    }));
   }
 
   showMedals() {
@@ -1208,12 +1257,11 @@ export class UIManager {
         parts.push(`<span style="color:var(--accent)">+ RELIC: ${rewards.relic.name}</span>`);
       }
       if (parts.length) body += `<p class="reward-line">${parts.join(' • ')}</p>`;
-      if (rewards.gear) {
-        const it = rewards.gear;
-        body += `<div class="gear-drop" style="--rarity:${rarityColor(it.rarity)}">
-          <span>GEAR FOUND · ${rarityName(it.rarity)}</span>
-          <strong>${itemName(it)} +${it.level}</strong>
-          <em>${describeItem(it).join(' · ')}</em>
+      if (rewards.tokens) {
+        body += `<div class="gear-drop" style="--rarity:#ffcd75">
+          <span>CRATE TOKENS</span>
+          <strong>&#9670; +${rewards.tokens}</strong>
+          <em>Spend them on crates in the Mech screen.</em>
         </div>`;
       }
     }
