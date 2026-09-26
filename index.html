@@ -18,19 +18,19 @@
         <div id="menu-stats" class="menu-stats"></div>
         <div class="difficulty-panel">
           <div class="difficulty-header">
-            <span>RISK LEVEL <strong id="risk-level-val" class="accent">0</strong></span>
+            <span><span class="stat-ico" data-icon="skull" style="color:#e0655c"></span>RISK <strong id="risk-level-val" class="accent">0</strong></span>
             <span id="risk-level-bonus" class="dim-text">+0% Enemy Stats • +0% TP Bonus</span>
           </div>
           <input type="range" id="risk-slider" class="risk-slider" min="0" max="15" value="0" step="1" />
         </div>
         <div class="menu-buttons">
-          <button id="btn-play" class="btn btn-primary btn-large btn-menu">START OPERATION</button>
-          <button id="btn-tech" class="btn btn-outline btn-large btn-menu">TECH TREE</button>
+          <button id="btn-play" class="btn btn-primary btn-large btn-menu"><span class="stat-ico" data-icon="play"></span>START OPERATION</button>
+          <button id="btn-tech" class="btn btn-outline btn-large btn-menu"><span class="stat-ico" data-icon="chip"></span>TECH TREE</button>
           <div class="save-btn-row" style="display:flex;gap:8px;width:100%;">
             <button id="btn-export-save" class="btn btn-outline btn-menu" style="flex:1;">EXPORT SAVE</button>
             <button id="btn-import-save" class="btn btn-outline btn-menu" style="flex:1;">IMPORT SAVE</button>
           </div>
-          <button id="btn-audio-menu" class="btn btn-outline btn-menu">[AUDIO: ON]</button>
+          <button id="btn-audio-menu" class="btn btn-outline btn-menu" title="Toggle sound"></button>
           <button id="btn-reset-data" class="btn btn-danger btn-menu">RESET DATA</button>
         </div>
       </div>
@@ -40,7 +40,7 @@
     <section id="screen-tech" class="screen hidden">
       <div class="screen-header">
         <h2>PERMANENT UPGRADES</h2>
-        <div class="tp-display">TECH POINTS: <span id="tech-points">0</span></div>
+        <div class="tp-display" title="Tech Points"><span class="stat-ico" data-icon="chip"></span><span id="tech-points">0</span></div>
       </div>
       <div id="tech-tree" class="tech-tree"></div>
       <div class="screen-footer">
@@ -56,21 +56,26 @@
           <div class="run-floortabs" id="run-floortabs"></div>
           <div class="run-panel">
             <h3>SQUAD STATUS</h3>
-            <div class="run-stat"><span>HP</span><strong id="run-hp">-</strong></div>
-            <div class="run-stat"><span>ACTIONS</span><strong id="run-actions" style="color:var(--accent)">-</strong></div>
-            <div class="run-stat"><span>GOLD</span><strong id="run-gold">-</strong></div>
-            <div class="run-stat"><span>ATK</span><strong id="run-atk">-</strong></div>
-            <div class="run-stat"><span>DEF</span><strong id="run-def">-</strong></div>
-            <div class="run-stat"><span>DMG RED</span><strong id="run-dmg-red" style="color:#5fd3a8">-</strong></div>
-            <div class="run-stat"><span>FLOOR</span><strong id="run-floor">-</strong></div>
+            <div class="run-hp-row" title="Health">
+              <span class="stat-ico" data-icon="heart" style="color:#e0655c"></span>
+              <div class="run-hp-bar"><div id="run-hp-fill" class="run-hp-fill"></div><strong id="run-hp">-</strong></div>
+            </div>
+            <div class="run-stat-grid">
+              <div class="run-stat-tile" title="Actions left on this floor"><span class="stat-ico" data-icon="bolt" style="color:var(--accent)"></span><strong id="run-actions" style="color:var(--accent)">-</strong></div>
+              <div class="run-stat-tile" title="Gold"><span class="stat-ico" data-icon="coin" style="color:#e8a94c"></span><strong id="run-gold">-</strong></div>
+              <div class="run-stat-tile" title="Floor"><span class="stat-ico" data-icon="layers" style="color:#7aa2ff"></span><strong id="run-floor">-</strong></div>
+              <div class="run-stat-tile" title="Attack"><span class="stat-ico" data-icon="sword" style="color:#e0655c"></span><strong id="run-atk">-</strong></div>
+              <div class="run-stat-tile" title="Defense"><span class="stat-ico" data-icon="shield" style="color:#7aa2ff"></span><strong id="run-def">-</strong></div>
+              <div class="run-stat-tile" title="Damage reduction"><span class="stat-ico" data-icon="shieldHalf" style="color:#5fd3a8"></span><strong id="run-dmg-red" style="color:#5fd3a8">-</strong></div>
+            </div>
             <div id="run-boons" class="run-boons"></div>
           </div>
           <div class="run-panel">
-            <h3>RELIC ARCHIVE</h3>
+            <h3><span class="stat-ico" data-icon="gem"></span>RELICS</h3>
             <div id="run-relics" class="run-relics"></div>
           </div>
           <div class="run-panel">
-            <h3>ACTIVE QUESTS</h3>
+            <h3><span class="stat-ico" data-icon="clipboard"></span>QUESTS</h3>
             <div id="run-quests" class="run-quests"></div>
           </div>
           <button id="btn-retreat" class="btn btn-danger">ABANDON RUN</button>
@@ -84,8 +89,6 @@
               <span id="zoom-level">100%</span>
               <button id="btn-zoom-in" class="btn btn-outline map-zoom-btn" title="Zoom In">+</button>
               <button id="btn-zoom-reset" class="btn btn-outline map-zoom-btn" title="Reset Map View">RESET</button>
-              <span style="margin-left:8px;font-size:10px;color:var(--text-dim);">(Scroll wheel / Drag map to
-                pan)</span>
             </div>
           </div>
           <div id="battle-view" class="battle-view hidden">
@@ -94,7 +97,7 @@
         </div>
         <div class="run-feed">
           <div class="run-panel feed-panel">
-            <h3>COMBAT FEED</h3>
+            <h3><span class="stat-ico" data-icon="swords"></span>COMBAT FEED</h3>
             <div id="combat-feed" class="combat-feed">
               <span class="dim-text">No engagements yet</span>
             </div>
@@ -105,18 +108,20 @@
 
     <!-- ===== BATTLE HUD ===== -->
     <div id="battle-hud" class="battle-hud hidden">
-      <div class="battle-chip"><span>MISSION</span><strong id="battle-node">COMBAT</strong></div>
-      <div class="battle-chip"><span>FLOOR</span><strong id="battle-floor">FLOOR 1</strong></div>
-      <div class="battle-chip"><span>GOLD</span><strong id="battle-gold">0G</strong></div>
-      <button id="btn-audio-toggle" class="btn btn-outline" style="padding:6px 12px;font-size:12px;" title="Toggle Audio Mute">[AUDIO: ON]</button>
+      <div class="battle-chip" title="Mission"><span class="stat-ico" data-icon="swords" style="color:#e0655c"></span><strong id="battle-node">COMBAT</strong></div>
+      <div class="battle-chip" title="Floor"><span class="stat-ico" data-icon="layers" style="color:#7aa2ff"></span><strong id="battle-floor">1</strong></div>
+      <div class="battle-chip" title="Gold"><span class="stat-ico" data-icon="coin" style="color:#e8a94c"></span><strong id="battle-gold">0</strong></div>
+      <button id="btn-audio-toggle" class="btn btn-outline btn-icon" title="Toggle sound"></button>
       <div class="battle-abilities">
         <button id="btn-overdrive" class="ability-btn" title="Press [1] to activate Overdrive (1.5x damage, 3 turn cooldown)">
-          <span class="ability-icon">[1]</span>
+          <span class="ability-key">1</span>
+          <span class="ability-icon" data-icon="flame"></span>
           <span class="ability-name">OVERDRIVE</span>
           <span class="ability-cd" id="cd-overdrive">READY</span>
         </button>
         <button id="btn-barrier" class="ability-btn" title="Press [2] to deploy Barrier (4 turn cooldown)">
-          <span class="ability-icon">[2]</span>
+          <span class="ability-key">2</span>
+          <span class="ability-icon" data-icon="wall"></span>
           <span class="ability-name">BARRIER</span>
           <span class="ability-cd" id="cd-barrier">READY</span>
         </button>
