@@ -1423,7 +1423,7 @@ export class UIManager {
   showMinigameIntro() {
     this.openModal(
       'PRECISION DRILL',
-      `<p>Calibrate your timing. Land 3 of 5 in the green band. Rewards scale with accuracy.</p>`,
+      `<p>Calibrate your timing. Land 3 of 5 in the green band. Every PERFECT speeds the marker up and shrinks the target. Rewards scale with accuracy.</p>`,
       `<div class="btn-row"><button class="btn btn-accent" data-act="start">START</button></div>`
     );
     this.modalActions.querySelector('button[data-act="start"]').addEventListener('click', () => {
