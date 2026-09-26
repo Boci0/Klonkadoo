@@ -88,13 +88,13 @@ export class Game {
 
   _freshAbilities() {
     const relicCut = this.relics?.includes('rel_overcharge') ? 1 : 0;
-    const techCut = Math.floor(this.techStats?.cdReductionTurns || 0);
+    const tech = this.techStats || {};
     const ballType = this.battleConfig?.ballType || 'vanguard';
     const skill = getSkill(ballType);
     const classCut = ballType === 'vanguard' ? 1 : 0;
     return {
-      skill: { ready: true, cooldownLeft: 0, baseCooldown: Math.max(1, skill.cooldown - relicCut - techCut - classCut), name: skill.name, def: skill },
-      barrier: { ready: true, cooldownLeft: 0, baseCooldown: Math.max(1, CONFIG.abilities.barrier.cooldown - relicCut - techCut), name: CONFIG.abilities.barrier.name },
+      skill: { ready: true, cooldownLeft: 0, baseCooldown: Math.max(1, skill.cooldown - relicCut - (tech.skillCdCut || 0) - classCut), name: skill.name, def: skill },
+      barrier: { ready: true, cooldownLeft: 0, baseCooldown: Math.max(1, CONFIG.abilities.barrier.cooldown - relicCut - (tech.barrierCdCut || 0)), name: CONFIG.abilities.barrier.name },
     };
   }
 
@@ -174,7 +174,7 @@ export class Game {
     this.techStats = config.techStats || {};
     // Mech weapons (auto-fire after your shot settles) and drones (every turn)
     this.playerWeapons = (this.techStats.mech?.weapons || []).map((w) => ({ ...w, cdLeft: 0 }));
-    this.playerDrones = this.techStats.mech?.drones || [];
+    this.playerDrones = (this.techStats.mech?.drones || []).map((d) => ({ ...d })); // copies: the renderer tags them
     this.inspected = null; // { ball, weapon? } shown by the renderer
     // Higher Risk = bolder enemies: they favour hard hits, fire sooner, use abilities more
     this.aggression = Math.min(1, (config.riskLevel || 0) / 8);
@@ -200,6 +200,8 @@ export class Game {
       playerTotalDef: config.player.totalDef ?? config.player.def ?? 0,
       playerDamageReductionPct: config.player.damageReductionPct ?? 0,
       riskPlusDmgTaken: config.riskPlusDmgTaken || 0,
+      riskDefPierce: config.riskDefPierce || 0,
+      hasBarrierUp: () => this.playerBarrierCount > 0,
       relics: this.relics,
       battleStats: this.battleStats,
       techStats: this.techStats,
@@ -251,14 +253,19 @@ export class Game {
     if (id === 'skill') {
       if (!this.turnSystem.isPlayerTurn || !this.turnSystem.isAiming) return false;
       if (!this._useSkill(this.battleConfig.ballType || 'vanguard')) return false;
+      this.battleStats.skillUsedOnce = true;
+      this.battleStats.track.skillUses += 1;
+      if (Math.random() < (this.techStats?.skillEchoPct || 0)) {
+        this._callout(this.player, 'ECHO: SKILL READY', '#ffcd75');
+        return true;
+      }
       ab.ready = false;
       ab.cooldownLeft = ab.baseCooldown;
-      this.battleStats.track.skillUses += 1;
       return true;
     }
 
     if (id === 'barrier') {
-      if (this.playerBarrierCount >= CONFIG.abilities.barrier.maxActive) return false;
+      if (this.playerBarrierCount >= this._maxBarriers()) return false;
 
       this.slingshotInput.startBarrierPlacement();
       return true;
@@ -271,8 +278,11 @@ export class Game {
   _useSkill(ballType) {
     const skill = getSkill(ballType);
     const type = getBall(ballType).skill;
-    const empowered = this.relics.includes('rel_energy_well');
+    const tech = this.techStats || {};
     const bs = this.battleStats;
+    const empowered = this.relics.includes('rel_energy_well') || !!tech.skillOverload || (!!tech.skillOpener && !bs.skillUsedOnce);
+    const pot = 1 + (tech.skillPotency || 0); // Skill Potency scales every skill's bonus
+    const pct = (base) => Math.round(base * pot);
     const arm = (label, desc) => {
       bs.skillArmed = { type, label, color: skill.color, desc, empowered };
       this.renderer.showBanner(`${skill.name} ARMED`, skill.color);
@@ -284,18 +294,19 @@ export class Game {
       case 'overdrive':
         bs.overdriveStacks = (bs.overdriveStacks || 0) + 1;
         bs.overdriveActive = true;
+        bs.overdriveEmpowered = empowered;
         soundEngine.playAbility('overdrive');
         this.events.emit('ability-used', { id: 'skill', name: `OVERDRIVE (STACK ${bs.overdriveStacks}x)` });
         return true;
       case 'railshot':
-        arm('RAILGUN', `Next shot pierces every enemy it touches for +${empowered ? 50 : 25}% damage.`);
+        arm('RAILGUN', `Next shot pierces every enemy it touches for +${pct(empowered ? 50 : 25)}% damage.`);
         return true;
       case 'shrapnel':
         arm(`SHRAPNEL x${empowered ? 5 : 3}`, `Next shot bursts into homing fragments on its next ${empowered ? 5 : 3} bounces.`);
         return true;
       case 'zerog':
         this.slingshotInput.zeroGTime = empowered ? 1.2 : 0.8;
-        arm('ZERO-G', `Next shot flies straight for ${empowered ? 1.2 : 0.8}s and hits for +${empowered ? 35 : 20}% damage.`);
+        arm('ZERO-G', `Next shot flies straight for ${empowered ? 1.2 : 0.8}s and hits for +${pct(empowered ? 35 : 20)}% damage.`);
         return true;
       case 'quake':
         this._seismicSlam(empowered);
@@ -307,7 +318,7 @@ export class Game {
 
   /** Juggernaut: every grounded enemy takes damage, loses its shield and is thrown up. */
   _seismicSlam(empowered) {
-    const raw = (empowered ? 18 : 12) * (this.collisionSystem.stats.playerAtk || 1);
+    const raw = (empowered ? 18 : 12) * (1 + (this.techStats?.skillPotency || 0)) * (this.collisionSystem.stats.playerAtk || 1);
     this.renderer.addScreenShake(20);
     this.addHitStop(0.08);
     soundEngine.playImpact(2);
@@ -399,13 +410,17 @@ export class Game {
   }
 
   _barrierHp() {
-    return CONFIG.damage.barrierHp * (this.relics.includes('rel_graviton_lens') ? 2 : 1);
+    return Math.round(CONFIG.damage.barrierHp * (this.relics.includes('rel_graviton_lens') ? 2 : 1) * (1 + (this.techStats?.barrierHpPct || 0)));
+  }
+
+  _maxBarriers() {
+    return CONFIG.abilities.barrier.maxActive + (this.techStats?.barrierExtra || 0);
   }
 
   deployBarrierAt(x, y) {
     const ab = this.abilities.barrier;
     if (!ab || !ab.ready) return false;
-    if (this.playerBarrierCount >= CONFIG.abilities.barrier.maxActive) return false;
+    if (this.playerBarrierCount >= this._maxBarriers()) return false;
 
     const bw = 14;
     const bh = 90;
@@ -425,6 +440,10 @@ export class Game {
     ab.cooldownLeft = ab.baseCooldown;
     soundEngine.playAbility('barrier');
     this.events.emit('ability-used', { id: 'barrier', name: CONFIG.abilities.barrier.name });
+    if (this.techStats?.barrierForcefield && !this.player.forcefield) {
+      this.player.forcefield = true;
+      this._callout(this.player, 'AEGIS WALL', '#a7f070');
+    }
     return true;
   }
 
@@ -433,6 +452,7 @@ export class Game {
   }
 
   _tickAbilities() {
+    for (const e of this.enemies) e.spiked = false; // Spiked Wall hits once per round
     for (const key of Object.keys(this.abilities)) {
       const ab = this.abilities[key];
       if (!ab.ready) {
@@ -816,7 +836,7 @@ export class Game {
   }
 
   /** Floating label above a ball (ability names, relic triggers). */
-  // ---------- Mech weapons ----------
+  // ---------- Rig weapons ----------
 
   /** Quick tap (not a drag) on a ball inspects its weapons; tap it again or empty ground to close. */
   _bindInspect() {
@@ -828,6 +848,15 @@ export class Game {
       const quick = performance.now() - down.t < 400;
       down = null;
       if (moved > 10 || !quick || !this.renderer.clientToWorld) return;
+      // HP panels (screen space) first: tapping one inspects that ball
+      const rect = this.canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const panel = (this.renderer.panelHits || []).find((p) => p.ball.hp > 0 && sx >= p.x && sx <= p.x + p.w && sy >= p.y && sy <= p.y + p.h);
+      if (panel) {
+        this.inspected = this.inspected?.ball === panel.ball && this.inspected.weapon === undefined ? null : { ball: panel.ball };
+        return;
+      }
       const pos = this.renderer.clientToWorld(e.clientX, e.clientY);
       const hit = [this.player, ...this.enemies].find((b) => b && b.hp > 0 && Math.hypot(b.x - pos.x, b.y - pos.y) <= b.radius + 16);
       this.inspected = hit && this.inspected?.ball !== hit ? { ball: hit } : null;
@@ -857,6 +886,8 @@ export class Game {
         .sort((a, b) => a.d - b.d)[0]?.f;
       if (!target) continue; // stays ready until something is in range
       w.cdLeft = w.cd - 1;
+      w.firedAt = performance.now(); // renderer: recoil + muzzle flash, gun turns to the target
+      w.aimAt = target;
       this._weaponHit(shooter, target, w, w.dmg);
       if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
       if (w.fx?.chain) {
@@ -876,16 +907,21 @@ export class Game {
     for (const d of this.playerDrones) {
       if (d.heal) {
         const before = this.player.hp;
+        d.firedAt = performance.now();
         this.player.hp = Math.min(this.player.maxHp, this.player.hp + Math.round(d.heal));
         if (this.player.hp > before) this._callout(this.player, `REPAIR +${this.player.hp - before}`, d.color);
       } else if (d.forcefieldEvery) {
         if (this.battleStats.turns % d.forcefieldEvery === 0 && !this.player.forcefield) {
+          d.firedAt = performance.now();
           this.player.forcefield = true;
           this._callout(this.player, 'DRONE SHIELD', d.color);
         }
       } else if (d.dmg) {
         const target = foes().sort((a, b) => Math.hypot(a.x - shooter.x, a.y - shooter.y) - Math.hypot(b.x - shooter.x, b.y - shooter.y))[0];
-        if (target) this._weaponHit(shooter, target, d, d.dmg);
+        if (target) {
+          d.firedAt = performance.now();
+          this._weaponHit(shooter, target, d, d.dmg);
+        }
         if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
       }
     }
@@ -893,7 +929,9 @@ export class Game {
 
   /** One weapon hit. `from` is where the tracer starts (chains/splash start at the first target). */
   _weaponHit(from, target, w, rawDmg, owner = from) {
-    this.particles.push({ type: 'tracer', x1: from.x, y1: from.y, x2: target.x, y2: target.y, color: w.color || '#f4f4f4', life: 0.3, maxLife: 0.3 });
+    // Shots leave from the gun's muzzle (set by the renderer), not the ball's centre
+    const src = from === owner && w._muzzle ? w._muzzle : from;
+    this.particles.push({ type: 'tracer', x1: src.x, y1: src.y, x2: target.x, y2: target.y, color: w.color || '#f4f4f4', life: 0.4, maxLife: 0.4 });
     soundEngine.playUI(target.team === 'player' ? 220 : 660, 0.04);
     if (target.team === 'enemy') {
       if (target.shieldCharges > 0) {
@@ -1119,6 +1157,12 @@ export class Game {
       this._spawnHitParticles(victim.x, victim.y);
       if (attacker.team === 'player' && victim.team === 'enemy') {
         this._trackPlayerHit(victim, damage, killed, { crit, combo, dive, pierce });
+        const sk = this.abilities?.skill;
+        if (killed && this.techStats?.skillMomentum && sk && !sk.ready) {
+          sk.cooldownLeft -= 1;
+          if (sk.cooldownLeft <= 0) sk.ready = true;
+          this._callout(this.player, 'MOMENTUM', '#ffcd75');
+        }
       } else if (victim.team === 'player' && attacker === this.activeEnemy) {
         this._enemyShotHit = true;
       }
@@ -1467,6 +1511,12 @@ export class Game {
         if (evt.impactSpeed > 400) this.particles.push({ type: 'shockwave', x: evt.ball.x, y: W.groundY - 22, radius: 10, maxRadius: 60 + evt.impactSpeed / 12, life: 0.25, maxLife: 0.25 });
         if (evt.ball === this.player) this._shrapnelBurst(evt.ball);
       }
+      if (evt.type === 'barrier' && evt.ball.team === 'enemy' && evt.barrier?.owner !== 'enemy' && this.techStats?.barrierSpikeDmg && !evt.ball.spiked) {
+        evt.ball.spiked = true;
+        const dead = evt.ball.takeDamage(this.techStats.barrierSpikeDmg);
+        this._callout(evt.ball, `SPIKES ${this.techStats.barrierSpikeDmg}`, '#41a6f6');
+        this.events.emit('damage', { attacker: this.player, victim: evt.ball, damage: this.techStats.barrierSpikeDmg, killed: dead, isThorn: true });
+      }
       if (evt.type === 'wall' || evt.type === 'barrier') {
         soundEngine.playWallBounce();
         this.events.emit('wall-bounce', { ball: evt.ball });
@@ -1540,13 +1590,14 @@ export class Game {
     bs.skillArmed = null;
     this.slingshotInput.zeroGTime = 0;
     if (!armed) return;
+    const pot = 1 + (this.techStats?.skillPotency || 0);
     if (armed.type === 'railshot') {
       p.piercing = true;
       p.pierced = new Set();
-      p.shotMult = armed.empowered ? 1.5 : 1.25;
+      p.shotMult = 1 + (armed.empowered ? 0.5 : 0.25) * pot;
     } else if (armed.type === 'zerog') {
       p.zeroG = armed.empowered ? 1.2 : 0.8;
-      p.shotMult = armed.empowered ? 1.35 : 1.2;
+      p.shotMult = 1 + (armed.empowered ? 0.35 : 0.2) * pot;
     } else if (armed.type === 'shrapnel') {
       bs.shrapnel = armed.empowered ? 5 : 3;
     }
@@ -1566,7 +1617,7 @@ export class Game {
     const bs = this.battleStats;
     if (ball !== this.player || !(bs.shrapnel > 0) || this.turnSystem.phase !== TurnPhase.PLAYER_FLY) return;
     bs.shrapnel -= 1;
-    this._spawnClusterShards(ball, { count: 2, dmg: 7, label: `SHRAPNEL ${bs.shrapnel}` });
+    this._spawnClusterShards(ball, { count: 2, dmg: Math.round(7 * (1 + (this.techStats?.skillPotency || 0))), label: `SHRAPNEL ${bs.shrapnel}` });
   }
 
   /** Feedback + stats for every hit you land on an enemy. */
@@ -1677,6 +1728,7 @@ export class Game {
       },
       slingshotInput: this.slingshotInput,
       playerWeapons: this.playerWeapons || [],
+      playerDrones: this.playerDrones || [],
       inspected: this.inspected && this.inspected.ball.hp > 0 ? this.inspected : null,
     };
     this.renderer.render(world);

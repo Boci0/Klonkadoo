@@ -323,7 +323,8 @@ export class RogueMapRenderer {
       ['#0c1719', 'rgba(167, 240, 112, 0.10)'],
       ['#12080e', 'rgba(255, 93, 115, 0.12)'],
     ];
-    const [bg, dots] = themes[this.lastFloor?.index ?? 0] || themes[0];
+    const i = this.lastFloor?.index ?? 0;
+    const [bg, dots] = i >= themes.length ? ['#07050b', 'rgba(196, 111, 214, 0.12)'] : themes[i]; // Abyss floors
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, v.w, v.h);
     // Pixel dot grid that pans with the map

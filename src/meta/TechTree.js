@@ -6,12 +6,7 @@
 
 import { CONFIG } from '../config.js';
 
-// Gear carries the long-term grind now, so regular ranks cap at 30 TP; capstones keep their price.
-const RANK_COST_CAP = 30;
-const rankCost = (node, i) => {
-  const c = node.costs[i] ?? node.costs[node.costs.length - 1] ?? 0;
-  return node.capstone ? c : Math.min(RANK_COST_CAP, c);
-};
+const rankCost = (node, i) => node.costs[i] ?? node.costs[node.costs.length - 1] ?? 0;
 
 export class TechTree {
   constructor(saveSystem) {
@@ -73,95 +68,60 @@ export class TechTree {
   }
 
   /**
-   * Compute permanent stat bonuses and feature flags from all purchased nodes.
+   * Skill / mechanic effects from purchased nodes. Raw stat keys (hpBonus,
+   * atkBonus, critChance, defBonus...) stay at 0 here: Rig gear and ball
+   * mastery add to them (see Mech.withMech, Mastery.withMastery).
    */
   getPermanentStats() {
-    const sharpshooterLvl = this.getNodeLevel('atk_sharpshooter');
-    const basePowerLvl = this.getNodeLevel('atk_base_power');
-    const armorPenLvl = this.getNodeLevel('atk_armor_pen');
-    const riskResonanceLvl = this.getNodeLevel('atk_risk_resonance');
-    const ballisticApexLvl = this.getNodeLevel('atk_ballistic_apex');
-
-    const vitLvl = this.getNodeLevel('vit_health');
-    const overflowLvl = this.getNodeLevel('vit_overflow_shield');
-    const medkitLvl = this.getNodeLevel('vit_emergency_medkit');
-    const titanLvl = this.getNodeLevel('vit_titan_core');
-    const vampLvl = this.getNodeLevel('vit_vampiric_vitality');
-
-    const aegisLvl = this.getNodeLevel('def_aegis');
-    const matrixPctLvl = this.getNodeLevel('def_matrix_pct');
-    const thornsLvl = this.getNodeLevel('def_thorns_resist');
-    const forcefieldLvl = this.getNodeLevel('def_forcefield');
-    const fortifiedLvl = this.getNodeLevel('def_fortified_matrix');
-    const dampenerLvl = this.getNodeLevel('def_kinetic_dampener');
-
-    const warChestLvl = this.getNodeLevel('tac_war_chest');
-    const merchantLvl = this.getNodeLevel('tac_merchant');
-    const logisticsLvl = this.getNodeLevel('tac_logistics');
-    const intellectLvl = this.getNodeLevel('tac_intellect');
-    const relicLvl = this.getNodeLevel('tac_relic_synergy');
-
-    const critLvl = this.getNodeLevel('atk_crit');
-    const secondWindLvl = this.getNodeLevel('vit_second_wind');
-    const counterLvl = this.getNodeLevel('def_counter');
-    const supplyLvl = this.getNodeLevel('tac_supply_drop');
-
+    const L = (id) => this.getNodeLevel(id);
+    const forcefield = L('def_forcefield');
+    const secondWind = L('vit_second_wind');
     return {
-      // Tuned so a maxed branch is strong but not game-breaking; ATK nodes
-      // multiply together, so each one is kept modest.
-      atkBonus: sharpshooterLvl * 0.03,
-      baseAtkBonus: basePowerLvl * 0.25,
-      armorPenPct: armorPenLvl * 0.08,
-      riskResonanceBonusPerLevel: riskResonanceLvl * 0.005,
-      ballisticApexMaxPct: ballisticApexLvl * 0.02,
+      // Stats: filled in by gear and mastery
+      atkBonus: 0,
+      baseAtkBonus: 0,
+      critChance: 0,
+      hpBonus: 0,
+      defBonus: 0,
 
-      hpBonus: vitLvl * 10,
-      overflowShieldCapPct: overflowLvl * 0.05,
-      emergencyMedkitHeal: medkitLvl * 5,
-      titanCoreHealBonusPct: titanLvl * 0.05,
-      titanCoreMaxHpBonus: titanLvl * 2,
-      vampiricVitalityPct: vampLvl * 0.015,
+      // SKILL
+      skillPotency: L('skl_potency') * 0.08,
+      skillCdCut: L('skl_recharge'),
+      skillEchoPct: L('skl_echo') * 0.12,
+      skillOpener: L('skl_opener') > 0,
+      skillMomentum: L('skl_momentum') > 0,
+      skillOverload: L('skl_overload') > 0,
 
-      defBonus: aegisLvl * 1,
-      defPctBonus: matrixPctLvl * 0.03,
-      thornsResistPct: thornsLvl * 0.08,
-      forcefieldTurnInterval: forcefieldLvl > 0 ? Math.max(5, 14 - forcefieldLvl) : 0,
-      fortifiedMatrixBonusDef: fortifiedLvl * 0.5,
-      kineticDampenerPct: dampenerLvl * 0.02,
+      // BARRIER
+      barrierHpPct: L('bar_reinforce') * 0.25,
+      barrierCdCut: L('bar_quick'),
+      barrierSpikeDmg: L('bar_spikes') * 6,
+      barrierExtra: L('bar_twin'),
+      bulwarkPct: L('bar_bulwark') * 0.06,
+      barrierForcefield: L('bar_aegis') > 0,
 
-      startGoldBonus: warChestLvl * 8,
-      shopDiscountBonus: merchantLvl * 0.02,
-      rerollDiscountBonus: merchantLvl * 0.05,
-      cdReductionTurns: logisticsLvl * 0.2,
-      tpBonusPct: intellectLvl * 0.03, // applied to battle TP rewards (main.js)
-      relicAtkPctPerItem: relicLvl * 0.002,
-      relicHpPctPerItem: relicLvl * 0.002,
-      relicDefPerItem: relicLvl * 0.03,
+      // SURVIVAL
+      emergencyMedkitHeal: L('vit_emergency_medkit') * 10,
+      overflowShieldCapPct: L('vit_overflow_shield') * 0.1,
+      forcefieldTurnInterval: forcefield > 0 ? 11 - forcefield : 0,
+      vampiricVitalityPct: L('vit_vampiric_vitality') * 0.02,
+      counterPct: L('def_counter') * 0.1,
+      secondWindPct: secondWind > 0 ? 0.2 + (secondWind - 1) * 0.15 : 0,
 
-      // Capstones
-      critChance: critLvl * 0.06,
-      secondWindPct: secondWindLvl > 0 ? 0.2 + (secondWindLvl - 1) * 0.15 : 0,
-      counterPct: counterLvl > 0 ? 0.15 + (counterLvl - 1) * 0.1 : 0,
-      supplyDropRelics: supplyLvl,
+      // TACTICS
+      startGoldBonus: L('tac_war_chest') * 10,
+      shopDiscountBonus: L('tac_merchant') * 0.03,
+      rerollDiscountBonus: L('tac_merchant') * 0.08,
+      extraMoves: L('tac_scout'),
+      tpBonusPct: L('tac_intellect') * 0.05, // applied to battle TP rewards (main.js)
+      keyBonus: L('tac_keymaster'),
+      supplyDropRelics: L('tac_supply_drop'),
 
-      // Backwards-compatible feature flags
-      hasArmorPen: armorPenLvl > 0,
-      hasRiskResonance: riskResonanceLvl > 0,
-      hasBallisticApex: ballisticApexLvl > 0,
-
-      hasOverflowShield: overflowLvl > 0,
-      hasEmergencyMedkit: medkitLvl > 0,
-      hasTitanCore: titanLvl > 0,
-      hasVampiricVitality: vampLvl > 0,
-
-      hasForcefield: forcefieldLvl > 0,
-      hasFortifiedMatrix: fortifiedLvl > 0,
-      hasKineticDampener: dampenerLvl > 0,
-
-      hasMerchant: merchantLvl > 0,
-      hasLogistics: logisticsLvl > 0,
-      hasIntellect: intellectLvl > 0,
-      hasRelicSynergy: relicLvl > 0,
+      // Feature flags other systems check
+      hasForcefield: forcefield > 0,
+      hasOverflowShield: L('vit_overflow_shield') > 0,
+      hasEmergencyMedkit: L('vit_emergency_medkit') > 0,
+      hasVampiricVitality: L('vit_vampiric_vitality') > 0,
     };
   }
 

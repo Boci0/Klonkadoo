@@ -82,9 +82,16 @@ export class RogueMap {
     return floors;
   }
 
-  _generateFloor(floorIndex) {
+  /** Endless Abyss: append another floor laid out like floor 5. Returns its index. */
+  addAbyssFloor() {
+    const idx = this.floors.length;
+    this.floors.push(this._generateFloor(idx, M.floors - 1));
+    return idx;
+  }
+
+  _generateFloor(floorIndex, weightsFloor = floorIndex) {
     const rng = mulberry32(hashString(`${this.runSeed}:floor:${floorIndex}`));
-    const weights = FLOOR_WEIGHTS[floorIndex + 1] || FLOOR_WEIGHTS[1];
+    const weights = FLOOR_WEIGHTS[weightsFloor + 1] || FLOOR_WEIGHTS[1];
 
     const isLast = floorIndex === M.floors - 1;
     const rows = M.rows || 5;

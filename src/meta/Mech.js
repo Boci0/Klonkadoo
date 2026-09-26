@@ -1,10 +1,11 @@
 // ============================================================
-// Mech — SuperMechs-style loadout.
+// Rig — the gear your ball carries into a run.
 //
-// Slots: Frame, Armor, Weapon x2, Drone, Module x2. The Frame sets
-// base HP and the weight capacity; every other part has a weight,
-// so heavy guns squeeze out armor. Parts come from crates bought
-// with Tokens earned in runs (never real money; odds are shown).
+// Slots: Frame, Armor, Gun x2, Drone, Mod x2. The Frame sets base
+// HP and the load capacity; every other part has a load cost, so
+// heavy guns squeeze out armor. Parts come from supply pods opened
+// with Keys earned in runs (never real money; odds are shown).
+// (Code and save data still use the old names: mech, crate, tokens.)
 // Duplicates salvage into scrap, scrap upgrades parts (level 1-10).
 //
 // In battle, weapons auto-fire when your shot settles at an enemy
@@ -15,11 +16,11 @@
 export const SLOTS = [
   { id: 'frame', type: 'frame', name: 'FRAME' },
   { id: 'armor', type: 'armor', name: 'ARMOR' },
-  { id: 'weapon1', type: 'weapon', name: 'WEAPON 1' },
-  { id: 'weapon2', type: 'weapon', name: 'WEAPON 2' },
+  { id: 'weapon1', type: 'weapon', name: 'GUN A' },
+  { id: 'weapon2', type: 'weapon', name: 'GUN B' },
   { id: 'drone', type: 'drone', name: 'DRONE' },
-  { id: 'module1', type: 'module', name: 'MODULE 1' },
-  { id: 'module2', type: 'module', name: 'MODULE 2' },
+  { id: 'module1', type: 'module', name: 'MOD A' },
+  { id: 'module2', type: 'module', name: 'MOD B' },
 ];
 
 export const RARITIES = {
@@ -27,26 +28,29 @@ export const RARITIES = {
   rare: { name: 'RARE', color: '#41a6f6', scrap: 8, cost: 1.5 },
   epic: { name: 'EPIC', color: '#c46fd6', scrap: 20, cost: 2 },
   legendary: { name: 'LEGENDARY', color: '#ffcd75', scrap: 50, cost: 3 },
+  mythic: { name: 'MYTHIC', color: '#ff5d73', scrap: 120, cost: 4 },
 };
-const RARITY_ORDER = ['common', 'rare', 'epic', 'legendary'];
+const RARITY_ORDER = ['common', 'rare', 'epic', 'legendary', 'mythic'];
 
-// ---------- Catalog (35 parts) ----------
+// ---------- Catalog (40 parts) ----------
 // Weapons: range [min, max] in world px, dmg per shot, cd = turns between shots.
 // fx: burn / freeze / corrode / splash / chain / pierce (ignores DEF) / leech / crit
 export const PARTS = [
   // Frames: base HP + weight capacity (frames weigh nothing)
-  { id: 'fr_scout', type: 'frame', name: 'SCOUT FRAME', rarity: 'common', hp: 0, capacity: 60, desc: 'Light and simple.' },
-  { id: 'fr_brawler', type: 'frame', name: 'BRAWLER FRAME', rarity: 'rare', hp: 20, capacity: 72 },
-  { id: 'fr_phantom', type: 'frame', name: 'PHANTOM FRAME', rarity: 'epic', hp: 5, capacity: 80, powerPct: 0.1, desc: '+10% launch power.' },
-  { id: 'fr_titan', type: 'frame', name: 'TITAN FRAME', rarity: 'epic', hp: 45, capacity: 88 },
-  { id: 'fr_colossus', type: 'frame', name: 'COLOSSUS FRAME', rarity: 'legendary', hp: 60, capacity: 104 },
+  { id: 'fr_scout', type: 'frame', name: 'SCOUT FRAME', rarity: 'common', hp: 0, capacity: 60 },
+  { id: 'fr_brawler', type: 'frame', name: 'BRAWLER FRAME', rarity: 'rare', hp: 15, capacity: 72 },
+  { id: 'fr_phantom', type: 'frame', name: 'PHANTOM FRAME', rarity: 'epic', hp: 5, capacity: 80, powerPct: 0.1 },
+  { id: 'fr_titan', type: 'frame', name: 'TITAN FRAME', rarity: 'epic', hp: 30, capacity: 88 },
+  { id: 'fr_colossus', type: 'frame', name: 'COLOSSUS FRAME', rarity: 'legendary', hp: 40, capacity: 104 },
+  { id: 'fr_leviathan', type: 'frame', name: 'LEVIATHAN FRAME', rarity: 'mythic', hp: 46, capacity: 112, powerPct: 0.05, color: '#ff5d73' },
 
   // Armor
   { id: 'ar_scrap', type: 'armor', name: 'SCRAP PLATES', rarity: 'common', weight: 10, hp: 15 },
   { id: 'ar_kevlar', type: 'armor', name: 'KEVLAR WEAVE', rarity: 'common', weight: 8, def: 1.5 },
-  { id: 'ar_reactive', type: 'armor', name: 'REACTIVE ARMOR', rarity: 'rare', weight: 16, hp: 20, def: 2 },
-  { id: 'ar_aegis', type: 'armor', name: 'AEGIS SHELL', rarity: 'epic', weight: 22, hp: 28, def: 2.5, startForcefield: true, desc: 'Start each battle with a Forcefield.' },
-  { id: 'ar_titanium', type: 'armor', name: 'TITANIUM HULL', rarity: 'legendary', weight: 28, hp: 45, def: 4 },
+  { id: 'ar_reactive', type: 'armor', name: 'REACTIVE ARMOR', rarity: 'rare', weight: 16, hp: 16, def: 2 },
+  { id: 'ar_aegis', type: 'armor', name: 'AEGIS SHELL', rarity: 'epic', weight: 22, hp: 22, def: 2.5, startForcefield: true, desc: 'Start each battle with a Forcefield.' },
+  { id: 'ar_titanium', type: 'armor', name: 'TITANIUM HULL', rarity: 'legendary', weight: 28, hp: 30, def: 3 },
+  { id: 'ar_void', type: 'armor', name: 'VOID CARAPACE', rarity: 'mythic', weight: 28, hp: 34, def: 3.5, startForcefield: true, color: '#ff5d73', desc: 'Start each battle with a Forcefield.' },
 
   // Weapons
   { id: 'wp_blaster', type: 'weapon', name: 'PULSE BLASTER', rarity: 'common', weight: 12, range: [0, 340], dmg: 8, cd: 1, color: '#73eff7' },
@@ -61,13 +65,15 @@ export const PARTS = [
   { id: 'wp_rail', type: 'weapon', name: 'RAIL LANCE', rarity: 'epic', weight: 26, range: [450, 1150], dmg: 22, cd: 3, fx: { pierce: true }, color: '#41a6f6', desc: 'Ignores DEF.' },
   { id: 'wp_howitzer', type: 'weapon', name: 'SIEGE HOWITZER', rarity: 'legendary', weight: 34, range: [520, 1400], dmg: 32, cd: 3, fx: { splash: 140 }, color: '#ffcd75' },
   { id: 'wp_scythe', type: 'weapon', name: 'PLASMA SCYTHE', rarity: 'legendary', weight: 24, range: [0, 230], dmg: 26, cd: 2, fx: { leech: 0.25 }, color: '#c46fd6', desc: 'Heals you for 25% of damage.' },
+  { id: 'wp_nova', type: 'weapon', name: 'NOVA LANCE', rarity: 'mythic', weight: 30, range: [0, 1400], dmg: 28, cd: 3, fx: { pierce: true }, color: '#ff5d73', desc: 'Any range. Ignores DEF.' },
 
   // Drones: act every turn, any range
   { id: 'dr_gnat', type: 'drone', name: 'GNAT DRONE', rarity: 'common', weight: 6, dmg: 3, color: '#94b0c2' },
   { id: 'dr_hornet', type: 'drone', name: 'HORNET DRONE', rarity: 'rare', weight: 9, dmg: 5, color: '#ffcd75' },
   { id: 'dr_medic', type: 'drone', name: 'MEDIC DRONE', rarity: 'rare', weight: 8, heal: 4, color: '#a7f070', desc: 'Repairs you every turn.' },
   { id: 'dr_guardian', type: 'drone', name: 'GUARDIAN DRONE', rarity: 'epic', weight: 10, forcefieldEvery: 3, color: '#a7f070', desc: 'Forcefield every 3rd turn.' },
-  { id: 'dr_reaper', type: 'drone', name: 'REAPER DRONE', rarity: 'legendary', weight: 12, dmg: 9, fx: { crit: 0.2 }, color: '#ff5d73', desc: '20% crit chance.' },
+  { id: 'dr_reaper', type: 'drone', name: 'REAPER DRONE', rarity: 'legendary', weight: 12, dmg: 9, fx: { crit: 0.2 }, color: '#ffcd75', desc: '20% crit chance.' },
+  { id: 'dr_seraph', type: 'drone', name: 'SERAPH DRONE', rarity: 'mythic', weight: 13, dmg: 11, fx: { crit: 0.25 }, color: '#ff5d73', desc: '25% crit chance.' },
 
   // Modules: passive bonuses
   { id: 'md_target', type: 'module', name: 'TARGETING CPU', rarity: 'common', weight: 4, crit: 0.03 },
@@ -77,7 +83,8 @@ export const PARTS = [
   { id: 'md_repair', type: 'module', name: 'NANO REPAIR', rarity: 'rare', weight: 6, healAfterWin: 0.05, desc: 'Heal after every won battle.' },
   { id: 'md_heatsink', type: 'module', name: 'HEAT SINK', rarity: 'rare', weight: 5, cdCut: 1, desc: 'Weapon cooldowns -1 turn (min 1).' },
   { id: 'md_range', type: 'module', name: 'RANGE EXTENDER', rarity: 'epic', weight: 5, rangePct: 0.15 },
-  { id: 'md_overclock', type: 'module', name: 'OVERCLOCK CORE', rarity: 'legendary', weight: 8, atkPct: 0.1, weaponDmgPct: 0.2 },
+  { id: 'md_overclock', type: 'module', name: 'OVERCLOCK CORE', rarity: 'legendary', weight: 8, atkPct: 0.1, weaponDmgPct: 0.12 },
+  { id: 'md_singularity', type: 'module', name: 'SINGULARITY CHIP', rarity: 'mythic', weight: 8, atkPct: 0.12, weaponDmgPct: 0.15, crit: 0.03, color: '#ff5d73' },
 ];
 
 const PART_BY_ID = Object.fromEntries(PARTS.map((p) => [p.id, p]));
@@ -89,8 +96,8 @@ export const STARTER_LOADOUT = { frame: 'fr_scout', armor: 'ar_scrap', weapon1: 
 export const MAX_LEVEL = 10;
 export const INVENTORY_CAP = 60;
 
-/** Stats grow 8% per level; weight and range don't. */
-export const levelMult = (lvl) => 1 + 0.08 * (lvl - 1);
+/** Stats grow 5% per level (LV 10 = x1.45); weight and range don't. */
+export const levelMult = (lvl) => 1 + 0.05 * (lvl - 1);
 
 // Numeric fields that scale with level
 const SCALING = ['hp', 'def', 'dmg', 'heal', 'atkPct', 'crit', 'powerPct', 'goldPct', 'healAfterWin', 'weaponDmgPct', 'rangePct'];
@@ -115,7 +122,7 @@ export function describePart(owned) {
   const p = partStats(owned);
   const L = [];
   if (p.type === 'frame') L.push(`CAP ${p.capacity}`);
-  if (p.weight) L.push(`WT ${p.weight}`);
+  if (p.weight) L.push(`LOAD ${p.weight}`);
   if (p.hp) L.push(`HP +${Math.round(p.hp)}`);
   if (p.def) L.push(`DEF +${p.def.toFixed(1)}`);
   if (p.dmg) L.push(`DMG ${Math.round(p.dmg)}`);
@@ -132,6 +139,40 @@ export function describePart(owned) {
   if (p.desc) L.push(p.desc);
   return L;
 }
+
+/**
+ * Stat chips for the rig screen: { icon, text } with icons from
+ * rendering/pixelIcons (the load cost is shown separately).
+ */
+export function partChips(owned) {
+  const p = partStats(owned);
+  const C = [];
+  const add = (cond, icon, text) => { if (cond) C.push({ icon, text }); };
+  add(p.type === 'frame', 'load', `CAP ${p.capacity}`);
+  add(p.hp, 'hp', `+${Math.round(p.hp)}`);
+  add(p.def, 'def', `+${p.def?.toFixed(1)}`);
+  add(p.dmg, 'dmg', `${Math.round(p.dmg)}`);
+  add(p.cd, 'cd', `${p.cd}T`);
+  add(p.heal, 'heal', `${Math.round(p.heal)}/T`);
+  add(p.atkPct, 'dmg', `+${Math.round(p.atkPct * 100)}%`);
+  add(p.weaponDmgPct, 'gun', `+${Math.round(p.weaponDmgPct * 100)}%`);
+  add(p.crit, 'star', `+${(p.crit * 100).toFixed(1)}%`);
+  add(p.powerPct, 'move', `+${Math.round(p.powerPct * 100)}%`);
+  add(p.goldPct, 'gold', `+${Math.round(p.goldPct * 100)}%`);
+  add(p.rangePct, 'range', `+${Math.round(p.rangePct * 100)}%`);
+  add(p.healAfterWin, 'heal', `+${Math.round(p.healAfterWin * 100)}%/WIN`);
+  return C;
+}
+
+/** One-line effect text for a part (fx and special rules only). */
+export function partNote(p) {
+  if (p.desc) return p.desc;
+  if (p.type === 'drone') return 'Fires every turn at any range.';
+  if (p.type === 'weapon') return 'Fires when you land in range.';
+  return '';
+}
+
+export const TYPE_LABEL = { frame: 'FRAME', armor: 'ARMOR', weapon: 'GUN', drone: 'DRONE', module: 'MOD' };
 
 // ---------- Loadout ----------
 
@@ -184,9 +225,11 @@ export function withMech(perm, ownedParts) {
 
 // ---------- Crates ----------
 
+// Mythic drops from every pod, but only the Abyss pod (Risk 7+) makes it realistic
 export const CRATES = [
-  { id: 'standard', name: 'SUPPLY CRATE', cost: 8, odds: { common: 62, rare: 28, epic: 9, legendary: 1 } },
-  { id: 'elite', name: 'ELITE CRATE', cost: 24, odds: { common: 15, rare: 45, epic: 30, legendary: 10 } },
+  { id: 'standard', name: 'SUPPLY POD', color: '#41a6f6', cost: 8, odds: { common: 62, rare: 28, epic: 9, legendary: 0.98, mythic: 0.02 } },
+  { id: 'elite', name: 'ELITE POD', color: '#c46fd6', cost: 24, odds: { common: 15, rare: 45, epic: 30, legendary: 9.9, mythic: 0.1 } },
+  { id: 'abyss', name: 'ABYSS POD', color: '#ff5d73', cost: 36, minRisk: 7, odds: { common: 5, rare: 35, epic: 40, legendary: 17, mythic: 3 } },
 ];
 
 /** Roll one part from a crate. Odds are shown to the player in the UI. */
@@ -195,7 +238,7 @@ export function openCrate(crateId, rnd = Math.random) {
   let r = rnd() * 100;
   let rarity = 'common';
   for (const k of RARITY_ORDER) {
-    r -= crate.odds[k];
+    r -= crate.odds[k] || 0;
     if (r <= 0) {
       rarity = k;
       break;
@@ -208,9 +251,14 @@ export function openCrate(crateId, rnd = Math.random) {
 
 export const newUid = (rnd = Math.random) => `m${Date.now().toString(36)}${Math.floor(rnd() * 1e6).toString(36)}`;
 
-/** Tokens for winning a fight (Risk adds 10% per level). */
+/**
+ * Keys (saved as tokens) for winning a fight; Risk adds 10% per level.
+ * Normal fights are the main Key source: elites pay in relics instead.
+ */
+export const CLEAN_WIN_KEYS = 2; // bonus for a normal fight won without taking damage
+
 export function tokenReward(nodeType, risk = 0) {
-  const base = { combat: 1, elite: 3, miniboss: 5, boss: 6 }[nodeType] || 0;
+  const base = { combat: 3, elite: 2, miniboss: 4, boss: 6 }[nodeType] || 0;
   return Math.round(base * (1 + 0.1 * risk));
 }
 
@@ -226,9 +274,11 @@ const ENEMY_POOL = {
 
 /**
  * Weapons for one enemy. Enemy guns hit softer and cool down slower
- * than yours; elites and bosses carry two.
+ * than yours; elites and bosses carry two. `atkMult` is the same Risk /
+ * condition / wave multiplier the enemy's own ATK gets; `cdCut` shortens
+ * cooldowns (Risk XI).
  */
-export function enemyWeapons(nodeType, floor, rnd = Math.random) {
+export function enemyWeapons(nodeType, floor, rnd = Math.random, { atkMult = 1, cdCut = 0 } = {}) {
   const f = Math.max(1, Math.min(5, floor));
   if (nodeType === 'combat' && f === 1 && rnd() < 0.5) return []; // ease new players in
   const count = nodeType === 'combat' ? 1 : 2;
@@ -237,7 +287,7 @@ export function enemyWeapons(nodeType, floor, rnd = Math.random) {
   const out = [];
   for (let i = 0; i < count && pool.length; i++) {
     const base = getPart(pool.splice(Math.floor(rnd() * pool.length), 1)[0]);
-    out.push({ ...base, dmg: Math.max(2, Math.round(base.dmg * scale)), cd: base.cd + 1, level: 1 });
+    out.push({ ...base, dmg: Math.max(2, Math.round(base.dmg * scale * atkMult)), cd: Math.max(1, base.cd + 1 - cdCut), level: 1 });
   }
   return out;
 }

@@ -19,6 +19,7 @@ export const BALLS = [
     id: 'vanguard',
     name: 'VANGUARD',
     role: 'Balanced',
+    tag: 'Skill recharges 1 turn faster.', // short trait for the select screen
     trait: 'No weaknesses, no tricks. Its skill recharges 1 turn faster than other classes.',
     feel: 'Standard weight and bounce.',
     skill: 'overdrive',
@@ -39,6 +40,7 @@ export const BALLS = [
     id: 'juggernaut',
     name: 'JUGGERNAUT',
     role: 'Tank',
+    tag: '+40% hit damage. Smashes barriers.', // short trait for the select screen
     trait: 'Hits deal +40% damage and smash barriers. Huge target, short range.',
     feel: 'Very heavy: shoves enemies far, barely bounces (no bank shots).',
     skill: 'quake',
@@ -59,6 +61,7 @@ export const BALLS = [
     id: 'striker',
     name: 'STRIKER',
     role: 'Glass cannon',
+    tag: '+10% crit, but takes +25% damage.', // short trait for the select screen
     trait: 'Tiny and fast: +10% crit chance, hard to hit, but every hit on it hurts 25% more.',
     feel: 'Light: gets knocked around by anything it hits.',
     skill: 'railshot',
@@ -79,6 +82,7 @@ export const BALLS = [
     id: 'cluster',
     name: 'CLUSTER',
     role: 'Ricochet',
+    tag: 'Wall bounces split off homing shards.', // short trait for the select screen
     trait: 'First wall bounce each turn splits off 2 homing fragments (9 dmg). Direct hits are weak.',
     feel: 'Super bouncy: keeps its speed off every wall.',
     skill: 'shrapnel',
@@ -99,6 +103,7 @@ export const BALLS = [
     id: 'graviton',
     name: 'GRAVITON',
     role: 'Precision',
+    tag: 'Ignores wind. +30% damage when falling.', // short trait for the select screen
     trait: 'Ignores wind; hits while falling deal +30% damage. Lobs drop short.',
     feel: 'Dense: falls 30% faster than anything else.',
     skill: 'zerog',
@@ -127,6 +132,7 @@ export const getBall = (id) => BALLS.find((b) => b.id === id) || BALLS[0];
 export const SKILLS = {
   overdrive: {
     name: 'OVERDRIVE',
+    brief: 'Next hit x1.5 damage',
     short: 'OVERDRIVE',
     desc: 'Next hit deals 1.5x damage. Stacks if used again before firing.',
     cooldown: 3,
@@ -134,6 +140,7 @@ export const SKILLS = {
   },
   quake: {
     name: 'SEISMIC SLAM',
+    brief: '12 dmg to grounded foes',
     short: 'SLAM',
     desc: 'Instant: every enemy on the ground takes 12 damage, is thrown into the air and loses its shield.',
     cooldown: 4,
@@ -141,6 +148,7 @@ export const SKILLS = {
   },
   railshot: {
     name: 'RAILGUN',
+    brief: 'Next shot pierces, +25%',
     short: 'RAILGUN',
     desc: 'Next shot pierces straight through enemies, hitting every one it touches for +25% damage.',
     cooldown: 3,
@@ -149,6 +157,7 @@ export const SKILLS = {
   },
   shrapnel: {
     name: 'SHRAPNEL',
+    brief: 'Shards on next 3 bounces',
     short: 'SHRAPNEL',
     desc: 'Next shot bursts into homing fragments on each of its next 3 bounces (walls, floor or barriers).',
     cooldown: 3,
@@ -157,6 +166,7 @@ export const SKILLS = {
   },
   zerog: {
     name: 'ZERO-G',
+    brief: 'Next shot flies straight',
     short: 'ZERO-G',
     desc: 'Next shot flies dead straight for 0.8s, ignoring gravity, and hits for +20% damage.',
     cooldown: 3,
@@ -180,30 +190,35 @@ export const SKINS = {
     { id: 'veteran', name: 'VETERAN', color: '#6b8e4e', darkColor: '#2f4a2a', accent: '#c2a36b', pattern: 'camo', unlock: { stat: 'wins', value: 1 }, hint: 'Win a run' },
     { id: 'paladin', name: 'PALADIN', color: '#f4f4f4', darkColor: '#94b0c2', accent: '#ffcd75', pattern: 'cross', unlock: { stat: 'kills', value: 150 }, hint: 'Defeat 150 enemies' },
     { id: 'sovereign', name: 'SOVEREIGN', color: '#7d4ec2', darkColor: '#3a1e6b', accent: '#ffcd75', pattern: 'crown', unlock: { stat: 'bestRiskWin', value: 6 }, hint: 'Win on Risk 6+' },
+    { id: 'master', name: 'MASTER', color: '#ffcd75', darkColor: '#b86f2a', accent: '#f4f4f4', pattern: 'chevron', unlock: { stat: 'masteryLevel', value: 20 }, hint: 'Reach mastery 20' },
   ],
   juggernaut: [
     { id: 'default', name: 'IRONCLAD', pattern: 'rivets' },
     { id: 'boulder', name: 'BOULDER', color: '#8b8d98', darkColor: '#4a4c57', accent: '#2c2e38', pattern: 'cracks', unlock: { stat: 'wins', value: 1 }, hint: 'Win a run' },
     { id: 'magma', name: 'MAGMA CORE', color: '#2c2230', darkColor: '#150f18', accent: '#ff7b2e', pattern: 'lava', unlock: { stat: 'bestHit', value: 70 }, hint: 'Deal 70+ damage in one hit' },
     { id: 'obsidian', name: 'OBSIDIAN KING', color: '#241a33', darkColor: '#0d0914', accent: '#c46fd6', pattern: 'crown', unlock: { stat: 'bestRiskWin', value: 6 }, hint: 'Win on Risk 6+' },
+    { id: 'master', name: 'MASTER', color: '#ffcd75', darkColor: '#b86f2a', accent: '#f4f4f4', pattern: 'rivets', unlock: { stat: 'masteryLevel', value: 20 }, hint: 'Reach mastery 20' },
   ],
   striker: [
     { id: 'default', name: 'EMBER', pattern: 'bolt' },
     { id: 'neon', name: 'NEON', color: '#ff4fa3', darkColor: '#8a1c5a', accent: '#73eff7', pattern: 'stripe', unlock: { stat: 'wins', value: 1 }, hint: 'Win a run' },
     { id: 'viper', name: 'VIPER', color: '#38b764', darkColor: '#14502c', accent: '#1a1c2c', pattern: 'scales', unlock: { stat: 'pierceHits', value: 60 }, hint: 'Pierce 60 enemies with Railgun' },
     { id: 'comet', name: 'COMET', color: '#e8f6ff', darkColor: '#6d9dc5', accent: '#41a6f6', pattern: 'streak', unlock: { stat: 'bestRiskWin', value: 6 }, hint: 'Win on Risk 6+' },
+    { id: 'master', name: 'MASTER', color: '#ffcd75', darkColor: '#b86f2a', accent: '#f4f4f4', pattern: 'bolt', unlock: { stat: 'masteryLevel', value: 20 }, hint: 'Reach mastery 20' },
   ],
   cluster: [
     { id: 'default', name: 'SUNBURST', pattern: 'dots' },
     { id: 'confetti', name: 'CONFETTI', color: '#f4f4f4', darkColor: '#94b0c2', accent: '#ff5d73', pattern: 'confetti', unlock: { stat: 'wins', value: 1 }, hint: 'Win a run' },
     { id: 'honeycomb', name: 'HONEYCOMB', color: '#f0a830', darkColor: '#8a4d10', accent: '#5a3008', pattern: 'checker', unlock: { stat: 'shardHits', value: 150 }, hint: 'Land 150 fragment hits' },
     { id: 'supernova', name: 'SUPERNOVA', color: '#ff5d73', darkColor: '#6b1530', accent: '#ffcd75', pattern: 'star', unlock: { stat: 'bestRiskWin', value: 6 }, hint: 'Win on Risk 6+' },
+    { id: 'master', name: 'MASTER', color: '#ffcd75', darkColor: '#b86f2a', accent: '#f4f4f4', pattern: 'dots', unlock: { stat: 'masteryLevel', value: 20 }, hint: 'Reach mastery 20' },
   ],
   graviton: [
     { id: 'default', name: 'NEBULA', pattern: 'orbit' },
     { id: 'horizon', name: 'EVENT HORIZON', color: '#14121f', darkColor: '#050409', accent: '#ffcd75', pattern: 'ring', unlock: { stat: 'wins', value: 1 }, hint: 'Win a run' },
     { id: 'aurora', name: 'AURORA', color: '#38d9b0', darkColor: '#1b5e7a', accent: '#a7f070', pattern: 'wave', unlock: { stat: 'diveHits', value: 80 }, hint: 'Land 80 diving hits' },
     { id: 'quasar', name: 'QUASAR', color: '#f4f4f4', darkColor: '#7d4ec2', accent: '#c46fd6', pattern: 'star', unlock: { stat: 'bestRiskWin', value: 6 }, hint: 'Win on Risk 6+' },
+    { id: 'master', name: 'MASTER', color: '#ffcd75', darkColor: '#b86f2a', accent: '#f4f4f4', pattern: 'orbit', unlock: { stat: 'masteryLevel', value: 20 }, hint: 'Reach mastery 20' },
   ],
 };
 

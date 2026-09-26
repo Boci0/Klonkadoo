@@ -35,20 +35,12 @@
         </div>
         <div class="menu-buttons">
           <button id="btn-play" class="btn btn-primary btn-large btn-menu">&#9654; START OPERATION</button>
-          <div class="save-btn-row">
-            <button id="btn-tech" class="btn btn-accent btn-menu">TECH TREE</button>
-            <button id="btn-gear" class="btn btn-accent btn-menu">MECH</button>
-            <button id="btn-medals" class="btn btn-accent btn-menu">MEDALS</button>
+          <div class="menu-tiles">
+            <button id="btn-tech" class="menu-tile" data-icon="tp"><span>TECH</span></button>
+            <button id="btn-gear" class="menu-tile" data-icon="gun"><span>RIG</span></button>
+            <button id="btn-medals" class="menu-tile" data-icon="star"><span>MEDALS</span></button>
           </div>
-          <div class="save-btn-row">
-            <button id="btn-export-save" class="btn btn-outline btn-menu">EXPORT SAVE</button>
-            <button id="btn-import-save" class="btn btn-outline btn-menu">IMPORT SAVE</button>
-          </div>
-          <div class="save-btn-row">
-            <button id="btn-settings" class="btn btn-outline btn-menu">SETTINGS</button>
-            <button id="btn-credits" class="btn btn-outline btn-menu">CREDITS</button>
-          </div>
-          <button id="btn-reset-data" class="btn btn-danger btn-menu">RESET DATA</button>
+          <button id="btn-settings" class="btn btn-outline btn-menu">SETTINGS</button>
         </div>
       </div>
     </section>
@@ -64,6 +56,19 @@
       <div class="screen-footer">
         <button id="tech-apply" class="tech-apply" type="button"></button>
       </div>
+    </section>
+
+    <!-- ===== RIG ===== -->
+    <section id="screen-rig" class="screen hidden">
+      <div class="screen-header">
+        <button id="btn-rig-back" class="btn btn-outline btn-back">&#9664; BACK</button>
+        <div class="rig-tabs">
+          <button data-rtab="loadout">RIG</button>
+          <button data-rtab="pods">PODS</button>
+        </div>
+        <div id="rig-wallet" class="rig-wallet"></div>
+      </div>
+      <div id="rig-body" class="rig-body"></div>
     </section>
 
     <!-- ===== RUN MAP ===== -->

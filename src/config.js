@@ -173,9 +173,22 @@ export const CONFIG = {
       { name: 'INFLATION', desc: 'Shop prices +25%.', plusCost: 25 },
       { name: 'ELITE GUARD', desc: 'Elites & bosses +25% HP.', eliteHpPct: 25 },
       { name: 'GLASS ARMOR', desc: 'You take +15% damage.', plusDmgTaken: 15 },
-      { name: 'VETERANS', desc: 'Enemies +15% HP and ATK.', hpPct: 15, atkPct: 15 },
-      { name: 'NIGHTMARE', desc: 'Elites & bosses +25% ATK, enemies aim even better.', eliteAtkPct: 25, aiBonus: 0.08 },
+      { name: 'VETERANS', desc: 'Enemies +20% HP and ATK.', hpPct: 20, atkPct: 20 },
+      { name: 'NIGHTMARE', desc: 'Elites & bosses +35% ATK, enemies aim even better.', eliteAtkPct: 35, aiBonus: 0.08 },
     ],
+    // Hidden Risk 11: unlocked by winning on Risk 10 without fighting a
+    // single common hostile (elites, mini-bosses and the boss only).
+    // Hinted at in the Risk panel, the RULES list and the results screen.
+    secret: {
+      name: 'OBLIVION',
+      desc: 'Every hostile is an elite. Enemies +30% HP, +25% ATK, pierce half your DEF, guns reload faster.',
+      hint: 'Win on Risk 10 without fighting a common hostile. Sneaking past is fine.',
+      hpPct: 30,
+      atkPct: 25,
+      defPierce: 0.5,
+      allElite: true,
+      gunCdCut: 1,
+    },
   },
   // Multi-enemy waves per node type + floor (1 to 3 enemies per stage)
   enemyCounts: {
@@ -303,7 +316,7 @@ export const CONFIG = {
       5: { combat: 3, encounter: 2, shop: 2, rest: 2, minigame: 1, elite: 3, treasure: 1, gamble: 1, shrine: 1 },
     },
     rewards: {
-      combat: { gold: 12, tech: 1, healMax: 20 },
+      combat: { gold: 16, tech: 1, healMax: 20 }, // + most Keys and a clean-win bonus (main.js)
       elite: { gold: 25, tech: 2, healMax: 30 },
       miniboss: { gold: 50, tech: 4, healMax: 30, relics: 2 },
       boss: { gold: 40, tech: 4, healMax: 50 },
@@ -331,43 +344,42 @@ export const CONFIG = {
   ],
 
   // --- Permanent Tech Tree (bought with Tech Points) ---
-  // Each branch is a real tree: one root, two paths that split off it, and a
-  // capstone that needs both paths. `col`/`row` place the node on the
-  // branch graph (cols 0-3 left to right, rows 0-2 top to bottom);
-  // `requires` lists nodes that need at least one rank first.
+  // Skills and mechanics only: raw stats (HP, ATK, DEF, crit) come from
+  // Rig gear and ball mastery levels. Each branch: a root, two paths that
+  // split off it, and a capstone that needs both. `col`/`row` place the
+  // node on the branch graph; `requires` needs at least one rank first.
   techTree: {
-    // ATK branch
-    atk_sharpshooter: { id: 'atk_sharpshooter', label: 'Sharpshooter', desc: 'Increases damage dealt (+3% per rank)', maxLevel: 10, costs: [6, 10, 14, 18, 22, 28, 34, 40, 48, 56], branch: 'atk', icon: 'DMG', col: 0, row: 1, requires: [] },
-    atk_base_power: { id: 'atk_base_power', label: 'Base ATK Core', desc: 'Increases Base ATK (+2.5% damage per rank)', maxLevel: 10, costs: [8, 12, 16, 20, 26, 32, 40, 48, 58, 70], branch: 'atk', icon: 'ATK', col: 1, row: 0, requires: ['atk_sharpshooter'] },
-    atk_armor_pen: { id: 'atk_armor_pen', label: 'Armor Penetration', desc: 'Direct ball impacts ignore enemy DEF (+8% per rank)', maxLevel: 10, costs: [10, 14, 18, 24, 30, 38, 46, 56, 68, 82], branch: 'atk', icon: 'PEN', col: 1, row: 2, requires: ['atk_sharpshooter'] },
-    atk_risk_resonance: { id: 'atk_risk_resonance', label: 'Risk Resonance', desc: 'Deals extra damage per Risk Level (+0.5% per rank)', maxLevel: 10, costs: [12, 16, 20, 26, 34, 42, 52, 64, 78, 94], branch: 'atk', icon: 'RSK', col: 2, row: 0, requires: ['atk_base_power'] },
-    atk_ballistic_apex: { id: 'atk_ballistic_apex', label: 'Ballistic Apex', desc: 'Fast impacts hit harder: up to +2% damage per rank at top speed', maxLevel: 10, costs: [14, 18, 24, 30, 38, 48, 60, 74, 90, 108], branch: 'atk', icon: 'APX', col: 2, row: 2, requires: ['atk_armor_pen'] },
-    atk_crit: { id: 'atk_crit', label: 'Critical Mass', desc: 'CAPSTONE: +6% critical hit chance per rank (crits deal 1.75x)', maxLevel: 3, costs: [40, 70, 110], branch: 'atk', icon: 'CRT', col: 3, row: 1, requires: ['atk_risk_resonance', 'atk_ballistic_apex'], capstone: true },
+    // SKILL branch: your ball's signature skill
+    skl_potency: { id: 'skl_potency', label: 'Skill Potency', desc: 'Your class skill is 8% stronger per rank', maxLevel: 5, costs: [8, 12, 16, 22, 30], branch: 'skl', icon: 'POT', col: 0, row: 1, requires: [] },
+    skl_recharge: { id: 'skl_recharge', label: 'Quick Recharge', desc: 'Skill cooldown -1 turn per rank', maxLevel: 2, costs: [30, 60], branch: 'skl', icon: 'CD', col: 1, row: 0, requires: ['skl_potency'] },
+    skl_echo: { id: 'skl_echo', label: 'Echo', desc: '12% chance per rank that using your skill costs no cooldown', maxLevel: 3, costs: [14, 22, 32], branch: 'skl', icon: 'ECH', col: 1, row: 2, requires: ['skl_potency'] },
+    skl_opener: { id: 'skl_opener', label: 'Opening Gambit', desc: 'The first skill you use each battle is empowered', maxLevel: 1, costs: [40], branch: 'skl', icon: 'OPN', col: 2, row: 0, requires: ['skl_recharge'] },
+    skl_momentum: { id: 'skl_momentum', label: 'Momentum', desc: 'Each enemy you defeat cuts your skill cooldown by 1 turn', maxLevel: 1, costs: [40], branch: 'skl', icon: 'MOM', col: 2, row: 2, requires: ['skl_echo'] },
+    skl_overload: { id: 'skl_overload', label: 'Overload', desc: 'CAPSTONE: your skill is always empowered', maxLevel: 1, costs: [120], branch: 'skl', icon: 'OVL', col: 3, row: 1, requires: ['skl_opener', 'skl_momentum'], capstone: true },
 
-    // VITALITY branch
-    vit_health: { id: 'vit_health', label: 'Vitality', desc: 'Increases Max HP (+10 HP per rank)', maxLevel: 10, costs: [6, 10, 14, 18, 22, 28, 34, 40, 48, 56], branch: 'vit', icon: 'HP', col: 0, row: 1, requires: [] },
-    vit_overflow_shield: { id: 'vit_overflow_shield', label: 'Overflow Shielding', desc: 'Healing past max HP becomes a shield that soaks damage (cap +5% max HP per rank)', maxLevel: 10, costs: [8, 12, 16, 20, 26, 32, 40, 48, 58, 70], branch: 'vit', icon: 'SHD', col: 1, row: 0, requires: ['vit_health'] },
-    vit_emergency_medkit: { id: 'vit_emergency_medkit', label: 'Emergency Medkit', desc: 'Once per battle, heal when you drop below 25% HP (+5 HP per rank)', maxLevel: 10, costs: [10, 14, 18, 24, 30, 38, 46, 56, 68, 82], branch: 'vit', icon: 'MED', col: 1, row: 2, requires: ['vit_health'] },
-    vit_titan_core: { id: 'vit_titan_core', label: 'Titan Core', desc: 'Safe Zone nodes restore more HP (+5% per rank) & gain Max HP (+2 per rank)', maxLevel: 10, costs: [12, 16, 20, 26, 34, 42, 52, 64, 78, 94], branch: 'vit', icon: 'TTN', col: 2, row: 0, requires: ['vit_overflow_shield'] },
-    vit_vampiric_vitality: { id: 'vit_vampiric_vitality', label: 'Vampiric Vitality', desc: 'Heal for a share of the damage you deal (+1.5% per rank, affected by Risk)', maxLevel: 10, costs: [14, 18, 24, 30, 38, 48, 60, 74, 90, 108], branch: 'vit', icon: 'VMP', col: 2, row: 2, requires: ['vit_emergency_medkit'] },
-    vit_second_wind: { id: 'vit_second_wind', label: 'Second Wind', desc: 'CAPSTONE: once per run, a lethal blow leaves you at 20% HP with a Forcefield (+15% HP per extra rank)', maxLevel: 2, costs: [50, 90], branch: 'vit', icon: 'SWD', col: 3, row: 1, requires: ['vit_titan_core', 'vit_vampiric_vitality'], capstone: true },
+    // BARRIER branch: the wall you place with button 2
+    bar_reinforce: { id: 'bar_reinforce', label: 'Reinforced Wall', desc: 'Your barriers have +25% HP per rank', maxLevel: 4, costs: [6, 10, 16, 24], branch: 'bar', icon: 'WAL', col: 0, row: 1, requires: [] },
+    bar_quick: { id: 'bar_quick', label: 'Rapid Deploy', desc: 'Barrier cooldown -1 turn per rank', maxLevel: 2, costs: [24, 48], branch: 'bar', icon: 'CD', col: 1, row: 0, requires: ['bar_reinforce'] },
+    bar_spikes: { id: 'bar_spikes', label: 'Spiked Wall', desc: 'Enemies that hit your barrier take 6 damage per rank', maxLevel: 3, costs: [12, 20, 30], branch: 'bar', icon: 'SPK', col: 1, row: 2, requires: ['bar_reinforce'] },
+    bar_twin: { id: 'bar_twin', label: 'Twin Walls', desc: 'Keep one more barrier on the field', maxLevel: 1, costs: [45], branch: 'bar', icon: 'x2', col: 2, row: 0, requires: ['bar_quick'] },
+    bar_bulwark: { id: 'bar_bulwark', label: 'Bulwark', desc: 'While one of your barriers stands, take 6% less damage per rank', maxLevel: 3, costs: [16, 26, 38], branch: 'bar', icon: 'BLW', col: 2, row: 2, requires: ['bar_spikes'] },
+    bar_aegis: { id: 'bar_aegis', label: 'Aegis Wall', desc: 'CAPSTONE: placing a barrier also gives you a Forcefield', maxLevel: 1, costs: [110], branch: 'bar', icon: 'AEG', col: 3, row: 1, requires: ['bar_twin', 'bar_bulwark'], capstone: true },
 
-    // DEFENSE branch
-    def_aegis: { id: 'def_aegis', label: 'Aegis', desc: 'Increases Base DEF (+1 DEF per rank)', maxLevel: 10, costs: [6, 10, 14, 18, 22, 28, 34, 40, 48, 56], branch: 'def', icon: 'DEF', col: 0, row: 1, requires: [] },
-    def_matrix_pct: { id: 'def_matrix_pct', label: 'Aegis Amplifier', desc: 'Increases Total DEF (+3% DEF per rank)', maxLevel: 10, costs: [8, 12, 16, 20, 26, 32, 40, 48, 58, 70], branch: 'def', icon: 'AMP', col: 1, row: 0, requires: ['def_aegis'] },
-    def_kinetic_dampener: { id: 'def_kinetic_dampener', label: 'Kinetic Dampener', desc: 'Take less damage from every source (-2% per rank)', maxLevel: 10, costs: [12, 16, 22, 28, 36, 46, 58, 72, 88, 106], branch: 'def', icon: 'KIN', col: 1, row: 1, requires: ['def_aegis'] },
-    def_thorns_resist: { id: 'def_thorns_resist', label: 'Thorns Dampener', desc: 'Reduces damage reflected by Wall Units (-8% per rank)', maxLevel: 10, costs: [10, 14, 18, 24, 30, 38, 46, 56, 68, 82], branch: 'def', icon: 'THN', col: 1, row: 2, requires: ['def_aegis'] },
-    def_forcefield: { id: 'def_forcefield', label: 'Forcefield Barrier', desc: 'Start battles with a bubble that blocks 1 hit; it recharges every 13 turns (-1 turn per rank, min 5)', maxLevel: 10, costs: [12, 16, 20, 26, 34, 42, 52, 64, 78, 94], branch: 'def', icon: 'FLD', col: 2, row: 0, requires: ['def_matrix_pct'] },
-    def_fortified_matrix: { id: 'def_fortified_matrix', label: 'Fortified Matrix', desc: 'Heavy hits (20+ DMG) grant bonus DEF for the battle (+0.5 DEF per rank, 3 stacks max)', maxLevel: 10, costs: [14, 18, 24, 30, 38, 48, 60, 74, 90, 108], branch: 'def', icon: 'MTX', col: 2, row: 2, requires: ['def_thorns_resist'] },
-    def_counter: { id: 'def_counter', label: 'Counter Plating', desc: 'CAPSTONE: enemies that hit you take 15% of the damage back (+10% per extra rank)', maxLevel: 3, costs: [45, 75, 110], branch: 'def', icon: 'CTR', col: 3, row: 1, requires: ['def_forcefield', 'def_fortified_matrix'], capstone: true },
+    // SURVIVAL branch: effects that save you, not bigger numbers
+    vit_emergency_medkit: { id: 'vit_emergency_medkit', label: 'Emergency Medkit', desc: 'Once per battle, heal when you drop below 25% HP (+10 HP per rank)', maxLevel: 5, costs: [6, 10, 14, 20, 28], branch: 'sur', icon: 'MED', col: 0, row: 1, requires: [] },
+    vit_overflow_shield: { id: 'vit_overflow_shield', label: 'Overflow Shielding', desc: 'Healing past max HP becomes a shield (cap +10% max HP per rank)', maxLevel: 5, costs: [8, 12, 18, 26, 36], branch: 'sur', icon: 'SHD', col: 1, row: 0, requires: ['vit_emergency_medkit'] },
+    def_forcefield: { id: 'def_forcefield', label: 'Forcefield', desc: 'Start battles with a bubble that blocks 1 hit; recharges every 11 turns (-1 per rank)', maxLevel: 5, costs: [12, 18, 26, 36, 48], branch: 'sur', icon: 'FLD', col: 1, row: 2, requires: ['vit_emergency_medkit'] },
+    vit_vampiric_vitality: { id: 'vit_vampiric_vitality', label: 'Vampiric', desc: 'Heal for 2% of the damage you deal per rank', maxLevel: 5, costs: [14, 20, 28, 38, 50], branch: 'sur', icon: 'VMP', col: 2, row: 0, requires: ['vit_overflow_shield'] },
+    def_counter: { id: 'def_counter', label: 'Counter Plating', desc: 'Enemies that hit you take 10% of the damage back per rank', maxLevel: 3, costs: [30, 50, 80], branch: 'sur', icon: 'CTR', col: 2, row: 2, requires: ['def_forcefield'] },
+    vit_second_wind: { id: 'vit_second_wind', label: 'Second Wind', desc: 'CAPSTONE: once per run, a lethal blow leaves you at 20% HP with a Forcefield (+15% HP per extra rank)', maxLevel: 2, costs: [50, 90], branch: 'sur', icon: 'SWD', col: 3, row: 1, requires: ['vit_vampiric_vitality', 'def_counter'], capstone: true },
 
-    // TACTICS branch
-    tac_war_chest: { id: 'tac_war_chest', label: 'War Chest', desc: 'Increases Starting Gold (+8 Gold per rank)', maxLevel: 10, costs: [6, 10, 14, 18, 22, 28, 34, 40, 48, 56], branch: 'tac', icon: 'GLD', col: 0, row: 1, requires: [] },
-    tac_merchant: { id: 'tac_merchant', label: 'Merchant Network', desc: 'Shop prices cost less (-2% per rank) & Rerolls cost less (-5% per rank)', maxLevel: 10, costs: [8, 12, 16, 20, 26, 32, 40, 48, 58, 70], branch: 'tac', icon: 'SHP', col: 1, row: 0, requires: ['tac_war_chest'] },
-    tac_logistics: { id: 'tac_logistics', label: 'Field Logistics', desc: 'Skill & barrier cooldowns: -1 turn at rank 5, -2 turns at rank 10', maxLevel: 10, costs: [10, 14, 18, 24, 30, 38, 46, 56, 68, 82], branch: 'tac', icon: 'LOG', col: 1, row: 2, requires: ['tac_war_chest'] },
-    tac_intellect: { id: 'tac_intellect', label: 'Tactical Intellect', desc: 'Earn extra Tech Points from all sources (+3% per rank)', maxLevel: 10, costs: [12, 16, 20, 26, 34, 42, 52, 64, 78, 94], branch: 'tac', icon: 'INT', col: 2, row: 0, requires: ['tac_merchant'] },
-    tac_relic_synergy: { id: 'tac_relic_synergy', label: 'Relic Synergy', desc: 'Per relic held: +0.2% ATK, +0.2% Max HP and +0.03 DEF per rank', maxLevel: 10, costs: [14, 18, 24, 30, 38, 48, 60, 74, 90, 108], branch: 'tac', icon: 'SYN', col: 2, row: 2, requires: ['tac_logistics'] },
-    tac_supply_drop: { id: 'tac_supply_drop', label: 'Supply Drop', desc: 'CAPSTONE: start every run with 1 random relic per rank', maxLevel: 2, costs: [55, 100], branch: 'tac', icon: 'SUP', col: 3, row: 1, requires: ['tac_intellect', 'tac_relic_synergy'], capstone: true },
+    // TACTICS branch: the run around the fights
+    tac_war_chest: { id: 'tac_war_chest', label: 'War Chest', desc: 'Start runs with +10 gold per rank', maxLevel: 5, costs: [6, 10, 14, 20, 28], branch: 'tac', icon: 'GLD', col: 0, row: 1, requires: [] },
+    tac_merchant: { id: 'tac_merchant', label: 'Merchant Network', desc: 'Shop prices -3% and rerolls -8% per rank', maxLevel: 5, costs: [8, 12, 18, 26, 36], branch: 'tac', icon: 'SHP', col: 1, row: 0, requires: ['tac_war_chest'] },
+    tac_scout: { id: 'tac_scout', label: 'Scout', desc: '+1 move on every floor', maxLevel: 1, costs: [60], branch: 'tac', icon: 'MOV', col: 1, row: 2, requires: ['tac_war_chest'] },
+    tac_intellect: { id: 'tac_intellect', label: 'Tactical Intellect', desc: '+5% Tech Points from battles per rank', maxLevel: 5, costs: [10, 16, 24, 34, 46], branch: 'tac', icon: 'INT', col: 2, row: 0, requires: ['tac_merchant'] },
+    tac_keymaster: { id: 'tac_keymaster', label: 'Keymaster', desc: '+1 Key per fight won, per rank', maxLevel: 2, costs: [30, 60], branch: 'tac', icon: 'KEY', col: 2, row: 2, requires: ['tac_scout'] },
+    tac_supply_drop: { id: 'tac_supply_drop', label: 'Supply Drop', desc: 'CAPSTONE: start every run with 1 random relic per rank', maxLevel: 2, costs: [55, 100], branch: 'tac', icon: 'SUP', col: 3, row: 1, requires: ['tac_intellect', 'tac_keymaster'], capstone: true },
   },
 
   // --- Roguelike boons (collected as map rewards) ---
