@@ -1,0 +1,11 @@
+# Ignore third-party dependencies and build outputs
+node_modules/
+dist/
+
+# Ignore lockfiles and static styles to save tokens
+package-lock.json
+styles.css
+
+# Optional: Ignore documentation and config if you don't need the AI to edit them
+README.md
+vite.config.js
