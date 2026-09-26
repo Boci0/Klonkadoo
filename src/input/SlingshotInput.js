@@ -89,11 +89,12 @@ export class SlingshotInput {
       this.placementMode = null;
       return;
     }
-    if (!this.active) return;
+    if (!this.active || this.dragging) return; // a second finger never restarts the aim
     try {
       e.target?.setPointerCapture?.(e.pointerId);
     } catch (_) {}
     this.dragging = true;
+    this.dragPointer = e.pointerId;
     this.cancelArmed = false;
     this.inCancelZone = true;
     this.dragStart = pos;
@@ -108,13 +109,14 @@ export class SlingshotInput {
       this.placementPos = pos;
       return;
     }
-    if (!this.dragging) return;
+    if (!this.dragging || e.pointerId !== this.dragPointer) return;
     this.dragCurrent = pos;
     this._updateAim();
   }
 
   _onPointerUp(e) {
-    if (!this.dragging) return;
+    // Only the finger that started the aim can fire it
+    if (!this.dragging || (e?.pointerId !== undefined && e.pointerId !== this.dragPointer)) return;
     this.dragging = false;
     try {
       if (e && e.pointerId !== undefined) {
@@ -133,7 +135,8 @@ export class SlingshotInput {
     this.trajectory = [];
   }
 
-  _onPointerCancel() {
+  _onPointerCancel(e) {
+    if (e?.pointerId !== undefined && this.dragging && e.pointerId !== this.dragPointer) return;
     this.dragging = false;
     this.launchVelocity = null;
     this.trajectory = [];

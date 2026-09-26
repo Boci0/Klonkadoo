@@ -29,6 +29,7 @@ import { withMech, tokenReward, enemyWeapons, CLEAN_WIN_KEYS } from './meta/Mech
 import { partIcon } from './rendering/pixelIcons.js';
 import { ballDataUrl, CLASS_PATTERN } from './rendering/ballSprite.js';
 import { withMastery, masteryLevel, runXp } from './meta/Mastery.js';
+import { writeRun, readRun, clearRun, hasSavedRun, savedRunInfo, patchRunQuests } from './rogue/RunSave.js';
 
 // Canvas text only uses a web font once it's loaded: fetch the digit face up front
 document.fonts?.load('16px "Pixel Digits"', '0123456789').catch(() => {});
@@ -56,7 +57,6 @@ let questSystem = null;
 let runSeed = 1;
 let currentFloorView = 0;
 let pendingBoon = null;
-let goldSpentTotal = 0;
 let lostAnyCombat = false;
 let activeNode = null; // node currently being resolved
 const BASE_GRAVITY = CONFIG.world.gravity; // operation conditions scale this per run
@@ -102,7 +102,12 @@ window.addEventListener('pointerdown', () => soundEngine.unlock(), { capture: tr
 // ---------- UI callbacks ----------
 
 const ui = new UIManager({
-  onPlay: () => ui.showBallSelect((ballType, skin) => startNewRun(ballType, skin)),
+  onPlay: () => {
+    if (hasSavedRun()) resumeSavedRun();
+    else ui.showBallSelect((ballType, skin) => startNewRun(ballType, skin));
+  },
+  savedRun: savedRunInfo,
+  onDataReset: clearRun,
   onOpenTech: () => {
     setState(State.TECH);
     ui.showTech(techTree, saveSystem);
@@ -152,9 +157,8 @@ const ui = new UIManager({
     if (!node || node.type !== 'shop') return;
     const cost = rerollCost();
     const refreshesLeft = node.refreshesLeft ?? 3;
-    if (refreshesLeft > 0 && run.gold >= cost) {
-      run.gold -= cost;
-      goldSpentTotal += cost;
+    if (refreshesLeft > 0 && run.spendGold(cost)) {
+      reportQuest('gold_spent', { totalSpent: run.totalGoldSpent });
       node.refreshesLeft = refreshesLeft - 1;
       node.shopItems = rollShopCollectibles(run, 3);
       ui.showShop(run, node.shopItems, node.refreshesLeft, cost);
@@ -283,7 +287,7 @@ function bindBarrierDrag(btn) {
   btn.addEventListener('pointerdown', (e) => {
     if (state !== State.BATTLE || drag) return;
     const ab = game.abilities?.barrier;
-    if (!game.running || !ab?.ready || game.playerBarrierCount >= CONFIG.abilities.barrier.maxActive) {
+    if (!game.running || battlePaused || !ab?.ready || game.playerBarrierCount >= game._maxBarriers()) {
       soundEngine.play('error');
       return;
     }
@@ -372,16 +376,48 @@ function updateAbilityHud() {
 
 // ---------- Run flow ----------
 
+function applyConditionGravity(condId) {
+  CONFIG.world.gravity = BASE_GRAVITY * (condId === 'heavy_gravity' ? 1.2 : condId === 'low_gravity' ? 0.8 : 1);
+}
+
+/** Report a quest event; newly completed quests are written into the saved run at once (their TP is already paid). */
+function reportQuest(type, data) {
+  if (!questSystem) return;
+  const newly = questSystem.reportCombatEvent(type, data);
+  if (newly.length) patchRunQuests(questSystem.quests);
+}
+
+/**
+ * Save the run so it survives the app being closed. `resume` says what
+ * happens on reload: 'map' (default), 'battle' (restart that fight),
+ * 'combat' (fight won/lost: pay out and continue), 'minigame', 'sector',
+ * 'descend'.
+ */
+function persistRun(resume = 'map', extra = {}) {
+  if (!run || run.runOver || !map) return;
+  writeRun({
+    run,
+    map,
+    quests: questSystem?.quests || [],
+    runSeed,
+    currentFloorView,
+    lostAnyCombat,
+    resume,
+    ...extra,
+  });
+}
+
 function startNewRun(ballType = 'vanguard', skin = 'default') {
   runSeed = Math.floor(Math.random() * 100000) + 1;
   saveSystem.setSelectedBall(ballType); // Risk is per ball
   const perm = withMastery(withMech(techTree.getPermanentStats(), saveSystem.getLoadoutParts()), masteryLevel(saveSystem.getMasteryXp(ballType)).level);
   run = new RunState(perm, ballType);
   run.skin = skin;
+  run.risk = saveSystem.getDifficultyLevel(); // locked for the run (restored on resume)
   // One random operation condition per run
   const cond = CONFIG.runConditions[Math.floor(Math.random() * CONFIG.runConditions.length)];
   run.condition = cond.id;
-  CONFIG.world.gravity = BASE_GRAVITY * (cond.id === 'heavy_gravity' ? 1.2 : cond.id === 'low_gravity' ? 0.8 : 1);
+  applyConditionGravity(cond.id);
   map = new RogueMap(runSeed);
   // Risk 11 (ABYSS): every common hostile on the map becomes an elite
   if (saveSystem.getRiskData().allElite) {
@@ -389,11 +425,12 @@ function startNewRun(ballType = 'vanguard', skin = 'default') {
   }
   run.normalFights = 0; // the secret Risk unlock needs a run with none
   questSystem = new QuestSystem(saveSystem, runSeed);
+  run.questSystem = questSystem; // the Status drawer lists these
   currentFloorView = 0;
   pendingBoon = null;
-  goldSpentTotal = 0;
   lostAnyCombat = false;
   activeNode = null;
+  prevPosition = null;
 
   // Enter floor 0
   run.floor = 0;
@@ -410,6 +447,76 @@ function startNewRun(ballType = 'vanguard', skin = 'default') {
   for (let i = 0; i < (run.permanent?.supplyDropRelics || 0); i++) rewardRandomCollectible('SUPPLY DROP');
   ui.updateRunHud(run);
   ui.showCondition(cond);
+  persistRun();
+}
+
+/** Pick the saved run back up exactly where it was left (see persistRun). */
+function resumeSavedRun() {
+  let s = null;
+  try {
+    s = readRun();
+  } catch (e) {
+    console.warn('Saved run unreadable:', e);
+  }
+  if (!s) {
+    clearRun();
+    soundEngine.play('error');
+    ui.toast('<span class="feed-enemy-ability">SAVED RUN WAS DAMAGED AND COULD NOT BE LOADED</span>');
+    ui.showMenu(saveSystem.getProfile(), saveSystem.getMeta());
+    setupRiskSlider();
+    return;
+  }
+  run = s.run;
+  map = s.map;
+  runSeed = s.runSeed;
+  currentFloorView = s.currentFloorView;
+  lostAnyCombat = s.lostAnyCombat;
+  questSystem = new QuestSystem(saveSystem, runSeed);
+  questSystem.quests = s.quests;
+  questSystem.completed = new Set(s.quests.filter((q) => q.completed).map((q) => q.id));
+  run.questSystem = questSystem;
+  saveSystem.setSelectedBall(run.ballType);
+  saveSystem.setDifficultyLevel(run.risk || 0, run.ballType);
+  applyConditionGravity(run.condition);
+  pendingBoon = null;
+  activeNode = null;
+  prevPosition = null;
+  mapRenderer?.resetZoom?.();
+
+  setState(State.RUN_MAP);
+  ui.showRunScreen(run, map, run.floor);
+  buildFloorTabs();
+  soundEngine.play('confirm');
+
+  switch (s.resume) {
+    case 'battle':
+      if (!s.node) break;
+      prevPosition = s.prevId ? { id: s.prevId, node: s.prevNode } : null;
+      activeNode = s.node;
+      run.currentNodeId = s.node.id;
+      run.currentNode = s.node;
+      startCombat(s.node);
+      return;
+    case 'combat':
+      pendingBoon = CONFIG.boons.find((b) => b.id === s.pendingBoonId) || null;
+      continueAfterCombatReport();
+      return;
+    case 'minigame':
+      finishMinigame();
+      return;
+    case 'sector':
+      sectorCleared();
+      return;
+    case 'descend':
+      if (s.descend) {
+        ui.showDescend({ ...s.descend, rewards: null, hp: run.hp, maxHp: run.maxHp }, descend, () => endRun(true));
+        return;
+      }
+      break;
+    default:
+      break;
+  }
+  returnToMap();
 }
 
 function findEntryNode(floorIndex) {
@@ -634,6 +741,7 @@ function returnToMap() {
   ui.showRunScreen(run, map, run.floor);
   ui.closeModal();
   buildFloorTabs();
+  persistRun();
 }
 
 function advanceFloorIfNeeded() {
@@ -695,6 +803,7 @@ function advanceFloorIfNeeded() {
       run.floor += 1;
       run.resetFloorActions();
       currentFloorView = run.floor;
+      reportQuest('floor_reached', { floor: run.floor, lostAnyCombat });
       const entry = findEntryNode(run.floor);
       if (entry) {
         run.currentNodeId = entry.id;
@@ -716,6 +825,8 @@ function advanceFloorIfNeeded() {
 
 function startCombat(node) {
   ui.closeModal();
+  // Closing the app mid-fight restarts this fight from the top on resume
+  persistRun('battle', { node, prevId: prevPosition?.id ?? null });
   if (node.type === 'combat') run.normalFights += 1;
   setState(State.BATTLE);
   ui.showBattleHud(run, node.type);
@@ -809,7 +920,6 @@ function startCombat(node) {
   game.events.off('battle-end');
   game.events.off('player-dealt-damage');
   game.events.off('wall-bounce-hit');
-  game.events.off('battle-continue');
   game.events.off('ability-used');
   game.events.off('enemy-ability');
   game.events.off('enemy-dealt-damage');
@@ -824,20 +934,10 @@ function startCombat(node) {
     if (goldEl) goldEl.textContent = `${run.gold}G`;
   });
 
-  game.events.on('player-dealt-damage', ({ damage }) => {
-    questSystem.reportCombatEvent('damage_dealt', { amount: damage });
-    addFeedEntry(`<span class="feed-dmg">YOU dealt ${damage} DMG</span>`);
-  });
-  game.events.on('enemy-dealt-damage', ({ attacker, damage }) => {
-    const name = (attacker && attacker.displayName) ? attacker.displayName : 'HOSTILE';
-    addFeedEntry(`<span class="feed-enemy-dmg">${name} dealt ${damage} DMG</span>`);
-  });
-  game.events.on('wall-bounce-hit', ({ damage }) => {
-    questSystem.reportCombatEvent('wall_bounce_hit', { damageDealt: damage });
-    addFeedEntry(`<span class="feed-dmg">WALL-BOUNCE HIT ${damage} DMG</span>`);
-  });
+  // (Mid-battle events have no toast: damage already shows as floating numbers)
+  game.events.on('player-dealt-damage', ({ damage }) => reportQuest('damage_dealt', { amount: damage }));
+  game.events.on('wall-bounce-hit', ({ damage }) => reportQuest('wall_bounce_hit', { damageDealt: damage }));
   game.events.on('battle-end', ({ won }) => onBattleEnd(won, node));
-  game.events.on('battle-continue', () => continueAfterCombatReport());
   game.events.on('ability-used', ({ id, name }) => {
     game.renderer.addCallout(game.player, id === 'barrier' ? 'BARRIER UP' : name, id === 'barrier' ? '#41a6f6' : '#ffcd75');
   });
@@ -936,7 +1036,7 @@ function onBattleEnd(won, node) {
   }
 
   // Quest reporting
-  questSystem.reportCombatEvent('combat_end', {
+  reportQuest('combat_end', {
     won,
     turns: game.battleStats.turns,
     damageTaken,
@@ -1011,12 +1111,16 @@ function onBattleEnd(won, node) {
     if (node.type === 'boss') {
       run.floor5BossCleared = true;
       pendingBoon = null;
+      persistRun('sector');
       setTimeout(() => sectorCleared(), 1400);
       return;
     }
+    // Rewards are paid: a reload must continue from here, not replay the fight
+    persistRun('combat', { pendingBoonId: pendingBoon?.id });
     ui.showCombatResult(true, { gold, tech, heal, relic: rewardRelic, relics: rewardRelics, tokens, clean }, run);
   } else {
     ui.updateRunHud(run);
+    persistRun('combat');
     ui.showCombatResult(false, null, run);
   }
 }
@@ -1061,7 +1165,7 @@ function startEncounter(node) {
   const encounters = ENCOUNTERS;
   const enc = encounters[Math.floor(Math.random() * encounters.length)];
   node.encounter = enc;
-  ui.showEncounterOptions(enc);
+  ui.showEncounterOptions(enc, run);
 }
 
 function resolveEncounterChoice(idx) {
@@ -1134,10 +1238,8 @@ function buyRelicItem(relic) {
   if (!run || !relic) return false;
   if (run.hasRelic(relic.id)) return false;
   const cost = run.relicPrice(relic);
-  if (run.gold < cost) return false;
-  run.gold -= cost;
-  goldSpentTotal += cost;
-  questSystem.reportCombatEvent('gold_spent', { totalSpent: goldSpentTotal });
+  if (!run.spendGold(cost)) return false;
+  reportQuest('gold_spent', { totalSpent: run.totalGoldSpent });
   run.addRelic(relic.id);
   soundEngine.play('coin');
   ui.updateRunHud(run);
@@ -1167,10 +1269,12 @@ function resolveRest(choice) {
     }
 
     if (run.hasRelic('rel_golden_apple')) healAmount = run.maxHp; // heal to full
-    run.healFlat(healAmount, run.permanent);
+    const healed = run.healFlat(healAmount, run.permanent);
     soundEngine.play('heal');
-    questSystem.reportCombatEvent('rest', { healed: healAmount });
-    addFeedEntry(`<span class="feed-heal">SAFE ZONE: +${healAmount} HP RECOVERED</span>`);
+    // Recovery quest counts every Safe Zone heal across the run
+    run.maxRestHealed = (run.maxRestHealed || 0) + healed;
+    reportQuest('rest', { healed: run.maxRestHealed });
+    addFeedEntry(`<span class="feed-heal">SAFE ZONE: +${healed} HP RECOVERED</span>`);
   }
   map.visitNode(run.floor, run.currentNodeId);
   run.spendFloorAction();
@@ -1229,8 +1333,9 @@ function calculateAndApplyMinigameRewards(result) {
     addFeedEntry(`<span class="feed-gold">DRILL CONSOLATION: +${gold} GOLD</span>`);
   }
 
-  questSystem.reportCombatEvent('minigame', { perfect: isAllPerfect });
+  reportQuest('minigame', { perfect: isAllPerfect });
   ui.updateRunHud(run);
+  persistRun('minigame'); // rewards paid: a reload finishes the tile instead of replaying it
 
   return {
     gold,
@@ -1276,6 +1381,7 @@ function sectorCleared() {
     rewards = { keys, tp };
   }
   ui.updateRunHud(run);
+  persistRun('descend', { descend: { depth, next: depth + 1 } });
   ui.showDescend({ depth, next: depth + 1, rewards, hp: run.hp, maxHp: run.maxHp }, descend, () => endRun(true));
 }
 
@@ -1316,6 +1422,7 @@ function endRun(victory) {
   // Dying in the Abyss after clearing the sector still counts as a win
   const won = victory || !!run.victoryRecorded;
   run.runOver = true;
+  clearRun();
   run.runResult = won ? 'victory' : 'defeat';
   if (!run.victoryRecorded) {
     if (won) recordVictory();
@@ -1581,6 +1688,11 @@ function setupRiskSlider() {
   const rulesBtn = document.getElementById('risk-rules');
   if (!down || !up) return;
   const change = (delta) => {
+    // A suspended run keeps the Risk it started on
+    if (hasSavedRun()) {
+      soundEngine.play('error');
+      return;
+    }
     const next = saveSystem.getDifficultyLevel() + delta;
     const levels = CONFIG.risk.levels.length;
     // Past Risk 10 with the secret still sealed: a glitch and a clue
@@ -1625,15 +1737,18 @@ function updateRiskDisplay(val) {
     valEl.textContent = max === 0 ? 'LOCKED' : val > levels.length ? 'XI' : `${val}/${levels.length}`;
     valEl.classList.toggle('secret', val > levels.length);
   }
-  document.getElementById('risk-down').disabled = val <= 0;
+  const locked = hasSavedRun(); // a run in progress keeps its Risk
+  document.getElementById('risk-down').disabled = val <= 0 || locked;
   // At 10/10 the + stays live while the secret is sealed (it glitches and hints)
   const sealed = !secretOpen && max >= levels.length;
   const up = document.getElementById('risk-up');
-  up.disabled = val >= max && !sealed;
-  up.classList.toggle('risk-sealed', sealed && val >= max);
+  up.disabled = (val >= max && !sealed) || locked;
+  up.classList.toggle('risk-sealed', sealed && val >= max && !locked);
   document.querySelector('.difficulty-panel')?.classList.toggle('abyss', val > levels.length);
   if (!summary) return;
-  if (max === 0) {
+  if (locked) {
+    summary.innerHTML = '<span class="dim-text">Locked while a run is in progress</span>';
+  } else if (max === 0) {
     summary.innerHTML = `<span class="dim-text">Win a run with ${ball.name} to unlock</span>`;
   } else if (val === 0) {
     summary.innerHTML = '<span class="dim-text">No extra rules</span>';

@@ -1,4 +1,4 @@
-package com.muhdboci.slingshotops;
+package com.slingshotops.game;
 
 import android.os.Build;
 import android.os.Bundle;
@@ -17,6 +17,11 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         // Draw edge-to-edge; the web layout pads itself with safe-area insets
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        // The pixel UI is laid out in exact sizes: ignore the system font-size
+        // setting, which would otherwise scale WebView text and break layouts
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            getBridge().getWebView().getSettings().setTextZoom(100);
+        }
         hideSystemBars();
         requestHighestRefreshRate();
     }

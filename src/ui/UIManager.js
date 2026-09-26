@@ -7,6 +7,7 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
+import { Capacitor } from '@capacitor/core';
 import { NODE_STYLE } from '../rendering/RogueMapRenderer.js';
 
 const C = CONFIG.colors;
@@ -20,7 +21,7 @@ import { BALLS, skinsFor, isSkinUnlocked, skinProgress, skinColors, getSkill } f
 import { ballDataUrl, CLASS_PATTERN } from '../rendering/ballSprite.js';
 import { MEDALS, medalProgress, checkMedals } from '../meta/Medals.js';
 import { masteryLevel, MILESTONES, MAX_MASTERY } from '../meta/Mastery.js';
-import { getPart, loadoutTotals } from '../meta/Mech.js';
+import { getPart, loadoutTotals, CLEAN_WIN_KEYS } from '../meta/Mech.js';
 import { RigScreen } from './RigScreen.js';
 import { ico, partIcon } from '../rendering/pixelIcons.js';
 
@@ -52,6 +53,9 @@ export class UIManager {
     const btnPlay = document.getElementById('btn-play');
     const btnTech = document.getElementById('btn-tech');
     if (btnPlay) btnPlay.addEventListener('click', () => {
+      soundEngine.playUI();
+      // A suspended run resumes with the rig it started with
+      if (this.cb.savedRun?.()) return this.cb.onPlay();
       // An overloaded rig can't deploy
       const t = loadoutTotals(saveSystem.getLoadoutParts());
       if (t.overweight) {
@@ -87,6 +91,10 @@ export class UIManager {
     document.getElementById('btn-settings')?.addEventListener('click', () => {
       soundEngine.playUI();
       this.showSettings();
+    });
+    document.getElementById('btn-support')?.addEventListener('click', () => {
+      soundEngine.playUI();
+      this.showSupport();
     });
     this.updateAudioButtons();
 
@@ -397,6 +405,7 @@ export class UIManager {
         danger: true,
         onConfirm: () => {
           saveSystem.reset();
+          this.cb.onDataReset?.();
           location.reload();
         },
       }));
@@ -487,6 +496,7 @@ export class UIManager {
         return;
       }
       if (saveSystem.importSaveData(box.value)) {
+        this.cb.onDataReset?.(); // a run from the old save doesn't carry over
         status.textContent = 'SAVE RESTORED, RELOADING...';
         status.className = 'save-status ok';
         soundEngine.play('confirm');
@@ -497,6 +507,62 @@ export class UIManager {
         soundEngine.play('error');
       }
     });
+  }
+
+  // ---------- Support ----------
+
+  /**
+   * Ways to help the game. On Android there is deliberately no tip / donate
+   * link: Google Play only allows those through Play Billing. The web build
+   * shows CONFIG.support.donateUrl when one is set.
+   */
+  showSupport() {
+    const S = CONFIG.support;
+    const native = Capacitor.isNativePlatform();
+    const rows = [
+      { act: 'rate', ico: '&#9733;', title: native ? 'RATE ON GOOGLE PLAY' : 'GET IT ON GOOGLE PLAY', text: native ? 'A quick review helps more than anything.' : 'Play on your phone, and leave a review.' },
+      { act: 'share', ico: '&#10150;', title: 'SHARE THE GAME', text: 'Copy the link for a friend.' },
+      { act: 'mail', ico: '&#9993;', title: 'SEND FEEDBACK', text: 'Bugs, ideas, balance: I read it all.' },
+    ];
+    if (!native && S.donateUrl) rows.push({ act: 'donate', ico: '&#9829;', title: 'BUY ME A COFFEE', text: 'Optional. Keeps updates coming.' });
+
+    this.openModal('SUPPORT THE GAME', `
+      <p class="dim-text">Slingshot Ops is made by one person, with no ads and no purchases.</p>
+      <div class="support-list">${rows.map((r) => `
+        <button class="btn btn-outline support-row" data-support="${r.act}">
+          <i class="support-ico">${r.ico}</i><div><strong>${r.title}</strong><span>${r.text}</span></div>
+        </button>`).join('')}
+      </div>
+      <p class="save-status" id="support-status"></p>`,
+    '<div class="btn-row"><button class="btn btn-accent" data-act="close">CLOSE</button></div>');
+
+    const status = document.getElementById('support-status');
+    const open = (url) => {
+      // In the app, Capacitor hands any non-app URL to Android (Play Store, mail app, browser)
+      if (native || url.startsWith('mailto:')) window.location.href = url;
+      else window.open(url, '_blank', 'noopener');
+    };
+    const actions = {
+      rate: () => open(S.playUrl),
+      donate: () => open(S.donateUrl),
+      mail: () => open(`mailto:${S.feedbackEmail}?subject=${encodeURIComponent(`Slingshot Ops v${pkg.version} feedback`)}`),
+      share: async () => {
+        const link = native ? S.playUrl : S.webUrl;
+        try {
+          await navigator.clipboard.writeText(`Slingshot Ops, a pixel slingshot roguelike: ${link}`);
+          status.textContent = 'LINK COPIED';
+          status.className = 'save-status ok';
+        } catch {
+          status.textContent = link;
+          status.className = 'save-status';
+        }
+      },
+    };
+    this.modalBody.querySelectorAll('[data-support]').forEach((b) => b.addEventListener('click', () => {
+      soundEngine.playUI();
+      actions[b.dataset.support]?.();
+    }));
+    this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => this.closeModal());
   }
 
   // ---------- Credits / legal ----------
@@ -587,6 +653,19 @@ export class UIManager {
       `;
     }
     this._renderDaily();
+    // A run left open (app closed mid-run) resumes from the big button
+    const saved = this.cb.savedRun?.();
+    const play = document.getElementById('btn-play');
+    if (play) {
+      if (saved) {
+        const ball = BALLS.find((b) => b.id === saved.ballType);
+        const where = saved.floor >= CONFIG.map.floors ? `ABYSS ${saved.floor - CONFIG.map.floors + 1}` : `F${saved.floor + 1}`;
+        play.innerHTML = `&#9654; CONTINUE RUN <small>${where} · ${ball?.name || ''}</small>`;
+      } else {
+        play.innerHTML = '&#9654; START OPERATION';
+      }
+      play.classList.toggle('resume', !!saved);
+    }
     // Icon tiles: tech chip, your first gun, medal star (with counts)
     const owned = MEDALS.filter((m) => saveSystem.hasMedal(m.id)).length;
     const gun = saveSystem.getLoadoutParts().find((o) => o && getPart(o.id).type === 'weapon');
@@ -1200,9 +1279,9 @@ export class UIManager {
       for (const r of relics) tile(ico('relic'), '+1', r.name, RARITY[r.rarity]?.color || '#c46fd6');
     }
     const body = win
-      ? `${rewards?.clean ? '<p class="node-line clean">CLEAN WIN: +2 KEYS</p>' : ''}<div class="reward-tiles">${tiles.join('')}</div>`
-      : `<p class="node-line bad">You fell back.</p>`;
-    this.openModal(win ? 'VICTORY' : 'RETREATED', body,
+      ? `${rewards?.clean ? `<p class="node-line clean">CLEAN WIN: +${CLEAN_WIN_KEYS} KEYS</p>` : ''}<div class="reward-tiles">${tiles.join('')}</div>`
+      : `<p class="node-line bad">Your ball was destroyed.</p>`;
+    this.openModal(win ? 'VICTORY' : 'DEFEATED', body,
       `<div class="btn-row"><button class="btn btn-accent" data-act="continue">CONTINUE</button></div>`
     );
     const btn = this.modalActions.querySelector('button[data-act="continue"]');
@@ -1212,7 +1291,7 @@ export class UIManager {
     });
   }
 
-  showEncounterOptions(encounter) {
+  showEncounterOptions(encounter, run) {
     const getPreview = (c) => {
       const parts = [];
       if (c.gainActions) parts.push(`<span class="tag-pill tag-action">+${c.gainActions} MOVE${c.gainActions > 1 ? 'S' : ''}</span>`);
@@ -1234,8 +1313,10 @@ export class UIManager {
 
     const actionHtml = encounter.choices.map((choice, i) => {
       const preview = getPreview(choice);
+      // Paid options need the gold up front
+      const broke = choice.loseGold && (run?.gold ?? Infinity) < choice.loseGold;
       return `<div class="btn-row">
-        <button class="btn btn-enc-option" data-enc="${i}">
+        <button class="btn btn-enc-option" data-enc="${i}" ${broke ? 'disabled title="Not enough gold"' : ''}>
           <span class="enc-label">${choice.label.toUpperCase()}</span>
           ${preview}
         </button>
@@ -1364,8 +1445,10 @@ export class UIManager {
       notes.push('Golden Apple');
     }
 
-    const healMultiplier = saveSystem.getHealingMultiplier();
-    const effectiveHealVal = Math.round(healVal * healMultiplier);
+    // Same multiplier the heal will use (Risk + Festering Wounds curse), capped at max HP
+    const healMultiplier = run.healMult ?? saveSystem.getHealingMultiplier();
+    const rawHeal = Math.round(healVal * healMultiplier);
+    const effectiveHealVal = run.permanent?.overflowShieldCapPct > 0 ? rawHeal : Math.max(0, Math.min(rawHeal, run.maxHp + maxHpVal - run.hp));
 
     let buttonText = run.hasRelic?.('rel_golden_apple') ? 'HEAL TO FULL' : `HEAL ${effectiveHealVal} HP`;
     if (maxHpVal > 0) {
@@ -1373,7 +1456,7 @@ export class UIManager {
     }
 
     if (healMultiplier < 1) {
-      notes.push(`Risk Penalty (-${Math.round((1 - healMultiplier) * 100)}% Heal)`);
+      notes.push(`Heal penalty (-${Math.round((1 - healMultiplier) * 100)}%)`);
     }
 
     const noteHtml = notes.length

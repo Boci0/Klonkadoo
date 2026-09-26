@@ -124,6 +124,12 @@ export class SaveSystem {
       }
     } catch (e) {
       console.warn('Failed to load save data:', e);
+      // Keep the unreadable save instead of overwriting it with a fresh one,
+      // so progress can still be recovered by hand
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) localStorage.setItem(`${STORAGE_KEY}-corrupt-${Date.now()}`, raw);
+      } catch (_) {}
     }
     return defaults;
   }
@@ -429,7 +435,11 @@ export class SaveSystem {
    */
   exportSaveData() {
     const json = JSON.stringify(this.data);
-    const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(json)));
+    // Chunked: spreading a large save into fromCharCode overflows the call stack
+    const bytes = new TextEncoder().encode(json);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    const b64 = btoa(bin);
     return `SLING1-${b64}-${this._checksum(b64)}`;
   }
 
@@ -590,7 +600,9 @@ export class SaveSystem {
   }
 
   reset() {
-    localStorage.removeItem(STORAGE_KEY);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (_) {}
     this.data = this._load();
     this._ensureMech();
     this._migrate();

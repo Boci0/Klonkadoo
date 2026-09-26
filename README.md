@@ -3,7 +3,7 @@
 > A tactical ballistic-combat roguelike built with HTML5 Canvas & JavaScript.
 
 [![Live Demo](https://img.shields.io/badge/Play_Now-Live_Demo-brightgreen?style=for-the-badge&logo=github)](https://boci0.github.io/Slingshot-OPS/)
-[![Download APK](https://img.shields.io/badge/Android-Download_APK-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/Boci0/Slingshot-OPS/raw/main/apk/Slingshot-OPS.apk)
+[![Google Play](https://img.shields.io/badge/Android-Google_Play-3DDC84?style=for-the-badge&logo=googleplay&logoColor=white)](https://play.google.com/store/apps/details?id=com.slingshotops.game)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 
 ---
@@ -26,13 +26,17 @@
 
 ## Android
 
-**[Download Slingshot-OPS.apk](https://github.com/Boci0/Slingshot-OPS/raw/main/apk/Slingshot-OPS.apk)**
+The Android version is on **Google Play** (currently in closed testing).
 
-1. Open the link above on your Android phone to download the APK.
-2. Open the downloaded file and allow installs from unknown sources if asked.
-3. The game runs in landscape.
+To join the test:
 
-To rebuild the APK yourself (needs the Android SDK):
+1. Join the tester group: https://groups.google.com/g/slingshot-ops-testers
+2. Opt in: https://play.google.com/apps/testing/com.slingshotops.game
+3. Install from Google Play: https://play.google.com/store/apps/details?id=com.slingshotops.game
+
+The game runs in landscape. Feedback: bocidev.support@gmail.com
+
+To build a local debug APK yourself (needs the Android SDK). Uninstall it before installing the Play version, since they're signed with different keys:
 
 ```bash
 npm run build:android

@@ -337,6 +337,53 @@ canvas {
   text-align: center;
 }
 
+.menu-row {
+  display: flex;
+  gap: 10px;
+}
+
+.menu-row .btn-menu {
+  flex: 1;
+  min-width: 0;
+}
+
+.btn-support {
+  color: var(--p-red);
+}
+
+/* Support page */
+.support-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.support-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.support-row .support-ico {
+  font-size: 20px;
+  width: 24px;
+  text-align: center;
+  flex: none;
+}
+
+.support-row strong {
+  display: block;
+}
+
+.support-row span {
+  display: block;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
 .save-btn-row {
   display: flex;
   gap: 10px;
@@ -2909,6 +2956,15 @@ canvas {
 
 #btn-play:not(:disabled) {
   animation: cta-breathe 2.2s ease-in-out infinite;
+}
+
+/* Resume a suspended run: where you left off, under the label */
+#btn-play small {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-body);
+  font-size: 0.7em;
+  opacity: 0.85;
 }
 
 @keyframes cta-breathe {

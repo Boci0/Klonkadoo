@@ -81,7 +81,8 @@ export class QuestSystem {
       case 'quest_minigame':
         return eventType === 'minigame' && data.perfect;
       case 'quest_perfect':
-        return eventType === 'combat_end' && data.won && !data.lostAnyCombat;
+        // "Reach floor 5 without losing a combat"
+        return eventType === 'floor_reached' && data.floor >= CONFIG.map.floors - 1 && !data.lostAnyCombat;
       case 'quest_elite':
         return eventType === 'combat_end' && data.won && data.nodeType === 'elite';
       case 'quest_rest':
