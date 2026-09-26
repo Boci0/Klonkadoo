@@ -26,7 +26,8 @@ import { DevTools } from './dev/DevTools.js';
 import { checkMedals } from './meta/Medals.js';
 import './platform/native.js';
 import './platform/desktop.js';
-import { withMech, tokenReward, enemyWeapons, CLEAN_WIN_KEYS } from './meta/Mech.js';
+import { withMech, tokenReward, enemyWeapons, enemyRig, CLEAN_WIN_KEYS } from './meta/Mech.js';
+import { isGearMode } from './meta/combatMode.js';
 import { partIcon } from './rendering/pixelIcons.js';
 import { ballDataUrl, CLASS_PATTERN } from './rendering/ballSprite.js';
 import { withMastery, masteryLevel, runXp } from './meta/Mastery.js';
@@ -240,7 +241,18 @@ function bindAbilityButtons() {
   });
   if (btnBarrier) bindBarrierDrag(btnBarrier);
 
-  // Keyboard hotkeys [1] and [2]
+  // Gear combat: END TURN (skip the actions you have left) and VENT (1 action)
+  document.getElementById('btn-end-turn')?.addEventListener('click', () => {
+    if (state !== State.BATTLE || battlePaused) return;
+    if (game.endPlayerTurn()) soundEngine.playUI();
+    else soundEngine.play('error');
+  });
+  document.getElementById('btn-vent')?.addEventListener('click', () => {
+    if (state !== State.BATTLE || battlePaused) return;
+    if (!game.ventPlayer()) soundEngine.play('error');
+  });
+
+  // Keyboard hotkeys: [1] skill, [2] barrier; gear combat: [Q] [E] guns, [Space] end turn
   window.addEventListener('keydown', (e) => {
     if (state !== State.BATTLE) return;
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
@@ -248,6 +260,13 @@ function bindAbilityButtons() {
       triggerOverdrive(e);
     } else if (e.key === '2' || e.code === 'Digit2' || e.code === 'Numpad2') {
       triggerBarrier(e);
+    } else if (game.gear && !battlePaused && (e.code === 'KeyQ' || e.code === 'KeyE')) {
+      fireGun(e.code === 'KeyQ' ? 0 : 1);
+    } else if (game.gear && !battlePaused && e.code === 'Space') {
+      e.preventDefault();
+      if (game.endPlayerTurn()) soundEngine.playUI();
+    } else if (game.gear && !battlePaused && e.code === 'KeyV') {
+      if (!game.ventPlayer()) soundEngine.play('error');
     }
   });
 }
@@ -322,12 +341,33 @@ function bindBarrierDrag(btn) {
   btn.addEventListener('click', (e) => e.preventDefault());
 }
 
-// ---------- Rig weapon chips (tap one to see its range) ----------
+// ---------- Rig weapon chips ----------
+// Classic: tap one to see its range. Gear combat: tap to fire it; each chip
+// shows its energy / heat cost, ammo and why it can't fire right now.
+
+const GUN_BLOCK_LABEL = { EMPTY: 'EMPTY', HOT: 'TOO HOT', ENERGY: 'NO ENERGY', RANGE: 'OUT OF RANGE', 'TOO CLOSE': 'TOO CLOSE', BLOCKED: 'NO LINE', 'NO TARGET': 'NO TARGET', 'NO ACTIONS': 'NO ACTIONS', WAIT: '' };
+
+function fireGun(i) {
+  const res = game.firePlayerWeapon(i);
+  if (res.ok) {
+    haptics.impact('light');
+    return;
+  }
+  soundEngine.play('error');
+  const label = GUN_BLOCK_LABEL[res.reason];
+  if (label) game.renderer.addCallout(game.player, label, '#94b0c2');
+}
 
 let mechHudSig = '';
 function updateMechHud() {
   const el = document.getElementById('mech-hud');
   if (!el) return;
+  const endBtn = document.getElementById('btn-end-turn');
+  const ventBtn = document.getElementById('btn-vent');
+  if (game.gear) return updateGearHud(el, endBtn, ventBtn);
+  endBtn?.classList.add('hidden');
+  ventBtn?.classList.add('hidden');
+  document.getElementById('battle-hud')?.classList.remove('gear');
   const guns = game.playerWeapons || [];
   const drones = game.playerDrones || [];
   const focus = game.inspected?.ball === game.player ? game.inspected.weapon : undefined;
@@ -340,6 +380,61 @@ function updateMechHud() {
   el.querySelectorAll('[data-gun]').forEach((b) => b.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
     game.inspectWeapon(Number(b.dataset.gun));
+    soundEngine.playUI();
+  }));
+}
+
+function updateGearHud(el, endBtn, ventBtn) {
+  document.getElementById('battle-hud')?.classList.add('gear');
+  const guns = game.playerWeapons || [];
+  const drones = game.playerDrones || [];
+  const p = game.player;
+  const myTurn = game.running && game.turnSystem.phase === 'PLAYER_AIM';
+  const live = game.canPlayerAct;
+  const states = guns.map((_, i) => game.playerGunState(i));
+  const left = p?.actionsLeft || 0;
+  if (endBtn) {
+    endBtn.classList.toggle('hidden', !myTurn);
+    endBtn.classList.toggle('pulse', myTurn && left > 0 && !states.some((st) => st.ok));
+    const pips = '\u25A0'.repeat(Math.max(0, left)) + '\u25A1'.repeat(Math.max(0, CONFIG.gear.actions - left));
+    const pipEl = endBtn.querySelector('.action-pips');
+    if (pipEl && pipEl.textContent !== pips) pipEl.textContent = pips;
+  }
+  if (ventBtn) {
+    ventBtn.classList.toggle('hidden', !myTurn);
+    ventBtn.disabled = !live;
+    const heatTxt = p ? `${Math.ceil(p.heat)}/${p.heatCap}` : '';
+    const cd = ventBtn.querySelector('.ability-cd');
+    if (cd && cd.textContent !== heatTxt) cd.textContent = heatTxt;
+  }
+  const sig = `${live}|${left}|` + guns.map((w, i) => `${w.ammoLeft}:${states[i].ok}:${states[i].reason}:${states[i].dmg}`).join(',') + '|' + drones.map((d) => d.off).join(',');
+  if (sig === mechHudSig) return;
+  mechHudSig = sig;
+  const D = CONFIG.gear.drone;
+  el.innerHTML = guns.map((w, i) => {
+    const st = states[i];
+    const ready = live && st.ok;
+    const why = !st.ok ? GUN_BLOCK_LABEL[st.reason] || '' : '';
+    const ammo = w.ammo ? `<b class="gun-ammo">${w.ammoLeft}/${w.ammo}</b>` : '';
+    return `<button class="mech-chip gear-gun ${ready ? 'ready' : 'cooling'}" data-gun="${i}" style="--c:${w.color}" title="[${i ? 'E' : 'Q'}] ${w.name}">
+      <img src="${partIcon(w.id)}" alt="">${ammo}
+      <span class="gun-dmg">${st.dmg ? `~${st.dmg}` : ''}</span>
+      <span class="gun-cost"><i class="c-en">${w.en || 0}</i><i class="c-heat">${w.heat || 0}</i></span>
+      <span class="gun-why">${ready ? 'FIRE' : why}</span></button>`;
+  }).join('') + drones.map((d, i) => {
+    const en = d.heal ? D.healEn : d.forcefieldEvery ? D.shieldEn : D.dmgEn;
+    return `<button class="mech-chip drone gear-drone ${d.off ? 'off' : 'on'}" data-drone="${i}" style="--c:${d.color}" title="${d.name}: tap to switch ON/OFF. ON = acts at the end of your turn for ${en} energy.">
+      <img src="${partIcon(d.id)}" alt=""><span class="gun-cost"><i class="c-en">${en}</i></span><span class="gun-why">${d.off ? 'OFF' : 'ON'}</span></button>`;
+  }).join('');
+  el.querySelectorAll('[data-gun]').forEach((b) => b.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    if (battlePaused) return;
+    fireGun(Number(b.dataset.gun));
+  }));
+  el.querySelectorAll('[data-drone]').forEach((b) => b.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    if (battlePaused) return;
+    game.toggleDrone(Number(b.dataset.drone));
     soundEngine.playUI();
   }));
 }
@@ -890,7 +985,8 @@ function startCombat(node) {
       aiDifficulty: Math.min(0.95, tier.aiDifficulty + arch.aiShift + riskData.aiBonus),
       thinkDelay: arch.ability === 'aggressive' ? Math.max(0.3, thinkDelay - 0.2) : thinkDelay,
       xPct,
-      weapons: enemyWeapons(node.type, run.floor + 1, Math.random, { atkMult: atkMult * waveAtkScale, cdCut: riskData.gunCdCut || 0 }),
+      weapons: enemyWeapons(node.type, run.floor + 1, Math.random, { atkMult: atkMult * waveAtkScale, cdCut: riskData.gunCdCut || 0, gear: isGearMode() }),
+      rig: enemyRig(node.type, { cdCut: riskData.gunCdCut || 0 }),
     });
   }
 
@@ -915,6 +1011,7 @@ function startCombat(node) {
     riskDefPierce: riskData.defPierce || 0,
     floor: run.floor + 1,
     maxPowerMult,
+    gear: isGearMode(),
   };
 
   // Wire quest hooks (clear old listeners first so no stacking)

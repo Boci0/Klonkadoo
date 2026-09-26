@@ -19,12 +19,34 @@ import { saveSystem } from '../meta/SaveSystem.js';
 import { haptics } from '../platform/haptics.js';
 import { getBall, getSkill } from '../meta/Balls.js';
 import { pickArena } from './Arenas.js';
+import { isGearMode } from '../meta/combatMode.js';
 
 const W = CONFIG.world;
 const B = CONFIG.ball;
 const C = CONFIG.colors;
 
 const FIXED_DT = 1 / 120;
+const G = CONFIG.gear;
+
+/** Does segment (x1,y1)-(x2,y2) cross rectangle r? (Liang-Barsky clip) */
+function segmentHitsRect(x1, y1, x2, y2, r) {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const edges = [[-dx, x1 - r.x], [dx, r.x + r.w - x1], [-dy, y1 - r.y], [dy, r.y + r.h - y1]];
+  for (const [p, q] of edges) {
+    if (p === 0) {
+      if (q < 0) return false;
+      continue;
+    }
+    const t = q / p;
+    if (p < 0) t0 = Math.max(t0, t);
+    else t1 = Math.min(t1, t);
+    if (t0 > t1) return false;
+  }
+  return true;
+}
 
 const DEFAULT_BATTLE = {
   player: { maxHp: 100, atk: 1, def: 0, abilities: {} },
@@ -166,15 +188,23 @@ export class Game {
         radius: e.radius,
       });
     });
+    // Gear combat: guns are the only damage, fired by hand, paid for in energy + heat
+    this.gear = config.gear ?? isGearMode();
     this.enemies.forEach((b, i) => {
       b.rank = config.enemies[i]?.rank || null;
-      b.weapons = (config.enemies[i]?.weapons || []).map((w) => ({ ...w, cdLeft: 0 }));
+      b.weapons = (config.enemies[i]?.weapons || []).map((w) => ({ ...w, cdLeft: 0, ammoLeft: w.ammo || 0 }));
+      this._initRig(b, config.enemies[i]?.rig || G.enemyRig[['elite', 'miniboss', 'boss'].includes(config.nodeType) ? config.nodeType : 'combat']);
     });
 
     this.techStats = config.techStats || {};
-    // Mech weapons (auto-fire after your shot settles) and drones (every turn)
-    this.playerWeapons = (this.techStats.mech?.weapons || []).map((w) => ({ ...w, cdLeft: 0 }));
-    this.playerDrones = (this.techStats.mech?.drones || []).map((d) => ({ ...d })); // copies: the renderer tags them
+    // Rig weapons (classic: auto-fire after your shot settles; gear: fired by hand) and drones (every turn)
+    const gunScale = this.gear ? G.dmgScale : 1;
+    this.playerWeapons = (this.techStats.mech?.weapons || []).map((w) => ({ ...w, dmg: w.dmg * gunScale, cdLeft: 0, ammoLeft: w.ammo || 0 }));
+    this.playerDrones = (this.techStats.mech?.drones || []).map((d) => ({ ...d, dmg: d.dmg ? d.dmg * gunScale : d.dmg })); // copies: the renderer tags them
+    this._initRig(this.player, this.techStats.mech?.rig || G.baseRig);
+    this.fireTarget = null; // gear: the enemy you tapped to aim your guns at
+    this.enemyFire = null; // gear: an enemy working through its shots
+    this.autoEnd = 0; // gear: seconds until a fire phase with nothing left to do ends itself
     this.inspected = null; // { ball, weapon? } shown by the renderer
     // Higher Risk = bolder enemies: they favour hard hits, fire sooner, use abilities more
     this.aggression = Math.min(1, (config.riskLevel || 0) / 8);
@@ -206,6 +236,7 @@ export class Game {
       battleStats: this.battleStats,
       techStats: this.techStats,
       riskLevel: config.riskLevel || 0,
+      gear: this.gear,
     });
 
     this.particles = [];
@@ -365,12 +396,20 @@ export class Game {
     if (!wall && enemy.hp >= enemy.maxHp * 0.9 && this.aggression < 0.4) return; // not threatened yet
     if (enemy.wallCd > 0) return;
 
-    this._syncAiWorld();
-    const maxPower = CONFIG.slingshot.maxPower * (this.slingshotInput.powerMult || 1);
-    const plan = this.enemyAI.findBestShot(this.player, enemy, { maxPower, aggression: 0.5 });
-    if (wall && (!plan?.hit || this._pathCrosses(plan.path, wall))) return; // your best line is already blocked
-
-    const spot = plan?.hit ? this._wallSpot(enemy, plan.path) : null;
+    let spot = null;
+    if (this.gear) {
+      // Gear combat: stand the wall in your line of fire, 110px in front of the tank
+      if (wall && !this._lineClear(this.player, enemy, 'player')) return; // already covered
+      const d = Math.hypot(this.player.x - enemy.x, this.player.y - enemy.y) || 1;
+      if (d < 150) return; // too close for cover to help
+      spot = { x: enemy.x + ((this.player.x - enemy.x) / d) * 110, y: enemy.y + ((this.player.y - enemy.y) / d) * 110 };
+    } else {
+      this._syncAiWorld();
+      const maxPower = CONFIG.slingshot.maxPower * (this.slingshotInput.powerMult || 1);
+      const plan = this.enemyAI.findBestShot(this.player, enemy, { maxPower, aggression: 0.5 });
+      if (wall && (!plan?.hit || this._pathCrosses(plan.path, wall))) return; // your best line is already blocked
+      spot = plan?.hit ? this._wallSpot(enemy, plan.path) : null;
+    }
     const side = Math.sign(this.player.x - enemy.x) || -1;
     const pos = spot || { x: enemy.x + side * 110, y: groundAt(enemy.x + side * 110) - 50 };
     const bw = 14;
@@ -470,6 +509,11 @@ export class Game {
 
   _startPlayerTurn() {
     this.turnId = (this.turnId || 0) + 1;
+    if (this.gear && this.player) {
+      this._tickRig(this.player);
+      this.player.exposed = false; // a ram only exposes you until your own turn
+      this.autoEnd = 0;
+    }
     this._rechargePads();
     this._clearShotEffects();
     this.battleStats.clusteredThisTurn = false;
@@ -529,6 +573,10 @@ export class Game {
     const enemy = this.enemies[index];
     // A dead enemy's turn must still be passed on, or the battle freezes
     if (!enemy || enemy.hp <= 0) return this._passEnemyTurn();
+    if (this.gear) {
+      this._tickRig(enemy);
+      enemy.exposed = false;
+    }
 
     if (enemy.archetype === 'striker') {
       enemy.turnCount = (enemy.turnCount || 0) + 1;
@@ -716,6 +764,8 @@ export class Game {
       thinkDelay: enemy.thinkDelay ?? CONFIG.ai.thinkDelay,
       aimErrorBonus: this.relics.includes('rel_smoke_bomb') ? (7 * Math.PI) / 180 : 0,
       aggression: this.aggression,
+      // Gear combat: pick a landing spot with its guns in range and yours not
+      spotScorer: this.gear ? (x, y, rammed, stay) => this._scoreSpot(enemy, x, y, rammed, stay) : null,
     });
     this._syncAiWorld();
     this.enemyAI.startTurn(enemy, this.player, this.enemies);
@@ -856,11 +906,13 @@ export class Game {
       const panel = (this.renderer.panelHits || []).find((p) => p.ball.hp > 0 && sx >= p.x && sx <= p.x + p.w && sy >= p.y && sy <= p.y + p.h);
       if (panel) {
         this.inspected = this.inspected?.ball === panel.ball && this.inspected.weapon === undefined ? null : { ball: panel.ball };
+        if (this.gear && panel.ball.team === 'enemy') this.setFireTarget(panel.ball); // gear: tap an enemy to aim at it
         return;
       }
       const pos = this.renderer.clientToWorld(e.clientX, e.clientY);
       const hit = [this.player, ...this.enemies].find((b) => b && b.hp > 0 && Math.hypot(b.x - pos.x, b.y - pos.y) <= b.radius + 16);
       this.inspected = hit && this.inspected?.ball !== hit ? { ball: hit } : null;
+      if (this.gear && hit?.team === 'enemy') this.setFireTarget(hit);
     });
   }
 
@@ -887,45 +939,460 @@ export class Game {
         .sort((a, b) => a.d - b.d)[0]?.f;
       if (!target) continue; // stays ready until something is in range
       w.cdLeft = w.cd - 1;
-      w.firedAt = performance.now(); // renderer: recoil + muzzle flash, gun turns to the target
-      w.aimAt = target;
-      this._weaponHit(shooter, target, w, w.dmg);
-      if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
-      if (w.fx?.chain) {
-        const next = foes().find((f) => f !== target && Math.hypot(f.x - target.x, f.y - target.y) <= w.fx.chain);
-        if (next) this._weaponHit(target, next, w, w.dmg * 0.6, shooter);
-      }
-      if (w.fx?.splash) {
-        for (const f of foes()) {
-          if (f !== target && Math.hypot(f.x - target.x, f.y - target.y) <= w.fx.splash) this._weaponHit(target, f, w, w.dmg * 0.5, shooter);
-        }
-        this.particles.push({ type: 'shockwave', x: target.x, y: target.y, radius: 10, maxRadius: w.fx.splash, life: 0.3, maxLife: 0.3 });
-      }
+      this._shoot(shooter, w, target);
       if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
     }
-    if (!isPlayer) return;
-    // Drones: act every turn at any range
+    if (isPlayer) this._fireDrones();
+  }
+
+  /** One gun firing at one target: every hit, plus its area / status effects. */
+  _shoot(shooter, w, target) {
+    const isPlayer = shooter === this.player;
+    const foes = () => (isPlayer ? this.enemies.filter((e) => e.hp > 0) : this.player.hp > 0 ? [this.player] : []);
+    const over = () => this.turnSystem.phase === TurnPhase.GAME_OVER;
+    w.firedAt = performance.now(); // renderer: recoil + muzzle flash, gun turns to the target
+    w.aimAt = target;
+    // Laser: every foe along the beam, out to the gun's reach
+    let victims = [target];
+    if (w.fx?.line) {
+      const d = Math.hypot(target.x - shooter.x, target.y - shooter.y) || 1;
+      const ux = (target.x - shooter.x) / d;
+      const uy = (target.y - shooter.y) / d;
+      victims = foes().filter((f) => {
+        const along = (f.x - shooter.x) * ux + (f.y - shooter.y) * uy;
+        const off = Math.abs((f.x - shooter.x) * uy - (f.y - shooter.y) * ux);
+        return along > 0 && along <= w.range[1] && off <= f.radius + 10;
+      });
+      if (!victims.includes(target)) victims.push(target);
+    }
+    for (const v of victims) {
+      for (let i = 0; i < (w.fx?.burst || 1); i++) {
+        if (v.hp <= 0 || over()) break;
+        this._weaponHit(shooter, v, w, w.dmg);
+      }
+    }
+    if (over()) return;
+    if (w.fx?.chain) {
+      const next = foes().find((f) => f !== target && Math.hypot(f.x - target.x, f.y - target.y) <= w.fx.chain);
+      if (next) this._weaponHit(target, next, w, w.dmg * 0.6, shooter);
+    }
+    if (w.fx?.splash) {
+      for (const f of foes()) {
+        if (f !== target && Math.hypot(f.x - target.x, f.y - target.y) <= w.fx.splash) this._weaponHit(target, f, w, w.dmg * 0.5, shooter);
+      }
+      this.particles.push({ type: 'shockwave', x: target.x, y: target.y, radius: 10, maxRadius: w.fx.splash, life: 0.3, maxLife: 0.3 });
+    }
+    // Knockback guns: shove the target away, or reel it in
+    if (target.hp > 0 && (w.fx?.push || w.fx?.pull)) {
+      const d = Math.hypot(target.x - shooter.x, target.y - shooter.y) || 1;
+      const k = w.fx.push || -w.fx.pull;
+      target.vx += ((target.x - shooter.x) / d) * k;
+      target.vy += -Math.abs(k) * 0.45;
+      this._callout(target, w.fx.push ? 'KNOCKED BACK' : 'HOOKED', w.color);
+    }
+  }
+
+  /** Classic combat: every drone acts at the end of your turn, at any range. */
+  _fireDrones() {
+    if (!this.player || this.player.hp <= 0) return;
     for (const d of this.playerDrones) {
-      if (d.heal) {
-        const before = this.player.hp;
+      this._droneAct(d);
+      if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
+    }
+  }
+
+  /** One drone's action: repair, shield, or a shot at the nearest enemy (any range). */
+  _droneAct(d) {
+    const shooter = this.player;
+    if (d.heal) {
+      const before = shooter.hp;
+      d.firedAt = performance.now();
+      shooter.hp = Math.min(shooter.maxHp, shooter.hp + Math.round(d.heal));
+      if (shooter.hp > before) this._callout(shooter, `REPAIR +${shooter.hp - before}`, d.color);
+    } else if (d.forcefieldEvery) {
+      if (this.battleStats.turns % d.forcefieldEvery === 0 && !shooter.forcefield) {
         d.firedAt = performance.now();
-        this.player.hp = Math.min(this.player.maxHp, this.player.hp + Math.round(d.heal));
-        if (this.player.hp > before) this._callout(this.player, `REPAIR +${this.player.hp - before}`, d.color);
-      } else if (d.forcefieldEvery) {
-        if (this.battleStats.turns % d.forcefieldEvery === 0 && !this.player.forcefield) {
-          d.firedAt = performance.now();
-          this.player.forcefield = true;
-          this._callout(this.player, 'DRONE SHIELD', d.color);
-        }
-      } else if (d.dmg) {
-        const target = foes().sort((a, b) => Math.hypot(a.x - shooter.x, a.y - shooter.y) - Math.hypot(b.x - shooter.x, b.y - shooter.y))[0];
-        if (target) {
-          d.firedAt = performance.now();
-          this._weaponHit(shooter, target, d, d.dmg);
-        }
-        if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
+        shooter.forcefield = true;
+        this._callout(shooter, 'DRONE SHIELD', d.color);
+      }
+    } else if (d.dmg) {
+      // Your aimed-at enemy (gear), else the nearest one
+      const target = this._currentTarget() || this.enemies.filter((e) => e.hp > 0).sort(this._byDistance(shooter))[0];
+      if (target) {
+        d.firedAt = performance.now();
+        this._weaponHit(shooter, target, d, d.dmg);
       }
     }
+  }
+
+  // ---------- Gear combat: reactor, line of sight, actions ----------
+  //
+  // Each turn a ball gets CONFIG.gear.actions actions, spent in any order:
+  //   MOVE  – one slingshot launch
+  //   FIRE  – one gun at one target (energy + heat, ammo on strong guns)
+  //   VENT  – dump heat and win back some energy
+  // END TURN skips whatever is left. Drones switched ON act at the end of
+  // your turn and pay their own energy. Enemies follow the same rules.
+
+  _initRig(ball, rig) {
+    ball.energyMax = rig.energy;
+    ball.energy = rig.energy;
+    ball.regen = rig.regen;
+    ball.heatCap = rig.heatCap;
+    ball.heat = 0;
+    ball.cool = rig.cool;
+    ball.actionsLeft = G.actions;
+  }
+
+  /** Start of a ball's turn: the reactor refills, the guns cool, actions reset. */
+  _tickRig(ball) {
+    ball.energy = Math.min(ball.energyMax, ball.energy + ball.regen);
+    ball.heat = Math.max(0, ball.heat - ball.cool);
+    ball.actionsLeft = G.actions;
+  }
+
+  _gunsOf(ball) {
+    return ball === this.player ? this.playerWeapons || [] : ball.weapons || [];
+  }
+
+  _foesOf(ball) {
+    return ball === this.player ? this.enemies.filter((e) => e.hp > 0) : this.player.hp > 0 ? [this.player] : [];
+  }
+
+  /**
+   * Clear shot from a to b? Platforms and obstacles block everyone; a
+   * barrier only blocks the other side's fire (your own cover doesn't stop you).
+   */
+  _lineClear(a, b, shooterTeam) {
+    for (const r of this.platforms) if (segmentHitsRect(a.x, a.y, b.x, b.y, r)) return false;
+    for (const r of this.obstacles) if (r.active !== false && segmentHitsRect(a.x, a.y, b.x, b.y, r)) return false;
+    for (const r of this.barriers) {
+      if (!r.active) continue;
+      const mine = shooterTeam === 'player' ? r.owner !== 'enemy' : r.owner === 'enemy';
+      if (!mine && segmentHitsRect(a.x, a.y, b.x, b.y, r)) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Can this gun fire at this target right now? { ok, reason }, with reasons
+   * in the order the player would fix them.
+   */
+  gunStatus(shooter, w, target) {
+    if (!(shooter.actionsLeft > 0)) return { ok: false, reason: 'NO ACTIONS' };
+    if (w.ammo && w.ammoLeft <= 0) return { ok: false, reason: 'EMPTY' };
+    if (shooter.heat + (w.heat || 0) > shooter.heatCap) return { ok: false, reason: 'HOT' };
+    if (shooter.energy < (w.en || 0)) return { ok: false, reason: 'ENERGY' };
+    if (!target) return { ok: false, reason: 'NO TARGET' };
+    const d = Math.hypot(target.x - shooter.x, target.y - shooter.y);
+    if (d < w.range[0] || d > w.range[1]) return { ok: false, reason: d < w.range[0] ? 'TOO CLOSE' : 'RANGE' };
+    if (!w.arc && !this._lineClear(shooter, target, shooter.team)) return { ok: false, reason: 'BLOCKED' };
+    return { ok: true, reason: '' };
+  }
+
+  _byDistance(from) {
+    return (a, b) => Math.hypot(a.x - from.x, a.y - from.y) - Math.hypot(b.x - from.x, b.y - from.y);
+  }
+
+  /** Best target for a gun: your tapped enemy if it can be hit, else the nearest that can. */
+  _targetFor(shooter, w) {
+    if (shooter === this.player && this.fireTarget?.hp > 0 && this.gunStatus(shooter, w, this.fireTarget).ok) return this.fireTarget;
+    return this._foesOf(shooter).filter((f) => this.gunStatus(shooter, w, f).ok).sort(this._byDistance(shooter))[0] || null;
+  }
+
+  /** The enemy you tapped to aim at (for the reticle), if it's still alive. */
+  _currentTarget() {
+    if (this.fireTarget && this.fireTarget.hp <= 0) this.fireTarget = null;
+    return this.fireTarget;
+  }
+
+  /** Tap an enemy to aim your guns at it (tap it again to go back to nearest). */
+  setFireTarget(enemy) {
+    this.fireTarget = enemy && enemy.hp > 0 && enemy !== this.fireTarget ? enemy : null;
+  }
+
+  /** HUD: what a gun would do right now ({ ok, reason, target, dmg }). */
+  playerGunState(i) {
+    const w = this.playerWeapons[i];
+    if (!w || !this.player) return { ok: false, reason: '' };
+    const target = this._targetFor(this.player, w);
+    if (target) return { ok: true, reason: '', target, dmg: this._previewDamage(w, target) };
+    const probe = this._currentTarget() || this._foesOf(this.player).sort(this._byDistance(this.player))[0];
+    const st = this.gunStatus(this.player, w, probe);
+    return { ...st, dmg: probe ? this._previewDamage(w, probe) : 0 };
+  }
+
+  /** Damage one use of your gun would deal to this target (before crits), for planning. */
+  _previewDamage(w, target) {
+    let dmg = w.dmg * (w.fx?.burst || 1) * this._gearDamageMult();
+    if (target.exposed) dmg *= G.exposedMult;
+    if (!(w.fx?.pierce || this.player.piercing)) dmg *= 1 - Math.min(CONFIG.run.maxDefCap || 15, target.def || 0) * CONFIG.damage.defensePerPoint;
+    return Math.max(1, Math.round(dmg));
+  }
+
+  /** Your actions can be spent while aiming (before or after a move). */
+  get canPlayerAct() {
+    return this.gear && this.running && this.turnSystem.phase === TurnPhase.PLAYER_AIM && this.player.actionsLeft > 0 && !this.slingshotInput.dragging;
+  }
+
+  /** Spend the shot's energy, heat, ammo and one action. */
+  _payForShot(shooter, w) {
+    shooter.energy -= w.en || 0;
+    shooter.heat += w.heat || 0;
+    if (w.ammo) w.ammoLeft -= 1;
+    shooter.actionsLeft -= 1;
+  }
+
+  /** VENT: dump heat, win back some energy (costs one action). */
+  _vent(ball) {
+    const cooled = Math.min(ball.heat, ball.cool * G.vent.coolMult);
+    ball.heat -= cooled;
+    const before = ball.energy;
+    ball.energy = Math.min(ball.energyMax, ball.energy + Math.round(ball.regen * G.vent.energyPct));
+    ball.actionsLeft -= 1;
+    this.particles.push({ type: 'shockwave', x: ball.x, y: ball.y, radius: 10, maxRadius: 90, life: 0.35, maxLife: 0.35 });
+    soundEngine.playUI(330);
+    this._callout(ball, `VENT -${Math.round(cooled)} HEAT +${Math.round(ball.energy - before)} EN`, '#73eff7');
+  }
+
+  /** Player taps a gun: fire it. Returns the gun state (reason says why not). */
+  firePlayerWeapon(i) {
+    if (!this.canPlayerAct) return { ok: false, reason: this.player?.actionsLeft > 0 ? 'WAIT' : 'NO ACTIONS' };
+    const w = this.playerWeapons[i];
+    const state = this.playerGunState(i);
+    if (!state.ok) return state;
+    this._payForShot(this.player, w);
+    this.battleStats.gearFired = true;
+    this._shoot(this.player, w, state.target);
+    this._afterPlayerAction();
+    return state;
+  }
+
+  ventPlayer() {
+    if (!this.canPlayerAct) return false;
+    this._vent(this.player);
+    this._afterPlayerAction();
+    return true;
+  }
+
+  /** Drones are switched ON/OFF by the player; ON drones act at the end of the turn. */
+  toggleDrone(i) {
+    const d = this.playerDrones[i];
+    if (!d || !this.gear) return false;
+    d.off = !d.off;
+    return true;
+  }
+
+  /** Out of actions: a moment to watch the result, then the turn ends itself. */
+  _afterPlayerAction() {
+    if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
+    if (this.player.actionsLeft <= 0) {
+      this.slingshotInput.setActive(false);
+      this.autoEnd = 0.8;
+    }
+  }
+
+  /** END TURN: skip whatever actions are left. */
+  endPlayerTurn() {
+    if (!this.gear || !this.running || this.turnSystem.phase !== TurnPhase.PLAYER_AIM) return false;
+    if (this.slingshotInput.dragging) return false;
+    this.slingshotInput.setActive(false);
+    this.autoEnd = 0;
+    this._finishPlayerTurn();
+    return true;
+  }
+
+  /** Landed after a MOVE: back to aiming if actions remain (fire, vent, or move again). */
+  _afterPlayerMove() {
+    this.turnSystem.phase = TurnPhase.PLAYER_AIM;
+    this.turnSystem.turnTime = 0;
+    this._rechargePads();
+    if (this.player.actionsLeft > 0) {
+      this.slingshotInput.setActive(true);
+      this.slingshotInput.setAnchor(this.player.x, this.player.y, this.player.radius);
+    } else {
+      this._afterPlayerAction();
+    }
+  }
+
+  /** Drones switched ON act now, paying their energy (gear combat). */
+  _gearDrones() {
+    const D = G.drone;
+    for (const d of this.playerDrones) {
+      if (d.off) continue;
+      const en = d.heal ? D.healEn : d.forcefieldEvery ? D.shieldEn : D.dmgEn;
+      const heat = d.dmg ? D.dmgHeat : 0;
+      if (d.forcefieldEvery && (this.player.forcefield || this.battleStats.turns % d.forcefieldEvery !== 0)) continue; // nothing to do yet: free
+      if (d.heal && this.player.hp >= this.player.maxHp) continue;
+      if (this.player.energy < en || this.player.heat + heat > this.player.heatCap) {
+        this._callout(this.player, 'DRONE: NO POWER', '#94b0c2');
+        continue;
+      }
+      this.player.energy -= en;
+      this.player.heat += heat;
+      this._droneAct(d);
+      if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
+    }
+  }
+
+  /** Everything after your actions: drones, turn upkeep, then the enemies. */
+  _finishPlayerTurn() {
+    this.battleStats.turns += 1;
+    if (this.gear) this._gearDrones();
+    else this._fireWeapons(this.player);
+    if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
+    this._resolveShot();
+    this._clearShotEffects();
+    this._tickAbilities();
+    // Gear combat: Overdrive powers one turn of gunfire, then it's spent
+    const bs = this.battleStats;
+    if (this.gear && bs.gearFired) {
+      bs.overdriveStacks = 0;
+      bs.overdriveActive = false;
+    }
+    bs.gearFired = false;
+
+    if (this.techStats.forcefieldTurnInterval > 0 && bs.turns % this.techStats.forcefieldTurnInterval === 0 && !this.player.forcefield) {
+      this.player.forcefield = true;
+      this._callout(this.player, 'FORCEFIELD RECHARGED', '#a7f070');
+    }
+
+    if (this.relics.includes('rel_medic')) {
+      this.player.hp = Math.min(this.player.maxHp, this.player.hp + 6);
+    }
+
+    this.collisionSystem.stats.playerDef = this.battleConfig?.player?.def || 0;
+
+    const firstIdx = this.enemies.findIndex((e) => e.hp > 0);
+    if (firstIdx === -1) {
+      this._startPlayerTurn();
+    } else {
+      this._startEnemyTurnAtIndex(firstIdx);
+    }
+  }
+
+  /** Hand over from enemy `currentIdx` to the next living enemy, or back to you. */
+  _afterEnemyTurn(currentIdx) {
+    const shooter = this.enemies[currentIdx];
+    if (shooter) shooter.missStreak = this._enemyShotHit ? 0 : (shooter.missStreak || 0) + 1;
+    let nextIdx = -1;
+    for (let i = currentIdx + 1; i < this.enemies.length; i++) {
+      if (this.enemies[i].hp > 0) {
+        nextIdx = i;
+        break;
+      }
+    }
+    if (nextIdx !== -1) {
+      this._startEnemyTurnAtIndex(nextIdx);
+    } else {
+      this._startPlayerTurn();
+    }
+  }
+
+  /**
+   * Enemy planned its move (gear): if its best spot is where it stands, it
+   * spends both actions shooting (or venting); otherwise it moves first,
+   * then acts with what's left.
+   */
+  _onEnemyPlan({ velocity }) {
+    const idx = this.turnSystem.enemyIndex;
+    const enemy = this.enemies[idx];
+    if (!enemy || enemy.hp <= 0 || this.turnSystem.phase !== TurnPhase.ENEMY_AIM) return;
+    if (velocity) {
+      enemy.actionsLeft -= 1;
+      this.events.emit('enemy-launch', { velocity, enemyIndex: idx });
+      return;
+    }
+    this._callout(enemy, 'HOLDING', '#94b0c2');
+    this.turnSystem.startFire();
+    this.enemyFire = { shooter: enemy, index: idx, timer: G.shotGap };
+  }
+
+  /** Per frame (gear): auto-end your spent turn, and pace enemy actions. */
+  _updateGearTurn(dt) {
+    if (this.turnSystem.phase === TurnPhase.PLAYER_AIM && this.autoEnd > 0) {
+      this.autoEnd -= dt;
+      if (this.autoEnd <= 0) this.endPlayerTurn();
+      return;
+    }
+    const ef = this.enemyFire;
+    if (!ef || this.turnSystem.phase !== TurnPhase.ENEMY_FIRE) return;
+    ef.timer -= dt;
+    if (ef.timer > 0) return;
+    const e = ef.shooter;
+    const w = e.hp > 0 && e.actionsLeft > 0 ? this._enemyBestGun(e) : null;
+    if (w) {
+      this._payForShot(e, w);
+      this._shoot(e, w, this.player);
+    } else if (e.hp > 0 && e.actionsLeft > 0 && (e.heat > e.heatCap * 0.5 || e.energy < e.energyMax * 0.4)) {
+      this._vent(e); // nothing worth shooting: get ready for next turn
+    } else {
+      this.enemyFire = null;
+      this._afterEnemyTurn(ef.index);
+      return;
+    }
+    ef.timer = G.shotGap;
+    if (this.turnSystem.phase === TurnPhase.GAME_OVER) this.enemyFire = null;
+  }
+
+  /** The enemy's next shot: its hardest-hitting gun that can fire now (null when none). */
+  _enemyBestGun(enemy) {
+    const ready = (enemy.weapons || []).filter((w) => this.gunStatus(enemy, w, this.player).ok);
+    if (!ready.length) return null;
+    // Ammo guns are saved for when you're below 60% HP, unless nothing else can fire
+    const save = ready.length > 1 && this.player.hp > this.player.maxHp * 0.6;
+    const value = (w) => w.dmg * (w.fx?.burst || 1) * (w.ammo && save ? 0.4 : 1);
+    return ready.sort((a, b) => value(b) - value(a))[0];
+  }
+
+  /**
+   * AI (gear): how good is landing at (x, y)? Damage its guns could deal from
+   * there with the actions it would have left, minus what your guns could
+   * deal back, minus hazards underfoot.
+   */
+  _scoreSpot(enemy, x, y, rammed, stay = false) {
+    const spot = { x, y };
+    const p = this.player;
+    const d = Math.hypot(p.x - x, p.y - y);
+    let shots = stay ? G.actions : G.actions - 1; // moving costs an action
+    let score = 0;
+    let energy = enemy.energy;
+    let heat = enemy.heat;
+    const guns = [...(enemy.weapons || [])].sort((a, b) => b.dmg - a.dmg);
+    for (let round = 0; round < 2 && shots > 0; round++) {
+      for (const w of guns) {
+        if (shots <= 0) break;
+        if (w.ammo && w.ammoLeft <= 0) continue;
+        if (energy < (w.en || 0) || heat + (w.heat || 0) > enemy.heatCap) continue;
+        if (d < w.range[0] || d > w.range[1]) continue;
+        if (!w.arc && !this._lineClear(spot, p, 'enemy')) continue;
+        score += w.dmg * (w.fx?.burst || 1) * (rammed ? G.exposedMult : 1);
+        energy -= w.en || 0;
+        heat += w.heat || 0;
+        shots -= 1;
+      }
+    }
+    // Out of reach: close the gap to its nearest gun band (a short-range gun must advance)
+    let gap = Infinity;
+    for (const w of enemy.weapons || []) {
+      if (w.ammo && w.ammoLeft <= 0) continue;
+      gap = Math.min(gap, Math.max(0, d - w.range[1], w.range[0] - d));
+    }
+    if (Number.isFinite(gap)) score -= gap * 0.04;
+    // What your hardest gun could hit it with from where you stand: a mild
+    // caution only, so enemies still come for you
+    let threat = 0;
+    for (const w of this.playerWeapons || []) {
+      if (w.ammo && w.ammoLeft <= 0) continue;
+      if (d < w.range[0] || d > w.range[1]) continue;
+      if (!w.arc && !this._lineClear(p, spot, 'player')) continue;
+      threat = Math.max(threat, w.dmg * (w.fx?.burst || 1));
+    }
+    score -= threat * (0.25 - 0.15 * this.aggression);
+    for (const h of this.hazards) {
+      if (h.type !== 'pad' && x > h.x - 10 && x < h.x + h.w + 10) score -= 30;
+    }
+    return score;
   }
 
   /** One weapon hit. `from` is where the tracer starts (chains/splash start at the first target). */
@@ -934,15 +1401,23 @@ export class Game {
     const src = from === owner && w._muzzle ? w._muzzle : from;
     this.particles.push({ type: 'tracer', x1: src.x, y1: src.y, x2: target.x, y2: target.y, color: w.color || '#f4f4f4', life: 0.4, maxLife: 0.4 });
     soundEngine.playUI(target.team === 'player' ? 220 : 660, 0.04);
+    // Gear combat: a rammed target takes extra gun damage; energy/heat guns hit the reactor
+    if (this.gear && target.exposed) rawDmg *= G.exposedMult;
+    if (this.gear) this._reactorFx(target, w);
     if (target.team === 'enemy') {
       if (target.shieldCharges > 0) {
         target.shieldCharges -= 1;
         this._callout(target, 'BLOCKED', '#41a6f6');
         return;
       }
-      const crit = w.fx?.crit && Math.random() < w.fx.crit;
+      // Gear combat: your guns carry your ATK, crits and armed skill (the body no longer hits)
+      const yours = this.gear && owner === this.player;
+      const critChance = (w.fx?.crit || 0) + (yours ? 0.05 + (this.techStats?.critChance || 0) : 0);
+      const crit = critChance > 0 && Math.random() < critChance;
       let dmg = rawDmg * (crit ? 1.75 : 1);
-      if (!w.fx?.pierce) dmg *= 1 - Math.min(CONFIG.run.maxDefCap || 15, target.def || 0) * CONFIG.damage.defensePerPoint;
+      if (yours) dmg *= this._gearDamageMult();
+      const pierce = w.fx?.pierce || (yours && this.player.piercing);
+      if (!pierce) dmg *= 1 - Math.min(CONFIG.run.maxDefCap || 15, target.def || 0) * CONFIG.damage.defensePerPoint;
       dmg = Math.max(1, Math.round(dmg));
       const killed = target.takeDamage(dmg);
       target.flashTimer = 0.15;
@@ -982,6 +1457,32 @@ export class Game {
     this.events.emit('damage', { attacker: owner, victim: this.player, damage: dmg, killed });
     this.events.emit('enemy-dealt-damage', { attacker: owner, damage: dmg });
     if (killed) this._checkBattleEnd(this.player);
+  }
+
+  /** Your gun damage multiplier (gear): ATK, armed skill shot, Overdrive. */
+  _gearDamageMult() {
+    let m = this.collisionSystem.stats.playerAtk || 1;
+    if (this.player.shotMult) m *= this.player.shotMult;
+    const bs = this.battleStats;
+    const stacks = bs.overdriveStacks || (bs.overdriveActive ? 1 : 0);
+    if (stacks > 0) {
+      const raw = this.relics.includes('rel_energy_well') || bs.overdriveEmpowered ? 2.0 : CONFIG.abilities.overdrive.damageMult;
+      m *= 1 + (raw - 1) * (1 + (this.techStats?.skillPotency || 0)) + (stacks - 1) * 0.5;
+    }
+    return m;
+  }
+
+  /** EMP drains energy, Heat Ray pumps in heat (gear combat). */
+  _reactorFx(target, w) {
+    if (w.fx?.drain && target.energy !== undefined) {
+      const before = target.energy;
+      target.energy = Math.max(0, target.energy - w.fx.drain);
+      if (before > target.energy) this._callout(target, `-${before - target.energy} ENERGY`, '#c46fd6');
+    }
+    if (w.fx?.heat && target.heat !== undefined) {
+      target.heat += w.fx.heat;
+      this._callout(target, target.heat > target.heatCap ? 'OVERHEATED' : `+${w.fx.heat} HEAT`, '#ef7d57');
+    }
   }
 
   _callout(ball, text, color) {
@@ -1054,6 +1555,8 @@ export class Game {
       if (implode) this.particles.push({ type: 'implode', x: ball.x, y: ball.y, radius: 360, life: 0.4, maxLife: 0.4 });
     });
 
+    this.events.on('enemy-plan', (plan) => this._onEnemyPlan(plan));
+
     this.events.on('place-barrier', ({ x, y }) => {
       if (!this.running) return;
       this.deployBarrierAt(x, y);
@@ -1061,7 +1564,12 @@ export class Game {
 
     this.events.on('player-launch', ({ velocity }) => {
       if (!this.running) return;
-      if (!this.turnSystem.isPlayerTurn || this.turnSystem.isFlying) return;
+      if (this.turnSystem.phase !== TurnPhase.PLAYER_AIM) return;
+      if (this.gear) {
+        if (!(this.player.actionsLeft > 0)) return;
+        this.player.actionsLeft -= 1; // MOVE is one action
+        this.autoEnd = 0;
+      }
       // Frozen by an enemy Cryo Cannon: this launch is weaker
       const chill = this.player.isFrozen ? 0.65 : 1;
       if (this.player.isFrozen) {
@@ -1109,48 +1617,21 @@ export class Game {
       if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
 
       if (playerTurn) {
-        this.battleStats.turns += 1;
-        this._fireWeapons(this.player);
-        if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
-        this._resolveShot();
-        this._clearShotEffects();
-        this._tickAbilities();
-
-        if (this.techStats.forcefieldTurnInterval > 0 && this.battleStats.turns % this.techStats.forcefieldTurnInterval === 0 && !this.player.forcefield) {
-          this.player.forcefield = true;
-          this._callout(this.player, 'FORCEFIELD RECHARGED', '#a7f070');
-        }
-
-        if (this.relics.includes('rel_medic')) {
-          this.player.hp = Math.min(this.player.maxHp, this.player.hp + 6);
-        }
-
-        this.collisionSystem.stats.playerDef = this.battleConfig?.player?.def || 0;
-
-        const firstIdx = this.enemies.findIndex((e) => e.hp > 0);
-        if (firstIdx === -1) {
-          this._startPlayerTurn();
-        } else {
-          this._startEnemyTurnAtIndex(firstIdx);
-        }
+        // Gear combat: a MOVE was one action; spend the rest from where you landed
+        if (this.gear && this.turnSystem.phase === TurnPhase.PLAYER_FLY) return this._afterPlayerMove();
+        this._finishPlayerTurn();
       } else {
         const currentIdx = this.turnSystem.enemyIndex;
         const shooter = this.enemies[currentIdx];
-        this._fireWeapons(shooter);
+        if (this.gear && this.turnSystem.phase === TurnPhase.ENEMY_FLY && shooter?.hp > 0 && shooter.actionsLeft > 0) {
+          // Gear combat: the enemy spends its remaining actions (update() paces them)
+          this.turnSystem.startFire();
+          this.enemyFire = { shooter, index: currentIdx, timer: G.shotGap };
+          return;
+        }
+        if (!this.gear) this._fireWeapons(shooter);
         if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
-        if (shooter) shooter.missStreak = this._enemyShotHit ? 0 : (shooter.missStreak || 0) + 1;
-        let nextIdx = -1;
-        for (let i = currentIdx + 1; i < this.enemies.length; i++) {
-          if (this.enemies[i].hp > 0) {
-            nextIdx = i;
-            break;
-          }
-        }
-        if (nextIdx !== -1) {
-          this._startEnemyTurnAtIndex(nextIdx);
-        } else {
-          this._startPlayerTurn();
-        }
+        this._afterEnemyTurn(currentIdx);
       }
     });
 
@@ -1467,6 +1948,8 @@ export class Game {
       this.enemyAI.update(dt);
     }
 
+    if (this.gear) this._updateGearTurn(dt);
+
     if (this.turnSystem.isFlying) {
       const livingEnemies = this.enemies.filter((e) => e.hp > 0);
       this.turnSystem.update(dt, [this.player, ...livingEnemies]);
@@ -1716,6 +2199,8 @@ export class Game {
       slingshotInput: this.slingshotInput,
       playerWeapons: this.playerWeapons || [],
       playerDrones: this.playerDrones || [],
+      gear: this.gear,
+      fireTarget: this.gear ? this._currentTarget() : null,
       inspected: this.inspected && this.inspected.ball.hp > 0 ? this.inspected : null,
     };
     this.renderer.render(world);

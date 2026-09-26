@@ -69,6 +69,27 @@ export const CONFIG = {
     barrierImpactMinSpeed: 200, // min ball speed to damage a barrier
   },
 
+  // --- Gear combat (combatMode 'gear'): guns are the only damage ---
+  gear: {
+    dmgScale: 2.2, // gun/drone damage vs the classic numbers (bodies no longer hit)
+    enemyDmgScale: 0.6, // enemy guns hit this much of a same-level player gun
+    exposedMult: 1.25, // rammed targets take +25% gun damage until their next turn
+    ramSpeed: 380, // impact speed (px/s) that counts as a ram
+    shotGap: 0.45, // seconds between an enemy's actions, so you can follow them
+    actions: 2, // actions per turn: MOVE (slingshot), FIRE one gun, or VENT
+    vent: { coolMult: 2, energyPct: 0.5 }, // VENT: cools 2x your cooling, refills half your regen
+    drone: { dmgEn: 4, dmgHeat: 2, healEn: 6, shieldEn: 8 }, // ON drones pay this at the end of your turn
+    // Energy pool / refill per turn, heat cap / cooling per turn when no frame sets them
+    baseRig: { energy: 30, regen: 14, heatCap: 30, cool: 12 },
+    // Enemy reactors by tier: bigger threats sustain more fire
+    enemyRig: {
+      combat: { energy: 28, regen: 13, heatCap: 32, cool: 11 },
+      elite: { energy: 36, regen: 16, heatCap: 40, cool: 13 },
+      miniboss: { energy: 42, regen: 18, heatCap: 46, cool: 15 },
+      boss: { energy: 50, regen: 20, heatCap: 54, cool: 17 },
+    },
+  },
+
   // --- Enemy archetypes (unique abilities) ---
   enemyArchetypes: {
     standard: {

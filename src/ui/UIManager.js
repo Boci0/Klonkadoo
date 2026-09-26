@@ -18,6 +18,7 @@ import pkg from '../../package.json';
 import { haptics } from '../platform/haptics.js';
 import { isDesktop, openExternal } from '../platform/desktop.js';
 import { canSelfUpdate, checkForUpdate, isSkipped, skipVersion } from '../platform/updater.js';
+import { isGearMode, setCombatMode } from '../meta/combatMode.js';
 import { RARITY } from '../meta/Relics.js';
 import { BALLS, skinsFor, isSkinUnlocked, skinProgress, skinColors, getSkill } from '../meta/Balls.js';
 import { ballDataUrl, CLASS_PATTERN } from '../rendering/ballSprite.js';
@@ -370,6 +371,7 @@ export class UIManager {
           ${row('sfx', 'SOUND EFFECTS', soundEngine.sfxOn)}
           ${row('music', 'MUSIC', soundEngine.musicOn)}
           ${row('haptics', 'VIBRATION', haptics.enabled)}
+          ${row('gear', 'GEAR COMBAT (BETA)', isGearMode())}
         </div>
         <div class="settings-data">
           <span>SAVE</span>
@@ -386,6 +388,7 @@ export class UIManager {
           const key = btn.dataset.setting;
           if (key === 'sfx') soundEngine.setSfx(!soundEngine.sfxOn);
           if (key === 'music') soundEngine.setMusic(!soundEngine.musicOn);
+          if (key === 'gear') setCombatMode(isGearMode() ? 'classic' : 'gear'); // next battle
           if (key === 'haptics') {
             haptics.setEnabled(!haptics.enabled);
             haptics.impact('medium');

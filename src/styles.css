@@ -4275,3 +4275,92 @@ canvas {
 .drops-item.sel { border-color: var(--p-yellow); }
 .drops-info { margin: 0 !important; min-height: 1.3em; font-size: 12px !important; color: var(--p-silver) !important; }
 .drops-info b { color: var(--rar); font-weight: 400; }
+
+/* ============================================================
+   Gear combat HUD: gun / drone chips (bottom left of centre),
+   VENT and END TURN next to the skill buttons
+   ============================================================ */
+
+.battle-hud.gear .mech-hud {
+  left: calc(196px + var(--safe-left));
+  transform: none;
+}
+
+.battle-hud.gear .ability-btn {
+  width: 68px;
+}
+
+.mech-chip.gear-gun,
+.mech-chip.gear-drone {
+  position: relative;
+  min-width: 66px;
+  padding: 4px 5px 5px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.mech-chip.gear-gun.ready {
+  box-shadow: 0 0 0 2px var(--c);
+  animation: px-pulse 1.2s steps(2) infinite;
+}
+
+.mech-chip .gun-ammo {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font-size: 9px;
+  color: var(--p-yellow);
+}
+
+.mech-chip .gun-dmg {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--p-white);
+  min-height: 11px;
+}
+
+.mech-chip .gun-cost {
+  display: flex;
+  gap: 5px;
+  font-size: 9px;
+}
+
+.mech-chip .gun-cost i {
+  font-style: normal;
+}
+
+.mech-chip .gun-cost .c-en { color: #73eff7; }
+.mech-chip .gun-cost .c-en::before { content: '\26A1'; }
+.mech-chip .gun-cost .c-heat { color: #ef7d57; }
+.mech-chip .gun-cost .c-heat::before { content: '\25B2'; margin-right: 1px; }
+
+.mech-chip .gun-why {
+  font-size: 9px;
+  letter-spacing: 0.3px;
+}
+
+.mech-chip.gear-gun.cooling .gun-why { color: var(--p-red, #ff5d73); }
+.mech-chip.gear-drone.on { border-style: solid; }
+.mech-chip.gear-drone.on .gun-why { color: var(--p-lime); }
+.mech-chip.gear-drone.off { opacity: 0.55; }
+
+.ability-vent { --ab: #73eff7; }
+.ability-end { --ab: var(--p-lime); }
+
+.ability-end:not(.hidden),
+.ability-vent:not(.hidden):not(:disabled) {
+  opacity: 1;
+  color: var(--p-ink);
+  background: var(--ab);
+  box-shadow: var(--bevel), inset 0 calc(var(--px) * -2) 0 rgba(0, 0, 0, 0.3);
+}
+
+.ability-end.pulse {
+  animation: px-pulse 0.8s steps(2) infinite;
+}
+
+.ability-vent .ability-cd,
+.ability-btn .action-pips {
+  letter-spacing: 2px;
+  color: var(--p-ink) !important;
+}

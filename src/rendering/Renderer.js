@@ -225,8 +225,8 @@ export class Renderer {
     if (phase === this._lastPhase) return;
     const prev = this._lastPhase;
     this._lastPhase = phase;
-    if (phase === 'PLAYER_AIM' && prev !== 'PLAYER_AIM') this.showBanner('YOUR TURN', '#73eff7');
-    else if (phase === 'ENEMY_AIM' && prev !== 'ENEMY_AIM' && prev !== 'ENEMY_FLY') this.showBanner('ENEMY TURN', '#ff5d73');
+    if (phase === 'PLAYER_AIM' && prev !== 'PLAYER_AIM' && prev !== 'PLAYER_FLY') this.showBanner('YOUR TURN', '#73eff7');
+    else if (phase === 'ENEMY_AIM' && prev !== 'ENEMY_AIM' && prev !== 'ENEMY_FLY' && prev !== 'ENEMY_FIRE') this.showBanner('ENEMY TURN', '#ff5d73');
   }
 
   // ---------- Backdrop ----------
@@ -557,7 +557,7 @@ export class Renderer {
         ctx.translate(Math.round(mx), Math.round(my));
         ctx.rotate(g._ang);
         if (Math.cos(g._ang) < 0) ctx.scale(1, -1); // keep the sprite upright
-        ctx.globalAlpha = alpha * (g.cdLeft > 0 ? 0.6 : 1);
+        ctx.globalAlpha = alpha * (g.cdLeft > 0 || (g.ammo && g.ammoLeft <= 0) ? 0.6 : 1);
         ctx.drawImage(ic, Math.round(-6 - recoil), Math.round(-h / 2), w, h);
         ctx.globalAlpha = alpha;
         if (since < 110) flash(w - 2 - recoil, 0, g.color || '#ffcd75');
@@ -586,13 +586,21 @@ export class Renderer {
 
   _drawMechRanges(ctx, world) {
     const now = performance.now();
+    const usable = (w) => (world.gear ? !(w.ammo && w.ammoLeft <= 0) : w.cdLeft === 0) && w.range[1] < 1400;
     // While aiming: where your ready guns will reach from the predicted landing spot
     const traj = world.slingshotInput?.dragging ? world.slingshotInput.trajectory : null;
     if (traj && traj.length) {
       const land = traj[traj.length - 1];
       for (const w of world.playerWeapons || []) {
-        if (w.cdLeft === 0 && w.range[1] < 1400) this._rangeRing(ctx, land.x, land.y, w, 0.45, now);
+        if (usable(w)) this._rangeRing(ctx, land.x, land.y, w, 0.45, now);
       }
+    }
+    // Gear combat, your fire phase: your reach from where you stand, and the aimed-at enemy
+    const ph = world.turnSystem?.phase;
+    if (world.gear && world.player?.hp > 0 && ph === 'PLAYER_AIM' && !traj) {
+      if (world.player.actionsLeft > 0) for (const w of world.playerWeapons || []) if (usable(w)) this._rangeRing(ctx, world.player.x, world.player.y, w, 0.22, now);
+      const t = world.fireTarget;
+      if (t && t.hp > 0) this._reticle(ctx, t, now);
     }
     const ins = world.inspected;
     if (!ins) return;
@@ -600,6 +608,25 @@ export class Renderer {
     guns.forEach((w, i) => {
       if (ins.weapon === undefined || ins.weapon === i) this._rangeRing(ctx, ins.ball.x, ins.ball.y, w, 0.8, now);
     });
+  }
+
+  /** Brackets around the enemy your guns are aimed at (gear combat). */
+  _reticle(ctx, ball, now) {
+    const r = ball.radius + 12 + Math.sin(now / 160) * 3;
+    const L = 12;
+    ctx.save();
+    ctx.strokeStyle = '#ffcd75';
+    ctx.lineWidth = 4;
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const cx = ball.x + sx * r;
+      const cy = ball.y + sy * r;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - sy * L);
+      ctx.lineTo(cx, cy);
+      ctx.lineTo(cx - sx * L, cy);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   /**
@@ -653,7 +680,8 @@ export class Renderer {
         ctx.fillRect(x + 10, ry, w - 20, 2);
       }
       const ic = partCanvas(g.id);
-      ctx.globalAlpha = g.cdLeft > 0 ? 0.5 : 1;
+      const spent = world.gear ? g.ammo && g.ammoLeft <= 0 : g.cdLeft > 0;
+      ctx.globalAlpha = spent ? 0.5 : 1;
       ctx.drawImage(ic, x + 16, Math.round(cy - (ic.height * S) / 2), ic.width * S, ic.height * S);
       ctx.globalAlpha = 1;
       let cx = x + 80;
@@ -681,6 +709,26 @@ export class Renderer {
       const r1 = Math.min(1, g.range[1] / 1400);
       ctx.fillRect(Math.round(bx + r0 * bw), cy - 5, Math.max(4, Math.round((r1 - r0) * bw)), 10);
       cx = bx + bw + 16;
+      if (world.gear) {
+        // Energy and heat per shot, then ammo left (strong guns only)
+        icon('energy', cx, cy);
+        ctx.fillStyle = '#73eff7';
+        ctx.fillText(`${g.en || 0}`, cx + 28, cy);
+        cx += 62;
+        icon('heat', cx, cy);
+        ctx.fillStyle = '#ef7d57';
+        ctx.fillText(`${g.heat || 0}`, cx + 28, cy);
+        cx += 62;
+        if (g.ammo) {
+          icon('ammo', cx, cy);
+          ctx.fillStyle = g.ammoLeft > 0 ? '#ffcd75' : '#566c86';
+          ctx.fillText(`${g.ammoLeft}/${g.ammo}`, cx + 28, cy);
+        } else {
+          ctx.fillStyle = '#566c86';
+          ctx.fillText(g.arc ? 'LOB' : '', cx, cy);
+        }
+        return;
+      }
       icon('cd', cx, cy);
       ctx.fillStyle = g.cdLeft > 0 ? '#94b0c2' : '#a7f070';
       ctx.fillText(g.cdLeft > 0 ? `${g.cdLeft}T` : 'READY', cx + 30, cy);
@@ -1059,16 +1107,37 @@ export class Renderer {
     }
   }
 
+  /** Gear combat: thin energy (cyan) and heat (orange, red when too hot) bars under HP. */
+  _reactorBars(ctx, x, y, w, ball) {
+    const half = Math.floor((w - 4) / 2);
+    const bar = (bx, frac, color) => {
+      ctx.fillStyle = '#10111c';
+      ctx.fillRect(bx, y, half, 6);
+      ctx.fillStyle = color;
+      ctx.fillRect(bx, y, Math.round(half * Math.max(0, Math.min(1, frac))), 6);
+    };
+    bar(x, ball.energy / (ball.energyMax || 1), '#73eff7');
+    bar(x + half + 4, ball.heat / (ball.heatCap || 1), ball.heat > ball.heatCap * 0.8 ? '#ff5d73' : '#ef7d57');
+    ctx.font = `700 9px ${FONT}`;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#73eff7';
+    ctx.fillText(`EN ${Math.floor(ball.energy)}`, x, y + 16);
+    ctx.fillStyle = ball.heat > ball.heatCap ? '#ff5d73' : '#ef7d57';
+    ctx.fillText(`HEAT ${Math.ceil(ball.heat)}/${ball.heatCap}`, x + half + 4, y + 16);
+  }
+
   _drawHpPanels(ctx, view, player, enemies) {
     const pad = 8;
     const panelW = Math.min(200, Math.max(150, view.cssW * 0.22));
+    const gear = !!this.worldRef?.gear;
+    const panelH = gear ? 58 : 40;
     // Screen-space tap targets: tapping a panel inspects that ball's weapons
     this.panelHits = [];
 
     if (player) {
       const x = pad;
       const y = pad;
-      this._panel(ctx, x, y, panelW, 40);
+      this._panel(ctx, x, y, panelW, panelH);
       ctx.textAlign = 'left';
       ctx.font = `700 12px ${FONT}`;
       ctx.fillStyle = '#73eff7';
@@ -1078,14 +1147,15 @@ export class Renderer {
       const shieldHp = player.shieldHp || 0;
       ctx.fillText(`${Math.ceil(player.hp)}/${player.maxHp}${shieldHp > 0 ? ` +${Math.ceil(shieldHp)}` : ''}`, x + panelW - 8, y + 14);
       this._hpBar(ctx, x + 8, y + 20, panelW - 16, 12, player, '#41a6f6');
-      this._drawStatusTags(ctx, player, x, y + 46, panelW, false);
-      this.panelHits.push({ x, y, w: panelW, h: 40, ball: player });
+      if (gear) this._reactorBars(ctx, x + 8, y + 36, panelW - 16, player);
+      this._drawStatusTags(ctx, player, x, y + panelH + 6, panelW, false);
+      this.panelHits.push({ x, y, w: panelW, h: panelH, ball: player });
     }
 
     enemies.forEach((enemy, i) => {
       const x = view.cssW - pad - panelW;
-      const y = pad + i * 56;
-      this._panel(ctx, x, y, panelW, 40);
+      const y = pad + i * (panelH + 16);
+      this._panel(ctx, x, y, panelW, panelH);
       const arch = CONFIG.enemyArchetypes[enemy.archetype];
       ctx.font = `700 11px ${FONT}`;
       ctx.textAlign = 'left';
@@ -1095,9 +1165,10 @@ export class Renderer {
       ctx.fillStyle = '#f4f4f4';
       ctx.fillText(`${Math.ceil(enemy.hp)}/${enemy.maxHp}`, x + panelW - 8, y + 14);
       this._hpBar(ctx, x + 8, y + 20, panelW - 16, 12, enemy, '#ef7d57');
-      this._drawStatusTags(ctx, enemy, x, y + 44, panelW, true);
+      if (gear) this._reactorBars(ctx, x + 8, y + 36, panelW - 16, enemy);
+      this._drawStatusTags(ctx, enemy, x, y + panelH + 4, panelW, true);
       const bw = this._drawGunBadges(ctx, enemy, x, y);
-      this.panelHits.push({ x: x - bw, y, w: panelW + bw, h: 40, ball: enemy });
+      this.panelHits.push({ x: x - bw, y, w: panelW + bw, h: panelH, ball: enemy });
     });
   }
 
@@ -1116,10 +1187,17 @@ export class Renderer {
       ctx.fillStyle = inspected ? '#ffcd75' : g.color || '#566c86';
       ctx.fillRect(bx, panelY + 5 + size - 3, size, 3);
       const ic = partCanvas(g.id);
-      ctx.globalAlpha = g.cdLeft > 0 ? 0.45 : 1;
+      const gear = !!this.worldRef?.gear;
+      const spent = gear ? g.ammo && g.ammoLeft <= 0 : g.cdLeft > 0;
+      ctx.globalAlpha = spent ? 0.45 : 1;
       ctx.drawImage(ic, Math.round(bx + (size - ic.width * 2) / 2), Math.round(panelY + 5 + (size - 3 - ic.height * 2) / 2), ic.width * 2, ic.height * 2);
       ctx.globalAlpha = 1;
-      if (g.cdLeft > 0) {
+      if (gear && g.ammo) {
+        ctx.font = `700 10px ${FONT}`;
+        ctx.textAlign = 'right';
+        ctx.fillStyle = g.ammoLeft > 0 ? '#ffcd75' : '#566c86';
+        ctx.fillText(`${g.ammoLeft}`, bx + size - 3, panelY + 16);
+      } else if (!gear && g.cdLeft > 0) {
         ctx.font = `700 10px ${FONT}`;
         ctx.textAlign = 'right';
         ctx.fillStyle = '#f4f4f4';
@@ -1143,6 +1221,10 @@ export class Renderer {
       tags.push({ label: 'CHARGED', color: '#ef7d57', desc: 'Sniper Overcharged! Next shot launch velocity increased by +35%.' });
     if (ball.hasFortified)
       tags.push({ label: 'FORTIFIED', color: '#41a6f6', desc: 'Fortified Shield! Defense increased by +3.' });
+    if (ball.exposed)
+      tags.push({ label: 'EXPOSED', color: '#ffcd75', desc: 'Rammed! Takes +25% gun damage until its next turn.' });
+    if (ball.heatCap && ball.heat > ball.heatCap)
+      tags.push({ label: 'OVERHEATED', color: '#ff5d73', desc: 'Too hot to fire until it cools down.' });
 
     if (ball.team === 'player') {
       const bs = this.worldRef?.battleStats;
@@ -1321,9 +1403,10 @@ export class Renderer {
   }
 
   _drawTurnHint(ctx, view, turnSystem, world) {
+    if ((world.battleStats?.turns || 0) > 1) return; // teach the controls on the first turns only
     if (turnSystem?.phase !== 'PLAYER_AIM' || world.slingshotInput?.dragging || world.slingshotInput?.placementMode) return;
-    if ((world.battleStats?.turns || 0) > 1) return; // teach the control on the first turns only
-    this._centerNotice(ctx, view, 'DRAG ANYWHERE, PULL BACK & RELEASE TO FIRE', '#f4f4f4', view.cssH * 0.66);
+    if (world.gear && !(world.player?.actionsLeft > 0)) return;
+    this._centerNotice(ctx, view, world.gear ? '2 ACTIONS: DRAG TO MOVE, TAP A GUN TO FIRE, OR VENT' : 'DRAG ANYWHERE, PULL BACK & RELEASE TO FIRE', '#f4f4f4', view.cssH * 0.66);
   }
 
   /**

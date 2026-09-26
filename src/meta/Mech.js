@@ -8,10 +8,16 @@
 // (Code and save data still use the old names: mech, crate, tokens.)
 // Duplicates salvage into scrap, scrap upgrades parts (level 1-10).
 //
-// In battle, weapons auto-fire when your shot settles at an enemy
-// inside their range band (distance between ball centres); drones
-// act every turn at any range. Enemies carry weapons too.
+// Classic combat: weapons auto-fire when your shot settles at an enemy
+// inside their range band (distance between ball centres).
+// Gear combat (combatMode.js): you fire each gun yourself; every shot
+// costs energy and adds heat (the frame's reactor limits both) and the
+// strongest guns carry limited ammo. Drones act every turn at any range
+// in both modes. Enemies carry weapons too and obey the same rules.
 // ============================================================
+
+import { CONFIG } from '../config.js';
+import { isGearMode } from './combatMode.js';
 
 export const SLOTS = [
   { id: 'frame', type: 'frame', name: 'FRAME' },
@@ -32,17 +38,24 @@ export const RARITIES = {
 };
 const RARITY_ORDER = ['common', 'rare', 'epic', 'legendary', 'mythic'];
 
-// ---------- Catalog (40 parts) ----------
-// Weapons: range [min, max] in world px, dmg per shot, cd = turns between shots.
+// ---------- Catalog (51 parts) ----------
+// Weapons: range [min, max] in world px, dmg per shot, cd = turns between shots
+// (classic mode). Gear mode: en = energy per shot, heat = heat per shot,
+// ammo = shots per battle (strong guns only), arc = lobbed over cover
+// (everything else needs a clear line to the target).
 // fx: burn / freeze / corrode / splash / chain / pierce (ignores DEF) / leech / crit
+//     burst (hits N times) / line (hits every enemy along the shot)
+//     drain (burns target energy) / heat (adds target heat) / push / pull (px)
+// Frames and some modules set the reactor: energy (pool), regen (per turn),
+// heatCap and cool (per turn).
 export const PARTS = [
-  // Frames: base HP + weight capacity (frames weigh nothing)
-  { id: 'fr_scout', type: 'frame', name: 'SCOUT FRAME', rarity: 'common', hp: 0, capacity: 60 },
-  { id: 'fr_brawler', type: 'frame', name: 'BRAWLER FRAME', rarity: 'rare', hp: 15, capacity: 72 },
-  { id: 'fr_phantom', type: 'frame', name: 'PHANTOM FRAME', rarity: 'epic', hp: 5, capacity: 80, powerPct: 0.1 },
-  { id: 'fr_titan', type: 'frame', name: 'TITAN FRAME', rarity: 'epic', hp: 30, capacity: 88 },
-  { id: 'fr_colossus', type: 'frame', name: 'COLOSSUS FRAME', rarity: 'legendary', hp: 40, capacity: 104 },
-  { id: 'fr_leviathan', type: 'frame', name: 'LEVIATHAN FRAME', rarity: 'mythic', hp: 46, capacity: 112, powerPct: 0.05, color: '#ff5d73' },
+  // Frames: base HP + weight capacity (frames weigh nothing) + reactor
+  { id: 'fr_scout', type: 'frame', name: 'SCOUT FRAME', rarity: 'common', hp: 0, capacity: 60, energy: 30, regen: 14, heatCap: 30, cool: 12 },
+  { id: 'fr_brawler', type: 'frame', name: 'BRAWLER FRAME', rarity: 'rare', hp: 15, capacity: 72, energy: 32, regen: 14, heatCap: 40, cool: 13 },
+  { id: 'fr_phantom', type: 'frame', name: 'PHANTOM FRAME', rarity: 'epic', hp: 5, capacity: 80, powerPct: 0.1, energy: 40, regen: 19, heatCap: 34, cool: 14 },
+  { id: 'fr_titan', type: 'frame', name: 'TITAN FRAME', rarity: 'epic', hp: 30, capacity: 88, energy: 34, regen: 15, heatCap: 50, cool: 15 },
+  { id: 'fr_colossus', type: 'frame', name: 'COLOSSUS FRAME', rarity: 'legendary', hp: 40, capacity: 104, energy: 44, regen: 19, heatCap: 56, cool: 17 },
+  { id: 'fr_leviathan', type: 'frame', name: 'LEVIATHAN FRAME', rarity: 'mythic', hp: 46, capacity: 112, powerPct: 0.05, energy: 50, regen: 21, heatCap: 62, cool: 19, color: '#ff5d73' },
 
   // Armor
   { id: 'ar_scrap', type: 'armor', name: 'SCRAP PLATES', rarity: 'common', weight: 10, hp: 15 },
@@ -53,21 +66,29 @@ export const PARTS = [
   { id: 'ar_void', type: 'armor', name: 'VOID CARAPACE', rarity: 'mythic', weight: 28, hp: 34, def: 3.5, startForcefield: true, color: '#ff5d73', desc: 'Start each battle with a Forcefield.' },
 
   // Weapons
-  { id: 'wp_blaster', type: 'weapon', name: 'PULSE BLASTER', rarity: 'common', weight: 12, range: [0, 340], dmg: 8, cd: 1, color: '#73eff7' },
-  { id: 'wp_scatter', type: 'weapon', name: 'SCATTERGUN', rarity: 'common', weight: 14, range: [0, 210], dmg: 14, cd: 1, color: '#ffcd75' },
-  { id: 'wp_acid', type: 'weapon', name: 'ACID SPRAYER', rarity: 'common', weight: 12, range: [0, 270], dmg: 5, cd: 1, fx: { corrode: 1 }, color: '#a7f070', desc: 'Strips 1 DEF per hit.' },
-  { id: 'wp_rifle', type: 'weapon', name: 'LONG RIFLE', rarity: 'rare', weight: 18, range: [320, 780], dmg: 14, cd: 2, color: '#f4f4f4' },
-  { id: 'wp_flamer', type: 'weapon', name: 'FLAMER', rarity: 'rare', weight: 16, range: [0, 190], dmg: 6, cd: 1, fx: { burn: 2 }, color: '#ef7d57', desc: 'Burns for 2 turns.' },
-  { id: 'wp_mortar', type: 'weapon', name: 'MORTAR', rarity: 'rare', weight: 22, range: [360, 1000], dmg: 15, cd: 2, fx: { splash: 110 }, color: '#ef7d57', desc: 'Splashes enemies near the target.' },
-  { id: 'wp_cryo', type: 'weapon', name: 'CRYO CANNON', rarity: 'rare', weight: 18, range: [150, 520], dmg: 8, cd: 2, fx: { freeze: true }, color: '#73eff7', desc: 'Freezes: their next shot is weaker.' },
-  { id: 'wp_tesla', type: 'weapon', name: 'TESLA COIL', rarity: 'epic', weight: 20, range: [0, 400], dmg: 11, cd: 2, fx: { chain: 260 }, color: '#c46fd6', desc: 'Arcs to a second enemy.' },
-  { id: 'wp_missiles', type: 'weapon', name: 'MISSILE POD', rarity: 'epic', weight: 24, range: [0, 1400], dmg: 12, cd: 2, color: '#ff5d73', desc: 'Hits at any range.' },
-  { id: 'wp_rail', type: 'weapon', name: 'RAIL LANCE', rarity: 'epic', weight: 26, range: [450, 1150], dmg: 22, cd: 3, fx: { pierce: true }, color: '#41a6f6', desc: 'Ignores DEF.' },
-  { id: 'wp_howitzer', type: 'weapon', name: 'SIEGE HOWITZER', rarity: 'legendary', weight: 34, range: [520, 1400], dmg: 32, cd: 3, fx: { splash: 140 }, color: '#ffcd75' },
-  { id: 'wp_scythe', type: 'weapon', name: 'PLASMA SCYTHE', rarity: 'legendary', weight: 24, range: [0, 230], dmg: 26, cd: 2, fx: { leech: 0.25 }, color: '#c46fd6', desc: 'Heals you for 25% of damage.' },
-  { id: 'wp_nova', type: 'weapon', name: 'NOVA LANCE', rarity: 'mythic', weight: 30, range: [0, 1400], dmg: 28, cd: 3, fx: { pierce: true }, color: '#ff5d73', desc: 'Any range. Ignores DEF.' },
+  { id: 'wp_blaster', type: 'weapon', name: 'PULSE BLASTER', rarity: 'common', weight: 12, range: [0, 340], dmg: 8, cd: 1, en: 8, heat: 6, color: '#73eff7' },
+  { id: 'wp_scatter', type: 'weapon', name: 'SCATTERGUN', rarity: 'common', weight: 14, range: [0, 210], dmg: 14, cd: 1, en: 10, heat: 10, color: '#ffcd75' },
+  { id: 'wp_acid', type: 'weapon', name: 'ACID SPRAYER', rarity: 'common', weight: 12, range: [0, 270], dmg: 5, cd: 1, en: 6, heat: 4, fx: { corrode: 1 }, color: '#a7f070', desc: 'Strips 1 DEF per hit.' },
+  { id: 'wp_smg', type: 'weapon', name: 'AUTO SMG', rarity: 'common', weight: 12, range: [0, 300], dmg: 3, cd: 1, en: 6, heat: 12, fx: { burst: 3 }, color: '#f4f4f4', desc: 'Fires 3 rounds. Runs hot.' },
+  { id: 'wp_repulsor', type: 'weapon', name: 'REPULSOR', rarity: 'common', weight: 10, range: [0, 260], dmg: 4, cd: 1, en: 8, heat: 6, fx: { push: 620 }, color: '#41a6f6', desc: 'Blasts the target away.' },
+  { id: 'wp_rifle', type: 'weapon', name: 'LONG RIFLE', rarity: 'rare', weight: 18, range: [320, 780], dmg: 14, cd: 2, en: 10, heat: 12, color: '#f4f4f4' },
+  { id: 'wp_flamer', type: 'weapon', name: 'FLAMER', rarity: 'rare', weight: 16, range: [0, 190], dmg: 6, cd: 1, en: 6, heat: 14, fx: { burn: 2 }, color: '#ef7d57', desc: 'Burns for 2 turns.' },
+  { id: 'wp_mortar', type: 'weapon', name: 'MORTAR', rarity: 'rare', weight: 22, range: [360, 1000], dmg: 15, cd: 2, en: 14, heat: 10, arc: true, fx: { splash: 110 }, color: '#ef7d57', desc: 'Lobbed. Splashes enemies near the target.' },
+  { id: 'wp_cryo', type: 'weapon', name: 'CRYO CANNON', rarity: 'rare', weight: 18, range: [150, 520], dmg: 8, cd: 2, en: 12, heat: 2, fx: { freeze: true }, color: '#73eff7', desc: 'Freezes: their next launch is weaker.' },
+  { id: 'wp_beam', type: 'weapon', name: 'LASER BEAM', rarity: 'rare', weight: 16, range: [0, 620], dmg: 7, cd: 2, en: 12, heat: 14, fx: { line: true }, color: '#ff5d73', desc: 'Hits every enemy along the beam.' },
+  { id: 'wp_emp', type: 'weapon', name: 'EMP BURST', rarity: 'rare', weight: 14, range: [0, 380], dmg: 4, cd: 2, en: 10, heat: 6, fx: { drain: 14 }, color: '#c46fd6', desc: 'Drains 14 of their energy.' },
+  { id: 'wp_grapple', type: 'weapon', name: 'GRAPPLE HOOK', rarity: 'rare', weight: 12, range: [180, 720], dmg: 4, cd: 2, en: 8, heat: 4, fx: { pull: 620 }, color: '#94b0c2', desc: 'Drags the target toward you.' },
+  { id: 'wp_rocket', type: 'weapon', name: 'ROCKET LAUNCHER', rarity: 'rare', weight: 20, range: [220, 950], dmg: 20, cd: 3, en: 10, heat: 10, ammo: 2, arc: true, fx: { splash: 90 }, color: '#ffcd75', desc: 'Lobbed. 2 rockets per battle.' },
+  { id: 'wp_tesla', type: 'weapon', name: 'TESLA COIL', rarity: 'epic', weight: 20, range: [0, 400], dmg: 11, cd: 2, en: 16, heat: 12, fx: { chain: 260 }, color: '#c46fd6', desc: 'Arcs to a second enemy.' },
+  { id: 'wp_missiles', type: 'weapon', name: 'MISSILE POD', rarity: 'epic', weight: 24, range: [0, 1400], dmg: 12, cd: 2, en: 12, heat: 8, ammo: 3, arc: true, color: '#ff5d73', desc: 'Any range, over cover. 3 salvos.' },
+  { id: 'wp_rail', type: 'weapon', name: 'RAIL LANCE', rarity: 'epic', weight: 26, range: [450, 1150], dmg: 22, cd: 3, en: 20, heat: 18, fx: { pierce: true }, color: '#41a6f6', desc: 'Ignores DEF.' },
+  { id: 'wp_heatray', type: 'weapon', name: 'HEAT RAY', rarity: 'epic', weight: 18, range: [0, 480], dmg: 6, cd: 2, en: 10, heat: 8, fx: { heat: 16 }, color: '#ef7d57', desc: 'Pumps 16 heat into the target.' },
+  { id: 'wp_howitzer', type: 'weapon', name: 'SIEGE HOWITZER', rarity: 'legendary', weight: 34, range: [520, 1400], dmg: 32, cd: 3, en: 24, heat: 16, ammo: 2, arc: true, fx: { splash: 140 }, color: '#ffcd75', desc: 'Lobbed. 2 shells per battle.' },
+  { id: 'wp_scythe', type: 'weapon', name: 'PLASMA SCYTHE', rarity: 'legendary', weight: 24, range: [0, 230], dmg: 26, cd: 2, en: 12, heat: 16, fx: { leech: 0.25 }, color: '#c46fd6', desc: 'Heals you for 25% of damage.' },
+  { id: 'wp_sniper', type: 'weapon', name: 'SNIPER CANNON', rarity: 'legendary', weight: 26, range: [620, 1400], dmg: 38, cd: 3, en: 20, heat: 24, ammo: 3, color: '#f4f4f4', desc: 'Huge hit at long range. 3 shots.' },
+  { id: 'wp_nova', type: 'weapon', name: 'NOVA LANCE', rarity: 'mythic', weight: 30, range: [0, 1400], dmg: 28, cd: 3, en: 26, heat: 20, ammo: 2, fx: { pierce: true }, color: '#ff5d73', desc: 'Any range. Ignores DEF. 2 shots.' },
 
-  // Drones: act every turn, any range
+  // Drones: act every turn, any range, free to run
   { id: 'dr_gnat', type: 'drone', name: 'GNAT DRONE', rarity: 'common', weight: 6, dmg: 3, color: '#94b0c2' },
   { id: 'dr_hornet', type: 'drone', name: 'HORNET DRONE', rarity: 'rare', weight: 9, dmg: 5, color: '#ffcd75' },
   { id: 'dr_medic', type: 'drone', name: 'MEDIC DRONE', rarity: 'rare', weight: 8, heal: 4, color: '#a7f070', desc: 'Repairs you every turn.' },
@@ -79,9 +100,12 @@ export const PARTS = [
   { id: 'md_target', type: 'module', name: 'TARGETING CPU', rarity: 'common', weight: 4, crit: 0.03 },
   { id: 'md_servo', type: 'module', name: 'SERVO BOOST', rarity: 'common', weight: 4, powerPct: 0.05 },
   { id: 'md_bounty', type: 'module', name: 'BOUNTY CHIP', rarity: 'common', weight: 3, goldPct: 0.15 },
+  { id: 'md_battery', type: 'module', name: 'BATTERY PACK', rarity: 'common', weight: 5, energy: 12, desc: '+12 energy pool.' },
+  { id: 'md_coolant', type: 'module', name: 'COOLANT LOOP', rarity: 'common', weight: 5, cool: 5, desc: 'Cools 5 more heat per turn.' },
   { id: 'md_amp', type: 'module', name: 'DAMAGE AMP', rarity: 'rare', weight: 6, atkPct: 0.08 },
   { id: 'md_repair', type: 'module', name: 'NANO REPAIR', rarity: 'rare', weight: 6, healAfterWin: 0.05, desc: 'Heal after every won battle.' },
-  { id: 'md_heatsink', type: 'module', name: 'HEAT SINK', rarity: 'rare', weight: 5, cdCut: 1, desc: 'Weapon cooldowns -1 turn (min 1).' },
+  { id: 'md_heatsink', type: 'module', name: 'HEAT SINK', rarity: 'rare', weight: 5, cdCut: 1, heatCap: 12, desc: 'Gun cooldowns -1. +12 heat capacity.' },
+  { id: 'md_generator', type: 'module', name: 'POWER CORE', rarity: 'rare', weight: 6, regen: 5, desc: 'Refills 5 more energy per turn.' },
   { id: 'md_range', type: 'module', name: 'RANGE EXTENDER', rarity: 'epic', weight: 5, rangePct: 0.15 },
   { id: 'md_overclock', type: 'module', name: 'OVERCLOCK CORE', rarity: 'legendary', weight: 8, atkPct: 0.1, weaponDmgPct: 0.12 },
   { id: 'md_singularity', type: 'module', name: 'SINGULARITY CHIP', rarity: 'mythic', weight: 8, atkPct: 0.12, weaponDmgPct: 0.15, crit: 0.03, color: '#ff5d73' },
@@ -128,6 +152,13 @@ export function describePart(owned) {
   if (p.dmg) L.push(`DMG ${Math.round(p.dmg)}`);
   if (p.range) L.push(`RNG ${p.range[0]}-${p.range[1]}`);
   if (p.cd) L.push(`CD ${p.cd}`);
+  if (p.en) L.push(`EN ${p.en}`);
+  if (p.heat) L.push(`HEAT ${p.heat}`);
+  if (p.ammo) L.push(`AMMO ${p.ammo}`);
+  if (p.energy) L.push(`ENERGY ${p.type === 'frame' ? '' : '+'}${p.energy}`);
+  if (p.regen) L.push(`REGEN ${p.type === 'frame' ? '' : '+'}${p.regen}/turn`);
+  if (p.heatCap) L.push(`HEAT CAP ${p.type === 'frame' ? '' : '+'}${p.heatCap}`);
+  if (p.cool) L.push(`COOL ${p.type === 'frame' ? '' : '+'}${p.cool}/turn`);
   if (p.heal) L.push(`HEAL ${Math.round(p.heal)}/turn`);
   if (p.atkPct) L.push(`DMG +${Math.round(p.atkPct * 100)}%`);
   if (p.weaponDmgPct) L.push(`GUNS +${Math.round(p.weaponDmgPct * 100)}%`);
@@ -144,7 +175,7 @@ export function describePart(owned) {
  * Stat chips for the rig screen: { icon, text } with icons from
  * rendering/pixelIcons (the load cost is shown separately).
  */
-export function partChips(owned) {
+export function partChips(owned, gear = isGearMode()) {
   const p = partStats(owned);
   const C = [];
   const add = (cond, icon, text) => { if (cond) C.push({ icon, text }); };
@@ -152,7 +183,14 @@ export function partChips(owned) {
   add(p.hp, 'hp', `+${Math.round(p.hp)}`);
   add(p.def, 'def', `+${p.def?.toFixed(1)}`);
   add(p.dmg, 'dmg', `${Math.round(p.dmg)}`);
-  add(p.cd, 'cd', `${p.cd}T`);
+  add(p.cd && !gear, 'cd', `${p.cd}T`);
+  add(p.en && gear, 'energy', `${p.en}`);
+  add(p.heat && gear, 'heat', `${p.heat}`);
+  add(p.ammo && gear, 'ammo', `x${p.ammo}`);
+  add(p.energy && gear, 'energy', `${p.type === 'frame' ? '' : '+'}${p.energy}`);
+  add(p.regen && gear, 'energy', `+${p.regen}/T`);
+  add(p.heatCap && gear, 'heat', `${p.type === 'frame' ? '' : '+'}${p.heatCap}`);
+  add(p.cool && gear, 'heat', `-${p.cool}/T`);
   add(p.heal, 'heal', `${Math.round(p.heal)}/T`);
   add(p.atkPct, 'dmg', `+${Math.round(p.atkPct * 100)}%`);
   add(p.weaponDmgPct, 'gun', `+${Math.round(p.weaponDmgPct * 100)}%`);
@@ -168,7 +206,7 @@ export function partChips(owned) {
 export function partNote(p) {
   if (p.desc) return p.desc;
   if (p.type === 'drone') return 'Fires every turn at any range.';
-  if (p.type === 'weapon') return 'Fires when you land in range.';
+  if (p.type === 'weapon') return isGearMode() ? (p.arc ? 'Lobbed over cover.' : 'Needs a clear line to the target.') : 'Fires when you land in range.';
   return '';
 }
 
@@ -182,10 +220,16 @@ export function loadoutTotals(ownedParts) {
     capacity: 0, weight: 0, hp: 0, def: 0, atkPct: 0, crit: 0, powerPct: 0, goldPct: 0,
     healAfterWin: 0, weaponDmgPct: 0, rangePct: 0, cdCut: 0, startForcefield: false,
     weapons: [], drones: [],
+    // Reactor (gear combat): the frame sets it, modules add to it
+    energy: 0, regen: 0, heatCap: 0, cool: 0, hasFrame: false,
   };
   const parts = ownedParts.filter(Boolean).map(partStats).filter(Boolean);
   for (const p of parts) {
-    if (p.type === 'frame') t.capacity += p.capacity;
+    if (p.type === 'frame') {
+      t.capacity += p.capacity;
+      t.hasFrame = true;
+    }
+    for (const f of ['energy', 'regen', 'heatCap', 'cool']) t[f] += p[f] || 0;
     t.weight += p.weight || 0;
     for (const f of ['hp', 'def', 'atkPct', 'crit', 'powerPct', 'goldPct', 'healAfterWin', 'weaponDmgPct', 'rangePct', 'cdCut']) t[f] += p[f] || 0;
     if (p.startForcefield) t.startForcefield = true;
@@ -199,6 +243,11 @@ export function loadoutTotals(ownedParts) {
     range: [w.range[0], Math.round(w.range[1] * (1 + t.rangePct))],
     cd: Math.max(1, w.cd - t.cdCut),
   }));
+  if (!t.hasFrame) {
+    // No frame: a bare-bones reactor, plus whatever modules add
+    const base = CONFIG.gear.baseRig;
+    for (const f of ['energy', 'regen', 'heatCap', 'cool']) t[f] += base[f];
+  }
   t.overweight = t.weight > t.capacity;
   return t;
 }
@@ -219,6 +268,7 @@ export function withMech(perm, ownedParts) {
       drones: t.drones,
       healAfterWin: t.healAfterWin,
       startForcefield: t.startForcefield,
+      rig: { energy: t.energy, regen: t.regen, heatCap: t.heatCap, cool: t.cool },
     },
   };
 }
@@ -271,6 +321,21 @@ const ENEMY_POOL = {
   4: ['wp_rifle', 'wp_flamer', 'wp_mortar', 'wp_cryo', 'wp_tesla'],
   5: ['wp_rifle', 'wp_mortar', 'wp_tesla', 'wp_missiles', 'wp_rail'],
 };
+// Gear combat: enemies need a gun every fight, and meet the new toys too
+const GEAR_ENEMY_POOL = {
+  1: ['wp_blaster', 'wp_scatter', 'wp_smg'],
+  2: ['wp_blaster', 'wp_scatter', 'wp_acid', 'wp_rifle', 'wp_smg', 'wp_repulsor'],
+  3: ['wp_scatter', 'wp_rifle', 'wp_flamer', 'wp_cryo', 'wp_beam', 'wp_grapple', 'wp_emp'],
+  4: ['wp_rifle', 'wp_flamer', 'wp_mortar', 'wp_tesla', 'wp_beam', 'wp_rocket', 'wp_heatray'],
+  5: ['wp_rifle', 'wp_mortar', 'wp_tesla', 'wp_missiles', 'wp_rail', 'wp_rocket', 'wp_heatray'],
+};
+
+/** Reactor for one enemy (gear combat): by fight tier, Risk XI trims cooldowns into faster cooling. */
+export function enemyRig(nodeType, { cdCut = 0 } = {}) {
+  const tier = ['elite', 'miniboss', 'boss'].includes(nodeType) ? nodeType : 'combat';
+  const r = CONFIG.gear.enemyRig[tier];
+  return { ...r, cool: r.cool + cdCut * 4 };
+}
 
 /**
  * Weapons for one enemy. Enemy guns hit softer and cool down slower
@@ -278,12 +343,14 @@ const ENEMY_POOL = {
  * condition / wave multiplier the enemy's own ATK gets; `cdCut` shortens
  * cooldowns (Risk XI).
  */
-export function enemyWeapons(nodeType, floor, rnd = Math.random, { atkMult = 1, cdCut = 0 } = {}) {
+export function enemyWeapons(nodeType, floor, rnd = Math.random, { atkMult = 1, cdCut = 0, gear = false } = {}) {
   const f = Math.max(1, Math.min(5, floor));
-  if (nodeType === 'combat' && f === 1 && rnd() < 0.5) return []; // ease new players in
+  if (!gear && nodeType === 'combat' && f === 1 && rnd() < 0.5) return []; // ease new players in
   const count = nodeType === 'combat' ? 1 : 2;
-  const pool = [...ENEMY_POOL[f]];
-  const scale = 0.5 * (1 + 0.1 * (f - 1)) * (nodeType === 'boss' ? 1.2 : 1);
+  const pool = [...(gear ? GEAR_ENEMY_POOL : ENEMY_POOL)[f]];
+  // Gear combat: guns are their only damage, so they hit at the gear scale
+  const G = CONFIG.gear;
+  const scale = (gear ? G.dmgScale * G.enemyDmgScale : 0.5) * (1 + 0.1 * (f - 1)) * (nodeType === 'boss' ? 1.2 : 1);
   const out = [];
   for (let i = 0; i < count && pool.length; i++) {
     const base = getPart(pool.splice(Math.floor(rnd() * pool.length), 1)[0]);

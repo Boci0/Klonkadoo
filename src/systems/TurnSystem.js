@@ -1,6 +1,8 @@
 // ============================================================
 // TurnSystem — manages the turn flow:
 //   PLAYER_AIM → PLAYER_FLY → SETTLING → ENEMY_AIM → ENEMY_FLY → ...
+// Gear combat adds a fire phase after each landing:
+//   PLAYER_AIM → PLAYER_FLY → PLAYER_FIRE → ENEMY_AIM → ENEMY_FLY → ENEMY_FIRE → ...
 // ============================================================
 
 import { CONFIG } from '../config.js';
@@ -14,6 +16,8 @@ export const TurnPhase = {
   PLAYER_FLY: 'PLAYER_FLY',
   ENEMY_AIM: 'ENEMY_AIM',
   ENEMY_FLY: 'ENEMY_FLY',
+  PLAYER_FIRE: 'PLAYER_FIRE',
+  ENEMY_FIRE: 'ENEMY_FIRE',
   GAME_OVER: 'GAME_OVER',
 };
 
@@ -27,11 +31,11 @@ export class TurnSystem {
   }
 
   get isPlayerTurn() {
-    return this.phase === TurnPhase.PLAYER_AIM || this.phase === TurnPhase.PLAYER_FLY;
+    return this.phase === TurnPhase.PLAYER_AIM || this.phase === TurnPhase.PLAYER_FLY || this.phase === TurnPhase.PLAYER_FIRE;
   }
 
   get isEnemyTurn() {
-    return this.phase === TurnPhase.ENEMY_AIM || this.phase === TurnPhase.ENEMY_FLY;
+    return this.phase === TurnPhase.ENEMY_AIM || this.phase === TurnPhase.ENEMY_FLY || this.phase === TurnPhase.ENEMY_FIRE;
   }
 
   get isAiming() {
@@ -110,6 +114,16 @@ export class TurnSystem {
     this.settleTimer = 0;
     const wasPlayerTurn = this.isPlayerTurn;
     this.events.emit('turn-end', { playerTurn: wasPlayerTurn });
+  }
+
+  /** Gear combat: the mover has landed and now fires its guns. */
+  startFire() {
+    this.phase = this.phase === TurnPhase.PLAYER_FLY || this.phase === TurnPhase.PLAYER_AIM ? TurnPhase.PLAYER_FIRE : TurnPhase.ENEMY_FIRE;
+    this.settleTimer = 0;
+  }
+
+  get isFiring() {
+    return this.phase === TurnPhase.PLAYER_FIRE || this.phase === TurnPhase.ENEMY_FIRE;
   }
 
   gameOver(winner) {

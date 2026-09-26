@@ -40,6 +40,19 @@ export class CollisionSystem {
     const attacker = speedAPre >= speedBPre ? a : b;
     if (attacker.hitCooldown > 0 && !evt.pierce) return;
     const victim = attacker === a ? b : a;
+    // Gear combat: bodies deal no damage. A hard ram leaves the target
+    // EXPOSED (it takes extra gun damage until its own next turn).
+    if (this.stats.gear) {
+      const ramSpeed = Math.max(speedAPre, speedBPre);
+      if (attacker.team !== victim.team && victim.hp > 0 && ramSpeed >= CONFIG.gear.ramSpeed && !victim.exposed) {
+        victim.exposed = true;
+        attacker.hitCooldown = D.hitCooldown;
+        this.events.emit('proc', { ball: victim, text: 'EXPOSED', color: '#ffcd75' });
+        this.events.emit('ram', { attacker, victim });
+      }
+      return;
+    }
+
     const attackerVy = attacker === a ? evt.aVyPre : evt.bVyPre;
     const extra = {}; // crit / combo / dive info for the hit feedback
 

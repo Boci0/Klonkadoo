@@ -8,6 +8,11 @@
 // Aggression (from the Risk level, 0..1) shifts that choice toward raw
 // impact speed, shortens the think delay and is read by Game for ability
 // use. Difficulty still sets the random aim error applied afterwards.
+//
+// Gear combat (a spotScorer is configured): bodies don't hurt, so the
+// enemy instead flies every candidate to where it comes to rest and asks
+// Game how good that spot is (its guns in range with a clear line, yours
+// not). Staying put is a candidate too.
 // ============================================================
 
 import { CONFIG } from '../config.js';
@@ -27,6 +32,7 @@ export class EnemyAI {
     this.difficulty = A.difficulty;
     this.aggression = 0;
     this.thinkDelayOverride = null;
+    this.spotScorer = null; // gear combat: (x, y, rammed) => score
     this.aimErrorBonus = 0; // extra radians of error (e.g. Smoke Bomb relic)
     this.world = { barriers: [], platforms: [], obstacles: [], pads: [] };
     this.allies = [];
@@ -45,6 +51,7 @@ export class EnemyAI {
     if (opts.thinkDelay !== undefined) this.thinkDelayOverride = opts.thinkDelay;
     if (opts.aimErrorBonus !== undefined) this.aimErrorBonus = opts.aimErrorBonus;
     if (opts.aggression !== undefined) this.aggression = opts.aggression;
+    if (opts.spotScorer !== undefined) this.spotScorer = opts.spotScorer;
   }
 
   /** Arena geometry the simulation collides with (live arrays, read at fire time). */
@@ -65,7 +72,7 @@ export class EnemyAI {
     const offset = (Math.random() * 2 - 1) * (A.aimOffsetPx || 0) * (1 - this.difficulty);
     const aimAt = { x: playerBall.x + offset, y: playerBall.y, radius: playerBall.radius };
     // Plan during the think delay, a few milliseconds per frame, so phones never hitch
-    this._planner = this._plan(enemyBall, aimAt, { allies });
+    this._planner = this.spotScorer ? this._planSpot(enemyBall, playerBall, this.spotScorer) : this._plan(enemyBall, aimAt, { allies });
     this._planned = undefined;
   }
 
@@ -92,6 +99,12 @@ export class EnemyAI {
     this.thinking = false;
     this._advancePlan(Infinity); // finish whatever is left
     const plan = this._planned;
+    if (this.spotScorer) {
+      // Gear combat: Game decides how to spend the actions (hold = no move)
+      const v = plan && !plan.stay ? this._applyError(plan.velocity, S.maxPower) : null;
+      this.events.emit('enemy-plan', { velocity: v });
+      return true;
+    }
     // A charged Sniper shot is sped up 1.35x on launch (Game): plan for the
     // final speed, then hand over the pre-charge velocity
     const charge = this._enemyBall.isOvercharged ? 1.35 : 1;
@@ -164,6 +177,61 @@ export class EnemyAI {
       if (!best || score > best.score) best = { ...c, score, robust };
     }
     return best;
+  }
+
+  /**
+   * Gear combat: fly each candidate to where it stops and score that spot.
+   * Weaker (low difficulty) enemies only look at part of the options.
+   */
+  *_planSpot(shooter, player, scorer) {
+    const maxPower = S.maxPower * (shooter.isOvercharged ? 1.35 : 1);
+    const rects = this._rects();
+    // Holding position has to beat moving by a margin, or they'd never reposition
+    let best = { stay: true, score: scorer(shooter.x, shooter.y, false, true) + 2 };
+    const angles = 16;
+    const powers = 9;
+    for (const dir of [1, -1]) {
+      for (let a = 0; a < angles; a++) {
+        for (let p = 0; p < powers; p++) {
+          if (Math.random() > 0.45 + 0.55 * this.difficulty) continue; // weaker enemies consider fewer spots
+          const angle = -degToRad(lerp(6, 84, a / (angles - 1)));
+          const power = lerp(S.minPower + 100, maxPower, p / (powers - 1));
+          const v = { x: Math.cos(angle) * power * dir, y: Math.sin(angle) * power };
+          const end = this._simulateRest(shooter, player, v, rects);
+          const score = scorer(end.x, end.y, end.rammed);
+          if (score > best.score) best = { velocity: v, score };
+          yield;
+        }
+      }
+    }
+    return best;
+  }
+
+  /** Fly a shot until it comes to rest (or touches the player: a ram). */
+  _simulateRest(shooter, player, v, rects) {
+    const probe = {
+      x: shooter.x,
+      y: shooter.y,
+      vx: v.x,
+      vy: v.y,
+      radius: shooter.radius,
+      mass: shooter.mass || 1,
+      bounce: shooter.bounce || 1,
+      gravityMult: shooter.gravityMult || 1,
+      ballType: shooter.ballType || null,
+    };
+    const steps = Math.round(SIM_TIME / SIM_DT);
+    for (let i = 0; i < steps; i++) {
+      stepBall(probe, SIM_DT);
+      resolvePads(probe, this.world.pads, SIM_DT);
+      resolveBarrierCollisions(probe, rects);
+      if (Math.hypot(probe.x - player.x, probe.y - player.y) <= probe.radius + player.radius) {
+        const rammed = Math.hypot(probe.vx, probe.vy) >= CONFIG.gear.ramSpeed;
+        return { x: probe.x, y: probe.y, rammed };
+      }
+      if (i > 20 && Math.abs(probe.vx) < 25 && Math.abs(probe.vy) < 25) break;
+    }
+    return { x: probe.x, y: probe.y, rammed: false };
   }
 
   /** Fraction of small aim/power perturbations that still hit. */
