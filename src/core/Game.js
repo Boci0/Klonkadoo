@@ -170,7 +170,7 @@ export class Game {
     this.techStats = config.techStats || {};
     // Higher Risk = bolder enemies: they favour hard hits, fire sooner, use abilities more
     this.aggression = Math.min(1, (config.riskLevel || 0) / 8);
-    this.player.forcefield = !!this.techStats.hasForcefield;
+    this.player.forcefield = !!this.techStats.hasForcefield || !!this.techStats.gearModules?.mod_shield;
     this.medkitUsed = false;
     this._enemyShotHit = false;
 
@@ -1119,8 +1119,8 @@ export class Game {
     });
   }
 
-  /** Cluster: two fragments fly off the bounce and deal 12 damage to the first enemy they touch. */
-  _spawnClusterShards(ball, { count = 2, dmg = 12, label = 'SPLIT!' } = {}) {
+  /** Cluster: two fragments fly off the bounce and deal 9 damage to the first enemy they touch. */
+  _spawnClusterShards(ball, { count = 2, dmg = 9, label = 'SPLIT!' } = {}) {
     this._callout(ball, label, '#ffcd75');
     soundEngine.playAbility('overdrive');
     this.renderer.addScreenShake(8);
@@ -1134,8 +1134,8 @@ export class Game {
         vy: Math.sin(angle) * speed,
         size: 9,
         color: '#ffcd75',
-        life: 1.2,
-        maxLife: 1.2,
+        life: 0.9,
+        maxLife: 0.9,
         shard: true,
         dmg,
       });
@@ -1154,14 +1154,21 @@ export class Game {
       }
       if (target) {
         const speed = 900;
-        const k = Math.min(1, dt * 7);
+        const k = Math.min(1, dt * 4); // soft homing: a bad bounce can still miss
         p.vx += ((target.x - p.x) / best * speed - p.vx) * k;
         p.vy += ((target.y - p.y) / best * speed - p.vy) * k;
       }
       for (const enemy of this.enemies) {
         if (enemy.hp <= 0 || Math.hypot(p.x - enemy.x, p.y - enemy.y) > enemy.radius + 10) continue;
         p.life = 0;
-        const dmg = p.dmg || 12;
+        // Fragments obey shields and DEF like any other hit
+        if (enemy.shieldCharges > 0) {
+          enemy.shieldCharges -= 1;
+          enemy.flashTimer = 0.15;
+          break;
+        }
+        const def = Math.min(CONFIG.run.maxDefCap || 15, enemy.def || 0);
+        const dmg = Math.max(1, Math.round((p.dmg || 9) * (1 - def * CONFIG.damage.defensePerPoint)));
         const killed = enemy.takeDamage(dmg);
         enemy.flashTimer = 0.15;
         this.battleStats.track.shardHits += 1;
@@ -1409,7 +1416,7 @@ export class Game {
     const bs = this.battleStats;
     if (ball !== this.player || !(bs.shrapnel > 0) || this.turnSystem.phase !== TurnPhase.PLAYER_FLY) return;
     bs.shrapnel -= 1;
-    this._spawnClusterShards(ball, { count: 2, dmg: 9, label: `SHRAPNEL ${bs.shrapnel}` });
+    this._spawnClusterShards(ball, { count: 2, dmg: 7, label: `SHRAPNEL ${bs.shrapnel}` });
   }
 
   /** Feedback + stats for every hit you land on an enemy. */

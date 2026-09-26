@@ -25,6 +25,7 @@ import { haptics } from './platform/haptics.js';
 import { DevTools } from './dev/DevTools.js';
 import { checkMedals } from './meta/Medals.js';
 import './platform/native.js';
+import { withGear, rollItem, dropChance, itemName, rarityColor } from './meta/Gear.js';
 
 // Canvas text only uses a web font once it's loaded: fetch the digit face up front
 document.fonts?.load('16px "Pixel Digits"', '0123456789').catch(() => {});
@@ -347,7 +348,7 @@ function updateAbilityHud() {
 
 function startNewRun(ballType = 'vanguard', skin = 'default') {
   runSeed = Math.floor(Math.random() * 100000) + 1;
-  run = new RunState(techTree.getPermanentStats(), ballType);
+  run = new RunState(withGear(techTree.getPermanentStats(), saveSystem.getEquippedGear()), ballType);
   run.skin = skin;
   // One random operation condition per run
   const cond = CONFIG.runConditions[Math.floor(Math.random() * CONFIG.runConditions.length)];
@@ -746,7 +747,7 @@ function startCombat(node) {
     nodeType: node.type,
     ballType: run.ballType || 'vanguard',
     skinColors: skinColors(getBall(run.ballType), run.skin),
-    techStats: techTree.getPermanentStats(),
+    techStats: run.permanent, // tech tree + equipped gear, fixed for the run
     riskLevel: riskLevel,
     riskPlusDmgTaken: riskData.plusDmgTaken || 0,
     floor: run.floor + 1,
@@ -900,7 +901,8 @@ function onBattleEnd(won, node) {
     let heal = 0;
 
     if (rewards.gold) {
-      gold = run.gainGold(rewards.gold + (run.hasRelic('rel_magnet') ? 6 : 0));
+      const bounty = 1 + (run.permanent?.gearModules?.mod_bounty || 0);
+      gold = run.gainGold(Math.round((rewards.gold + (run.hasRelic('rel_magnet') ? 6 : 0)) * bounty));
       addFeedEntry(`<span class="feed-gold">+${gold} GOLD</span>`);
     }
     if (rewards.tech) {
@@ -914,6 +916,21 @@ function onBattleEnd(won, node) {
       heal = Math.round(run.maxHp * (rewards.healMax / 100));
       run.healFlat(heal);
       addFeedEntry(`<span class="feed-heal">+${heal} HP RECOVERED</span>`);
+    }
+    const medic = run.permanent?.gearModules?.mod_medic || 0;
+    if (medic > 0) {
+      const extra = Math.round(run.maxHp * medic);
+      run.healFlat(extra);
+      heal += extra;
+    }
+
+    // Gear: elites sometimes, mini-boss and boss always. Saved at once, so it's kept even if the run is lost.
+    let gearDrop = null;
+    if (Math.random() < dropChance(node.type)) {
+      gearDrop = rollItem({ floor: run.floor + 1, risk: saveSystem.getDifficultyLevel(), source: node.type });
+      saveSystem.addGearItem(gearDrop);
+      (run.gearFound ||= []).push(gearDrop);
+      addFeedEntry(`<span class="feed-boon" style="color:${rarityColor(gearDrop.rarity)}">GEAR: ${itemName(gearDrop)} +${gearDrop.level}</span>`);
     }
 
     // Elite nodes reward 1 collectible; mini-boss rewards 2; boss gives none
@@ -942,7 +959,7 @@ function onBattleEnd(won, node) {
       setTimeout(() => endRun(true), 1400);
       return;
     }
-    ui.showCombatResult(true, { gold, tech, heal, relic: rewardRelic, relics: rewardRelics }, run);
+    ui.showCombatResult(true, { gold, tech, heal, relic: rewardRelic, relics: rewardRelics, gear: gearDrop }, run);
   } else {
     ui.updateRunHud(run);
     ui.showCombatResult(false, null, run);

@@ -119,7 +119,7 @@ export class RunState {
 
   /** Multiplier on maximum launch power (boons + relics). */
   get launchPowerMult() {
-    return 1 + (this.getBoonCount('boon_power') + this.getBoonCount('boon_swift')) * 0.15 + this.relicBonus.powerPct + (this.ball?.powerPct || 0);
+    return 1 + (this.getBoonCount('boon_power') + this.getBoonCount('boon_swift')) * 0.15 + this.relicBonus.powerPct + (this.ball?.powerPct || 0) + (this.permanent?.gearPowerPct || 0);
   }
 
   get floorProgress() {
@@ -203,7 +203,7 @@ export class RunState {
   /** Give gold, respecting Greed bonus and Risk Level Gold penalty. */
   gainGold(amount) {
     const greedCount = this.getBoonCount('boon_greed');
-    const greedMult = 1 + greedCount * 0.25 + (this.hasRelic('rel_lucky_coin') ? 0.25 : 0) + (this.condition === 'gold_rush' ? 0.3 : 0);
+    const greedMult = 1 + greedCount * 0.25 + (this.hasRelic('rel_lucky_coin') ? 0.25 : 0) + (this.condition === 'gold_rush' ? 0.3 : 0) + (this.permanent?.gearGoldPct || 0);
     const riskMult = saveSystem.getGoldMultiplier();
     const gained = Math.round(amount * greedMult * riskMult);
     this.gold += gained;

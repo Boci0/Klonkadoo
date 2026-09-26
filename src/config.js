@@ -143,15 +143,16 @@ export const CONFIG = {
   // runs are won with relics + skills, not by default. Enemies also tighten
   // their aim after each miss (Game: missStreak). aiDifficulty → measured hit
   // rate with the physics planner (EnemyAI): 0.4 ≈ 50%, 0.55 ≈ 67%, 0.7 ≈ 71%, 0.85 ≈ 96%.
+  // HP +10% across the board to make room for gear (starter gear restores the old feel)
   enemyTiers: {
-    1: { hp: 72, atk: 0.95, def: 0, aiDifficulty: 0.36 },
-    2: { hp: 84, atk: 1.00, def: 1, aiDifficulty: 0.41 },
-    3: { hp: 96, atk: 1.05, def: 1, aiDifficulty: 0.45 },
-    4: { hp: 90, atk: 0.92, def: 2, aiDifficulty: 0.48 },
-    5: { hp: 100, atk: 0.98, def: 3, aiDifficulty: 0.51 },
-    elite: { hp: 112, atk: 1.05, def: 3, aiDifficulty: 0.55 },
-    miniboss: { hp: 160, atk: 1.02, def: 4, aiDifficulty: 0.62 },
-    boss: { hp: 200, atk: 1.08, def: 5, aiDifficulty: 0.70 },
+    1: { hp: 79, atk: 0.95, def: 0, aiDifficulty: 0.36 },
+    2: { hp: 92, atk: 1.00, def: 1, aiDifficulty: 0.41 },
+    3: { hp: 106, atk: 1.05, def: 1, aiDifficulty: 0.45 },
+    4: { hp: 99, atk: 0.92, def: 2, aiDifficulty: 0.48 },
+    5: { hp: 110, atk: 0.98, def: 3, aiDifficulty: 0.51 },
+    elite: { hp: 123, atk: 1.05, def: 3, aiDifficulty: 0.55 },
+    miniboss: { hp: 176, atk: 1.02, def: 4, aiDifficulty: 0.62 },
+    boss: { hp: 220, atk: 1.08, def: 5, aiDifficulty: 0.70 },
   },
 
   // --- Floor scaling (applies to every enemy, shown to the player) ---

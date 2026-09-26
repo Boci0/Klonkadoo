@@ -132,6 +132,11 @@ export class CollisionSystem {
         baseDamage *= 1.35;
       }
 
+      // Gear: Ricochet Lens module
+      if (tech.gearModules?.mod_ricochet && bs && bs.wallBounced) {
+        baseDamage *= 1 + tech.gearModules.mod_ricochet;
+      }
+
       if (rels.includes('rel_vector_engine') && bs && bs.lastLaunchPct >= 0.9) {
         baseDamage *= 1.25;
       }

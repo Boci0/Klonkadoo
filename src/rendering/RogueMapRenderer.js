@@ -422,7 +422,9 @@ export class RogueMapRenderer {
     // Icon
     const iconColor = node.cleared && !isCurrent ? PAL.cleared : locked ? PAL.dim : style.color;
     const icon = node.cleared && node.type !== 'entry' ? ICONS.cleared : ICONS[node.type] || ICONS.combat;
-    this._drawIcon(ctx, icon, node.x, node.y - 12, 5, iconColor);
+    // Where you stand and where you can go hop in time with the blink
+    const hop = (isCurrent || selectable) && this._blinkOn ? -5 : 0;
+    this._drawIcon(ctx, icon, node.x, node.y - 12 + hop, 5, iconColor);
 
     // Label ("YOU" marks where the player currently stands)
     ctx.font = `700 22px ${FONT}`;

@@ -19,6 +19,7 @@ import { RARITY } from '../meta/Relics.js';
 import { BALLS, skinsFor, isSkinUnlocked, skinProgress, skinColors, getSkill } from '../meta/Balls.js';
 import { ballDataUrl, CLASS_PATTERN } from '../rendering/ballSprite.js';
 import { MEDALS, medalProgress, checkMedals } from '../meta/Medals.js';
+import { SLOTS, describeItem, itemName, rarityColor, rarityName, upgradeCost, salvageValue, MAX_LEVEL as GEAR_MAX_LEVEL, INVENTORY_CAP as GEAR_CAP } from '../meta/Gear.js';
 
 export class UIManager {
   /**
@@ -52,6 +53,10 @@ export class UIManager {
       this.showMedals();
     });
     document.getElementById('menu-daily')?.addEventListener('click', () => this._claimDaily());
+    document.getElementById('btn-gear')?.addEventListener('click', () => {
+      soundEngine.playUI();
+      this.showGear();
+    });
 
     // Save Export & Import buttons
     const btnExportSave = document.getElementById('btn-export-save');
@@ -570,6 +575,69 @@ export class UIManager {
       this.toast(`<span class="feed-relic">MEDAL: ${m.name}</span> <span class="feed-boon">+${m.tp} TP</span>`);
     }
     if (list?.length) soundEngine.play('confirm');
+  }
+
+  /** Gear screen: worn slots, scrap, and the inventory with equip / upgrade / salvage. */
+  showGear(focusUid = null) {
+    const g = saveSystem.getGear();
+    const worn = new Set(Object.values(g.equipped));
+    const card = (item, extraHtml = '') => {
+      const color = rarityColor(item.rarity);
+      return `<div class="gear-item ${worn.has(item.uid) ? 'worn' : ''} ${item.uid === focusUid ? 'flash' : ''}" style="--rarity:${color}">
+        <div class="gear-item-head">
+          <span class="gear-slot-tag">${item.slot.toUpperCase()}</span>
+          <strong style="color:${color}">${itemName(item)}</strong>
+          <em>+${item.level}</em>
+        </div>
+        <div class="gear-lines">${describeItem(item).map((l) => `<span>${l}</span>`).join('')}</div>
+        ${extraHtml}
+      </div>`;
+    };
+
+    const slots = SLOTS.map((slot) => {
+      const item = g.items.find((i) => i.uid === g.equipped[slot.id]);
+      return `<div class="gear-slot">
+        <div class="gear-slot-name">${slot.name}<span>${slot.hint}</span></div>
+        ${item ? card(item) : '<div class="gear-empty">EMPTY</div>'}
+      </div>`;
+    }).join('');
+
+    const order = { legendary: 0, epic: 1, rare: 2, common: 3 };
+    const items = [...g.items].sort((a, b) =>
+      (worn.has(b.uid) - worn.has(a.uid)) || a.slot.localeCompare(b.slot) || order[a.rarity] - order[b.rarity] || b.level - a.level);
+    const list = items.length
+      ? items.map((item) => {
+        const isWorn = worn.has(item.uid);
+        const cost = upgradeCost(item);
+        const maxed = item.level >= GEAR_MAX_LEVEL;
+        return card(item, `<div class="gear-actions">
+          <button class="btn ${isWorn ? 'btn-outline' : 'btn-accent'}" data-gear="equip" data-uid="${item.uid}">${isWorn ? 'UNEQUIP' : 'EQUIP'}</button>
+          <button class="btn ${!maxed && g.scrap >= cost ? 'btn-primary' : 'btn-disabled'}" data-gear="upgrade" data-uid="${item.uid}" ${maxed || g.scrap < cost ? 'disabled' : ''}>${maxed ? 'MAX' : `UPGRADE ${cost}`}</button>
+          <button class="btn ${isWorn ? 'btn-disabled' : 'btn-danger'}" data-gear="salvage" data-uid="${item.uid}" ${isWorn ? 'disabled' : ''}>SALVAGE +${salvageValue(item)}</button>
+        </div>`);
+      }).join('')
+      : '<p class="gear-hint">No gear yet. Elites sometimes drop gear; mini-bosses and bosses always do. Higher Risk drops higher levels.</p>';
+
+    this.openModal(`GEAR`,
+      `<div class="gear-slots">${slots}</div>
+       <div class="gear-bar"><span>SCRAP <strong>${g.scrap}</strong></span><span>${g.items.length}/${GEAR_CAP}</span></div>
+       <div class="gear-list">${list}</div>`,
+      `<div class="btn-row"><button class="btn btn-accent" data-act="close">CLOSE</button></div>`);
+    this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => this.closeModal());
+    this.modalBody.querySelectorAll('button[data-gear]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const uid = btn.dataset.uid;
+        const act = btn.dataset.gear;
+        const ok = act === 'equip' ? saveSystem.equipGear(uid)
+          : act === 'upgrade' ? saveSystem.upgradeGear(uid)
+            : saveSystem.salvageGear(uid) > 0;
+        soundEngine.play(ok ? 'confirm' : 'error');
+        const scroll = this.modalBody.querySelector('.gear-list')?.scrollTop || 0;
+        this.showGear(act === 'salvage' ? null : uid);
+        const listEl = this.modalBody.querySelector('.gear-list');
+        if (listEl) listEl.scrollTop = scroll;
+      });
+    });
   }
 
   showMedals() {
@@ -1140,6 +1208,14 @@ export class UIManager {
         parts.push(`<span style="color:var(--accent)">+ RELIC: ${rewards.relic.name}</span>`);
       }
       if (parts.length) body += `<p class="reward-line">${parts.join(' • ')}</p>`;
+      if (rewards.gear) {
+        const it = rewards.gear;
+        body += `<div class="gear-drop" style="--rarity:${rarityColor(it.rarity)}">
+          <span>GEAR FOUND · ${rarityName(it.rarity)}</span>
+          <strong>${itemName(it)} +${it.level}</strong>
+          <em>${describeItem(it).join(' · ')}</em>
+        </div>`;
+      }
     }
     this.openModal('BATTLE REPORT', body,
       `<div class="btn-row"><button class="btn btn-accent" data-act="continue">CONTINUE</button></div>`

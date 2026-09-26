@@ -6,6 +6,13 @@
 
 import { CONFIG } from '../config.js';
 
+// Gear carries the long-term grind now, so regular ranks cap at 30 TP; capstones keep their price.
+const RANK_COST_CAP = 30;
+const rankCost = (node, i) => {
+  const c = node.costs[i] ?? node.costs[node.costs.length - 1] ?? 0;
+  return node.capstone ? c : Math.min(RANK_COST_CAP, c);
+};
+
 export class TechTree {
   constructor(saveSystem) {
     this.saveSystem = saveSystem;
@@ -34,7 +41,7 @@ export class TechTree {
     const node = this.nodes[nodeId];
     if (!node || this.isMaxed(nodeId)) return 0;
     const lvl = this.getNodeLevel(nodeId);
-    return node.costs[lvl] ?? node.costs[node.costs.length - 1];
+    return rankCost(node, lvl);
   }
 
   /** Prerequisite node ids (all need at least one rank). */
@@ -164,7 +171,7 @@ export class TechTree {
     for (const node of this.getAllNodes()) {
       const lvl = this.getNodeLevel(node.id);
       for (let i = 0; i < lvl; i++) {
-        total += node.costs[i] || 0;
+        total += rankCost(node, i);
       }
     }
     return total;

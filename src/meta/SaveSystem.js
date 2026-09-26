@@ -8,6 +8,7 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
+import { INVENTORY_CAP, salvageValue, upgradeCost, MAX_LEVEL } from './Gear.js';
 
 const STORAGE_KEY = 'slingshot-save-v1';
 
@@ -41,6 +42,7 @@ export class SaveSystem {
         completedLevels: 1,
         unlockedLevels: 1,
       },
+      gear: { items: [], equipped: { core: null, plating: null, module: null }, scrap: 0, seen: 0 },
     };
   }
 
@@ -61,6 +63,11 @@ export class SaveSystem {
           unlockedPerks: parsed.unlockedPerks || [],
           techTree: parsed.techTree || {},
           progression: { ...defaults.progression, ...(parsed.progression || {}) },
+          gear: {
+            ...defaults.gear,
+            ...(parsed.gear || {}),
+            equipped: { ...defaults.gear.equipped, ...(parsed.gear?.equipped || {}) },
+          },
         };
       }
     } catch (e) {
@@ -349,6 +356,68 @@ export class SaveSystem {
       console.warn('Failed to import save data:', e);
       return false;
     }
+  }
+
+  // ---------- Gear ----------
+
+  getGear() {
+    return this.data.gear;
+  }
+
+  /** Items currently worn, one per slot (missing slots are null). */
+  getEquippedGear() {
+    const g = this.data.gear;
+    return Object.values(g.equipped).map((uid) => g.items.find((i) => i.uid === uid) || null);
+  }
+
+  /** Store a new drop. Past the cap, the weakest unequipped item is salvaged. */
+  addGearItem(item) {
+    const g = this.data.gear;
+    g.items.push(item);
+    g.seen += 1;
+    let autoSalvaged = null;
+    if (g.items.length > INVENTORY_CAP) {
+      const worn = new Set(Object.values(g.equipped));
+      const spare = g.items.filter((i) => !worn.has(i.uid) && i.uid !== item.uid);
+      spare.sort((a, b) => salvageValue(a) - salvageValue(b));
+      if (spare[0]) autoSalvaged = this.salvageGear(spare[0].uid, false);
+    }
+    // First item for an empty slot is worn straight away
+    if (!g.equipped[item.slot]) g.equipped[item.slot] = item.uid;
+    this.save();
+    return autoSalvaged;
+  }
+
+  equipGear(uid) {
+    const g = this.data.gear;
+    const item = g.items.find((i) => i.uid === uid);
+    if (!item) return false;
+    g.equipped[item.slot] = g.equipped[item.slot] === uid ? null : uid;
+    this.save();
+    return true;
+  }
+
+  salvageGear(uid, save = true) {
+    const g = this.data.gear;
+    const item = g.items.find((i) => i.uid === uid);
+    if (!item || Object.values(g.equipped).includes(uid)) return 0;
+    const value = salvageValue(item);
+    g.items = g.items.filter((i) => i.uid !== uid);
+    g.scrap += value;
+    if (save) this.save();
+    return value;
+  }
+
+  upgradeGear(uid) {
+    const g = this.data.gear;
+    const item = g.items.find((i) => i.uid === uid);
+    if (!item || item.level >= MAX_LEVEL) return false;
+    const cost = upgradeCost(item);
+    if (g.scrap < cost) return false;
+    g.scrap -= cost;
+    item.level += 1;
+    this.save();
+    return true;
   }
 
   reset() {
