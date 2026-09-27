@@ -766,7 +766,7 @@ export class Renderer {
       ctx.globalAlpha = 1;
     };
     mount(player, world.playerWeapons || [], enemies, world.playerDrones || []);
-    for (const e of enemies) mount(e, e.weapons || [], player ? [player] : []);
+    for (const e of enemies) mount(e, e.weapons || [], player ? [player] : [], e.drones || []);
   }
 
   /**

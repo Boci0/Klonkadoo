@@ -55,6 +55,7 @@ let currentFloorView = 0;
 let pendingBoon = null;
 let lostAnyCombat = false;
 let activeNode = null; // node currently being resolved
+let battleNode = null; // the node of the fight on screen (bosses a floor forces on you too)
 let prevPosition = null; // where the player stood before selecting activeNode (for BACK / RETREAT)
 let battlePaused = false; // battle simulation frozen (e.g. retreat confirmation open)
 let minigameResultShown = false;
@@ -905,13 +906,14 @@ function cancelNodeSelection() {
 
 /** A boss or mini-boss fight (including the ones a floor forces on you). */
 function isBossFight() {
-  const type = (activeNode || run?.currentNode)?.type;
+  const type = battleNode?.type;
   return state === State.BATTLE && (type === 'miniboss' || type === 'boss');
 }
 
 /** Can the player leave the current battle? Bosses can be left too, as a loss. */
 function canRetreatFromBattle() {
-  return state === State.BATTLE && (isBossFight() || !!prevPosition);
+  // A normal retreat steps back to the tile you came from: only for fights you walked into
+  return state === State.BATTLE && (isBossFight() || (!!prevPosition && activeNode === battleNode));
 }
 
 /** Leave a boss / mini-boss fight: it counts as a lost fight, so the run ends. */
@@ -1058,6 +1060,7 @@ function advanceFloorIfNeeded() {
 // ---------- Combat ----------
 
 function startCombat(node) {
+  battleNode = node;
   ui.closeModal();
   // Closing the app mid-fight restarts this fight from the top on resume
   persistRun('battle', { node, prevId: prevPosition?.id ?? null });
