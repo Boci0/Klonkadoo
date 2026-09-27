@@ -26,7 +26,7 @@ import { getPart, loadoutTotals, SLOTS, PARTS, rarityColor, rarityName, describe
 import { partCardHtml, bindHoverTips, chipHtml, tierDots, hideTip, iconKeyHtml } from './partCard.js';
 import { getSupply } from '../rogue/Supplies.js';
 import { RigScreen } from './RigScreen.js';
-import { ico, partIcon } from '../rendering/pixelIcons.js';
+import { ico, partIcon, uiIcon } from '../rendering/pixelIcons.js';
 
 export class UIManager {
   /**
@@ -1183,13 +1183,14 @@ export class UIManager {
       row(ico('cd'), 'TURNS', r.turns || 0),
     ].join('');
 
-    // Which gun did the work
+    // Which part did the work (stomps and rams get a symbol: they aren't parts)
+    const HIT_ICON = { STOMP: 'stomp', RAM: 'move' };
     const guns = Object.entries(r.byGun || {}).sort((a, b) => b[1] - a[1]);
     const top = guns[0]?.[1] || 1;
     const gunRows = guns.map(([name, dmg], i) => {
       const part = PARTS_BY_NAME[name];
       return `<div class="br-gun ${i === 0 ? 'mvp' : ''}" style="--c:${part?.color || '#94b0c2'}">
-        ${part ? `<img src="${partIcon(part.id)}" alt="">` : ''}
+        <img src="${part ? partIcon(part.id) : uiIcon(HIT_ICON[name] || 'dmg')}" alt="">
         <span>${name}${i === 0 && guns.length > 1 ? ' <em>MVP</em>' : ''}</span>
         <i class="br-bar"><i style="--w:${Math.round((dmg / top) * 100)}%"></i></i><b>${Math.round(dmg)}</b></div>`;
     }).join('') || '<p class="dim-text">No gun hits this fight.</p>';
@@ -1220,7 +1221,7 @@ export class UIManager {
           <section class="br-col">
             <h3>BATTLE</h3>
             <div class="br-stats">${stats}</div>
-            <h3>GUNS</h3>
+            <h3>DAMAGE BY PART</h3>
             <div class="br-guns">${gunRows}</div>
           </section>
           <section class="br-col br-right">
