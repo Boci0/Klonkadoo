@@ -10,8 +10,8 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/Klonkadoo/favicon-32.png" />
   <link rel="icon" type="image/png" sizes="512x512" href="/Klonkadoo/icon-512.png" />
   <link rel="apple-touch-icon" href="/Klonkadoo/icon-512.png" />
-  <script type="module" crossorigin src="/Klonkadoo/assets/index-BaicIt7i.js"></script>
-  <link rel="stylesheet" crossorigin href="/Klonkadoo/assets/index-Dr20sMzT.css">
+  <script type="module" crossorigin src="/Klonkadoo/assets/index-mS_siNZf.js"></script>
+  <link rel="stylesheet" crossorigin href="/Klonkadoo/assets/index-DSMkN22h.css">
 </head>
 
 <body>
@@ -115,11 +115,15 @@
       <div class="battle-left">
         <button id="btn-retreat-battle" class="btn btn-outline btn-battle-small" title="Flee this fight">&#9664; RETREAT</button>
         <button id="btn-audio-toggle" class="btn btn-outline btn-battle-small" title="Toggle Audio">SND ON</button>
-        <button id="btn-auto" class="btn btn-outline btn-battle-small" title="AUTO [A]: your mech plays its best move every turn">AUTO</button>
       </div>
       <div id="mech-hud" class="mech-hud"></div>
       <div id="team-bar" class="team-bar hidden"></div>
       <div class="battle-abilities">
+        <button id="btn-auto" class="ability-btn ability-auto" aria-label="Auto" title="AUTO [A]: your mech plays its best move every turn">
+          <span class="ability-icon">A</span>
+          <span class="ability-name">AUTO</span>
+          <span class="ability-cd" id="cd-auto">OFF</span>
+        </button>
         <button id="btn-stomp" class="ability-btn ability-stomp" aria-label="Stomp">
           <span class="ability-icon">F</span>
           <span class="ability-name">STOMP</span>
