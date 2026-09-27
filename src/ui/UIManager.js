@@ -655,10 +655,10 @@ export class UIManager {
         doc.classList.remove('hidden');
         // Bundled with the app (Vite public/), so this works offline
         if (btn.dataset.doc === 'privacy') {
-          doc.innerHTML = '<iframe src="./privacy.html" title="Privacy policy"></iframe>';
+          doc.innerHTML = `<iframe src="${import.meta.env.BASE_URL}privacy.html" title="Privacy policy"></iframe>`;
         } else {
           try {
-            const text = await (await fetch('./licenses.txt')).text();
+            const text = await (await fetch(`${import.meta.env.BASE_URL}licenses.txt`)).text();
             doc.innerHTML = '';
             const pre = document.createElement('pre');
             pre.textContent = text;
