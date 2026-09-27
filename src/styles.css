@@ -4435,7 +4435,10 @@ canvas {
 
 .part-tip {
   position: fixed;
+  left: 0;
+  top: 0;
   z-index: 200;
+  will-change: transform; /* follows the mouse without re-layout */
   width: max-content;
   max-width: min(340px, calc(100vw - 16px));
   padding: 8px 10px;

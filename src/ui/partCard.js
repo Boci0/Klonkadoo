@@ -134,6 +134,9 @@ export function iconKeyHtml() {
 // ---------- Hover tooltip ----------
 
 let tipEl = null;
+let tipOwner = null; // the element the tooltip is showing
+let tipW = 0;
+let tipH = 0;
 let holdTimer = 0;
 
 function tip() {
@@ -145,46 +148,52 @@ function tip() {
   return tipEl;
 }
 
+/** Put the tooltip next to (x, y), kept on screen. Cheap: no re-render, no layout read. */
+function moveTip(x, y) {
+  if (!tipEl) return;
+  let left = x + 16;
+  let top = y + 12;
+  if (left + tipW > window.innerWidth - 8) left = Math.max(8, x - tipW - 16);
+  if (top + tipH > window.innerHeight - 8) top = Math.max(8, window.innerHeight - tipH - 8);
+  tipEl.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+}
+
 /** Show `html` in the floating tooltip near (x, y). */
 export function showTip(html, x, y) {
   const el = tip();
   el.innerHTML = html;
   el.classList.remove('hidden');
-  const r = el.getBoundingClientRect();
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  let left = x + 16;
-  let top = y + 12;
-  if (left + r.width > vw - 8) left = Math.max(8, x - r.width - 16);
-  if (top + r.height > vh - 8) top = Math.max(8, vh - r.height - 8);
-  el.style.left = `${left}px`;
-  el.style.top = `${top}px`;
+  tipW = el.offsetWidth; // measured once per card, not per mouse move
+  tipH = el.offsetHeight;
+  moveTip(x, y);
 }
 
 export function hideTip() {
   clearTimeout(holdTimer);
+  tipOwner = null;
   tipEl?.classList.add('hidden');
 }
 
 /**
  * Hover (mouse) or press-and-hold (touch) any element under `root` that
- * matches `selector` to see `htmlFor(el)` in the tooltip.
+ * matches `selector` to see `htmlFor(el)` in the tooltip. The card is built
+ * once per element you hover; moving the mouse only moves it.
  */
 export function bindHoverTips(root, selector, htmlFor) {
   root.addEventListener('mouseover', (e) => {
     const el = e.target.closest?.(selector);
-    if (!el || !root.contains(el)) return;
+    if (!el || !root.contains(el) || el === tipOwner) return;
     const html = htmlFor(el);
-    if (html) showTip(html, e.clientX, e.clientY);
+    if (!html) return;
+    tipOwner = el;
+    showTip(html, e.clientX, e.clientY);
   });
   root.addEventListener('mousemove', (e) => {
-    const el = e.target.closest?.(selector);
-    if (!el || tipEl?.classList.contains('hidden')) return;
-    showTip(tipEl.innerHTML, e.clientX, e.clientY);
+    if (tipOwner && tipOwner.contains(e.target)) moveTip(e.clientX, e.clientY);
   });
   root.addEventListener('mouseout', (e) => {
     const el = e.target.closest?.(selector);
-    if (el && !el.contains(e.relatedTarget)) hideTip();
+    if (el && el === tipOwner && !el.contains(e.relatedTarget)) hideTip();
   });
   root.addEventListener('touchstart', (e) => {
     const el = e.target.closest?.(selector);
