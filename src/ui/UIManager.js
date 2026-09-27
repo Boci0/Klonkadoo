@@ -19,7 +19,7 @@ import { haptics } from '../platform/haptics.js';
 import { isDesktop, openExternal } from '../platform/desktop.js';
 import { canSelfUpdate, checkForUpdate, isSkipped, skipVersion } from '../platform/updater.js';
 import { OPERATOR, skinsFor, isSkinUnlocked, skinProgress, skinColors } from '../meta/Balls.js';
-import { ballDataUrl, CLASS_PATTERN } from '../rendering/ballSprite.js';
+import { mechDataUrl } from '../rendering/mechSprite.js';
 import { MEDALS, medalProgress, checkMedals } from '../meta/Medals.js';
 import { masteryLevel, MILESTONES, MAX_MASTERY } from '../meta/Mastery.js';
 import { getPart, loadoutTotals, SLOTS, PARTS, rarityColor, CLEAN_WIN_KEYS, DTYPES, DTYPE_KEYS } from '../meta/Mech.js';
@@ -198,9 +198,9 @@ export class UIManager {
   // ---------- Deploy (run start) ----------
 
   /**
-   * Before a run: your rig at a glance (what you'll fight with), the
-   * ball's paint, mastery and the Risk to play on. There are no classes:
-   * the rig is the character.
+   * Before a run: your mech at a glance (what you'll fight with), its
+   * paint, mastery and the Risk to play on (with its rules). There are no
+   * classes: the rig is the character.
    */
   showBallSelect(onStart) {
     const b = OPERATOR;
@@ -212,12 +212,13 @@ export class UIManager {
       const o = owned[SLOTS.findIndex((s) => s.id === slotId)];
       return o ? getPart(o.id) : null;
     }).filter(Boolean);
+    const partIds = owned.filter(Boolean).map((o) => o.id);
     const icons = parts.map((p) => `<span class="deploy-part" style="--c:${rarityColor(p.rarity)}" title="${p.name}" data-name="${p.name}"><img src="${partIcon(p.id)}" alt="${p.name}"></span>`).join('');
 
     this.openModal('DEPLOY', `
       <div class="deploy">
         <div class="deploy-ball">
-          <img class="ball-sprite" id="deploy-sprite" src="${ballDataUrl(skinColors(b, 'default'), 1)}" alt="">
+          <img class="ball-sprite deploy-mech" id="deploy-sprite" src="${mechDataUrl(partIds, skinColors(b, 'default').color, skinColors(b, 'default').darkColor)}" alt="">
           <div class="deploy-paint">
             <button class="btn btn-outline paint-step" data-paint="-1" aria-label="Previous paint">&#9664;</button>
             <b id="paint-name">COBALT</b>
@@ -227,13 +228,14 @@ export class UIManager {
         <div class="deploy-info">
           <div class="deploy-stats">
             <span title="HP">${ico('hp')}${CONFIG.run.maxHpBase + Math.round(t.hp)}</span>
-            <span title="DEF">${ico('def')}${t.def.toFixed(1)}</span>
+            ${DTYPE_KEYS.map((k) => `<span title="${DTYPES[k].name} resist" style="color:${DTYPES[k].color}">${ico('def', DTYPES[k].color)}${Math.round((t.def + t.res[k]) * 10) / 10}</span>`).join('')}
             <span title="Energy pool, refill per turn">${ico('energy')}${t.energy}<em>+${t.regen}</em></span>
             <span title="Heat cap, cooling per turn">${ico('heat')}${t.heatCap}<em>-${t.cool}</em></span>
           </div>
           <div class="deploy-parts">${icons}</div>
           <p class="deploy-hint" id="deploy-hint">${t.overweight ? '<span class="bad">Over the load limit: fix it on the RIG screen.</span>' : ''}</p>
           <div class="deploy-mastery" id="ball-mastery"></div>
+          <div class="deploy-risk"><p id="deploy-risk" class="risk-summary"></p><button class="btn btn-outline risk-rules-btn" data-act="rules">RULES</button></div>
         </div>
       </div>`, `<div class="btn-row">
         <button class="btn btn-outline" data-act="cancel">BACK</button>
@@ -251,20 +253,38 @@ export class UIManager {
 
     // Risk + mastery
     const riskRow = this.modalActions.querySelector('#ball-risk-row');
+    const levels = CONFIG.risk.levels.length;
     const renderRisk = () => {
       const max = saveSystem.getMaxRiskUnlocked(b.id);
       const val = saveSystem.getDifficultyLevel(b.id);
       const m = masteryLevel(saveSystem.getMasteryXp(b.id));
       const next = MILESTONES.find((x) => x.level > m.level);
+      // At 10/10 the + stays live while the secret level is sealed: it glitches and hints
+      const sealed = !saveSystem.hasSecretRisk(b.id) && max >= levels && val >= max;
       riskRow.innerHTML = `<button class="btn btn-outline risk-step" data-risk="-1" ${val <= 0 ? 'disabled' : ''}>&minus;</button>
-        <b class="ball-risk-val ${val > 10 ? 'secret' : ''}">${max === 0 ? 'RISK LOCKED' : `RISK <span>${val > 10 ? 'XI' : val}</span>`}</b>
-        <button class="btn btn-outline risk-step" data-risk="1" ${val >= max ? 'disabled' : ''}>+</button>`;
+        <b class="ball-risk-val ${val > levels ? 'secret' : ''}">${max === 0 ? 'RISK LOCKED' : `RISK <span id="risk-level-val">${val > levels ? 'XI' : val}</span>`}</b>
+        <button class="btn btn-outline risk-step ${sealed ? 'risk-sealed' : ''}" data-risk="1" ${val >= max && !sealed ? 'disabled' : ''}>+</button>`;
+      const summary = document.getElementById('deploy-risk');
+      if (max === 0) summary.innerHTML = `<span class="dim-text">Win a run to unlock Risk</span>`;
+      else if (val === 0) summary.innerHTML = '<span class="dim-text">No extra rules</span>';
+      else {
+        const rule = saveSystem.riskLevels(b.id)[val - 1];
+        const more = val > 1 ? ` <span class="dim-text">+${val - 1}</span>` : '';
+        summary.innerHTML = `<span class="risk-tp-inline">+${val * CONFIG.risk.scrapPerLevel}% SCRAP</span> <b class="${rule.allElite ? 'abyss-text' : ''}" title="${rule.desc}">${rule.name}</b>${more}`;
+      }
       const bar = m.need ? `<i class="bm-bar" title="${m.into}/${m.need} XP"><i style="width:${Math.round((m.into / m.need) * 100)}%"></i></i>` : '<em>MAX</em>';
       document.getElementById('ball-mastery').innerHTML = `<b>${ico('star')}MASTERY ${m.level}</b>${bar}${next ? `<span title="Next at level ${next.level}">${next.label}</span>` : ''}`;
       riskRow.querySelectorAll('[data-risk]').forEach((btn) => btn.addEventListener('click', () => {
-        saveSystem.setDifficultyLevel(val + Number(btn.dataset.risk), b.id);
-        soundEngine.playUI();
-        this.cb.onBallChanged?.();
+        const step = Number(btn.dataset.risk);
+        if (step > 0 && sealed) {
+          soundEngine.play('error');
+          haptics.impact('heavy');
+          this.glitchRiskHint(CONFIG.risk.secret.hint);
+          return;
+        }
+        saveSystem.setDifficultyLevel(val + step, b.id);
+        soundEngine.playUI(step > 0 ? 700 : 500);
+        haptics.impact('light');
         renderRisk();
       }));
     };
@@ -281,7 +301,8 @@ export class UIManager {
     const renderPaint = () => {
       const s = list[shown];
       const open = isSkinUnlocked(s, stats);
-      document.getElementById('deploy-sprite').src = ballDataUrl(skinColors(b, s.id), 1);
+      const look = skinColors(b, s.id);
+      document.getElementById('deploy-sprite').src = mechDataUrl(partIds, look.color, look.darkColor);
       document.getElementById('deploy-sprite').classList.toggle('locked', !open);
       document.getElementById('paint-name').innerHTML = open ? s.name : `${ico('lock')}${s.name}`;
       if (!t.overweight) hint.textContent = open ? `${list.filter((x) => isSkinUnlocked(x, stats)).length}/${list.length} paints` : `${s.hint} (${skinProgress(s, stats)})`;
@@ -302,6 +323,11 @@ export class UIManager {
     renderRisk();
     renderPaint();
 
+    this.modalBody.querySelector('[data-act="rules"]').addEventListener('click', () => {
+      soundEngine.playUI();
+      // The rules list replaces this window: come back to DEPLOY after
+      this.showRiskRules(saveSystem.getDifficultyLevel(b.id), saveSystem.getMaxRiskUnlocked(b.id), () => this.showBallSelect(onStart));
+    });
     this.modalActions.querySelector('[data-act="cancel"]').addEventListener('click', () => this.closeModal());
     this.modalActions.querySelector('[data-act="start"]').addEventListener('click', () => {
       soundEngine.play('confirm');
@@ -1436,7 +1462,8 @@ export class UIManager {
   }
 
   /** Every Risk rule: active ones highlighted, locked ones dimmed, plus the sealed 11th. */
-  showRiskRules(level, maxUnlocked) {
+  /** Every Risk rule; `onClose` (e.g. back to DEPLOY) runs when it's closed. */
+  showRiskRules(level, maxUnlocked, onClose = null) {
     let rows = CONFIG.risk.levels.map((rule, i) => {
       const n = i + 1;
       const state = n <= level ? 'on' : n <= maxUnlocked ? '' : 'locked';
@@ -1451,9 +1478,9 @@ export class UIManager {
       const clue = maxUnlocked >= n - 1 ? secret.hint : '&#9618;&#9618;&#9618; &#9618;&#9618; &#9618;&#9618;&#9618;&#9618; &#9618;&#9618; &#9618;&#9618;&#9618;&#9618;&#9618;';
       rows += `<div class="risk-rule-row sealed"><b>??</b><span><strong class="glitch-text" data-text="&#9618;&#9618;&#9618;&#9618;&#9618;">&#9618;&#9618;&#9618;&#9618;&#9618;</strong> ${clue}</span></div>`;
     }
-    this.openModal('RISK RULES', `<p class="dim-text">Rules stack: Risk ${level || 'N'} applies rules 1 to ${level || 'N'}. Each level: +${CONFIG.risk.tpPerLevel}% Tech Points.</p><div class="risk-rule-list">${rows}</div>`,
-      `<div class="btn-row"><button class="btn btn-accent" data-act="close">CLOSE</button></div>`);
-    this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => this.closeModal());
+    this.openModal('RISK RULES', `<p class="dim-text">Rules stack: Risk ${level || 'N'} applies rules 1 to ${level || 'N'}. Each level: +${CONFIG.risk.scrapPerLevel}% scrap from battles.</p><div class="risk-rule-list">${rows}</div>`,
+      `<div class="btn-row"><button class="btn btn-accent" data-act="close">${onClose ? 'BACK' : 'CLOSE'}</button></div>`);
+    this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => (onClose ? onClose() : this.closeModal()));
   }
 
   /** Result-screen line for the secret Risk: unlocked, or a hint of how close you were. */
@@ -1472,10 +1499,10 @@ export class UIManager {
     }
   }
 
-  /** Tapping + past Risk 10 while the secret is sealed: the value glitches and a clue flashes. */
+  /** Tapping + past Risk 10 while the secret is sealed: the value glitches and a clue flashes (DEPLOY window). */
   glitchRiskHint(hint) {
     const val = document.getElementById('risk-level-val');
-    const summary = document.getElementById('risk-level-bonus');
+    const summary = document.getElementById('deploy-risk');
     if (!val || !summary) return;
     const before = { v: val.textContent, s: summary.innerHTML };
     val.textContent = '??';

@@ -257,12 +257,12 @@ canvas {
 
 .menu-panel {
   width: 100%;
-  max-width: 960px;
+  max-width: 480px;
   margin: auto;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 18px;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  text-align: center;
 }
 
 .menu-left {
@@ -270,6 +270,10 @@ canvas {
   flex-direction: column;
   gap: 14px;
   min-width: 0;
+}
+
+.menu-left .daily-card {
+  text-align: left;
 }
 
 .game-title {
@@ -394,14 +398,6 @@ canvas {
   font-size: 12px;
 }
 
-/* Landscape phones & desktops: title/stats left, buttons right */
-@media (min-aspect-ratio: 5/4) {
-  .menu-panel {
-    grid-template-columns: minmax(0, 1.25fr) minmax(220px, 0.75fr);
-    gap: clamp(16px, 4vw, 48px);
-  }
-}
-
 /* Short landscape screens (phones): tighten vertical rhythm */
 @media (max-height: 480px) {
   .menu-left {
@@ -427,30 +423,6 @@ canvas {
   .game-tagline {
     font-size: 11px;
   }
-}
-
-/* ---------- Risk / Difficulty Panel ---------- */
-
-.difficulty-panel {
-  width: 100%;
-  padding: 10px 14px 14px;
-}
-
-.difficulty-header {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  font-size: 13px;
-  letter-spacing: 1px;
-  margin-bottom: 12px;
-}
-
-.difficulty-header strong.accent {
-  font-family: var(--font-display);
-  font-weight: 400;
-  font-size: 13px;
-  color: var(--accent-gold);
 }
 
 
@@ -1870,8 +1842,7 @@ canvas {
   z-index: 1;
 }
 
-#screen-menu .menu-stats,
-#screen-menu .difficulty-panel {
+#screen-menu .menu-stats {
   background: rgba(26, 28, 44, 0.9);
 }
 
@@ -1937,36 +1908,11 @@ canvas {
 
 /* ---------- Risk stepper (replaces the slider) ---------- */
 
-.difficulty-panel {
-  padding: 8px 10px;
-}
-
-.risk-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.risk-title {
-  font-size: 13px;
-  letter-spacing: 2px;
-  margin-right: 2px;
-}
-
 .risk-step {
   min-width: 38px;
   min-height: 36px;
   padding: 4px 0 calc(4px + var(--px));
   font-size: 18px;
-}
-
-.risk-value {
-  min-width: 58px;
-  text-align: center;
-  font-family: var(--font-display);
-  font-weight: 400;
-  font-size: 11px;
-  color: var(--accent-gold);
 }
 
 .risk-rules-btn {
@@ -2016,17 +1962,8 @@ canvas {
 }
 
 @media (max-width: 640px) {
-  .risk-title {
-    display: none;
-  }
-
   .risk-step {
     min-width: 34px;
-  }
-
-  .risk-value {
-    min-width: 50px;
-    font-size: 10px;
   }
 }
 
@@ -3350,19 +3287,14 @@ canvas {
   97% { opacity: 1; }
 }
 
-.risk-value.glitch {
+#risk-level-val.glitch {
   color: #c46fd6;
   animation: glitch-jitter 0.4s steps(1) infinite;
 }
 
-.risk-value.secret {
+.ball-risk-val.secret span {
   color: #ff5d73;
   text-shadow: 2px 0 #73eff7, -2px 0 #c46fd6;
-}
-
-#screen-menu .difficulty-panel.abyss {
-  border-color: var(--p-red);
-  background: linear-gradient(180deg, rgba(93, 39, 93, 0.6), rgba(26, 28, 44, 0.95));
 }
 
 .risk-rule-row.sealed {
@@ -3565,14 +3497,6 @@ canvas {
 /* ============================================================
    Mastery, per-ball Risk, Abyss
    ============================================================ */
-
-.risk-ball {
-  width: 18px;
-  height: 18px;
-  margin-right: 6px;
-  vertical-align: -4px;
-  image-rendering: pixelated;
-}
 
 .ball-card { position: relative; }
 
@@ -3884,6 +3808,12 @@ canvas {
 
 .deploy-ball .ball-sprite.locked { filter: grayscale(1) brightness(0.6); }
 
+/* The mech sprite is wider than tall: keep its pixels square */
+.deploy-ball .deploy-mech {
+  width: 96px;
+  height: auto;
+}
+
 .deploy-paint {
   display: flex;
   align-items: center;
@@ -3968,6 +3898,27 @@ canvas {
 .deploy-mastery b { display: flex; align-items: center; gap: 4px; color: var(--p-yellow); }
 .deploy-mastery .bm-bar { flex: 0 0 60px; }
 .deploy-mastery span { overflow: hidden; text-overflow: ellipsis; }
+
+/* Newest Risk rule + the full list (Risk itself is stepped next to START) */
+.deploy-risk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.deploy-risk .risk-summary {
+  margin: 0;
+  font-size: 10px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.deploy-risk .risk-rules-btn {
+  min-height: 28px;
+}
 
 @media (max-width: 560px) {
   .deploy-stats { grid-template-columns: repeat(2, auto); }

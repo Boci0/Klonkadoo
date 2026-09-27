@@ -26,7 +26,6 @@ import './platform/native.js';
 import './platform/desktop.js';
 import { withMech, tokenReward, enemyMech, enemyRig, CLEAN_WIN_KEYS, DTYPES, dtypeOf } from './meta/Mech.js';
 import { partIcon } from './rendering/pixelIcons.js';
-import { ballDataUrl, CLASS_PATTERN } from './rendering/ballSprite.js';
 import { withMastery, masteryLevel, runXp } from './meta/Mastery.js';
 import { writeRun, readRun, clearRun, hasSavedRun, savedRunInfo, patchRunQuests } from './rogue/RunSave.js';
 
@@ -101,7 +100,6 @@ const ui = new UIManager({
   },
   savedRun: savedRunInfo,
   onDataReset: clearRun,
-  onBallChanged: () => updateRiskDisplay(saveSystem.getDifficultyLevel()),
   onBackToMenu: () => {
     setState(State.MENU);
     ui.showMenu(saveSystem.getProfile(), saveSystem.getMeta());
@@ -405,7 +403,7 @@ function applyConditionGravity(condId) {
   CONFIG.world.gravity = BASE_GRAVITY * (condId === 'heavy_gravity' ? 1.2 : condId === 'low_gravity' ? 0.8 : 1);
 }
 
-/** Report a quest event; newly completed quests are written into the saved run at once (their TP is already paid). */
+/** Report a quest event; newly completed quests are written into the saved run at once (their scrap is already paid). */
 function reportQuest(type, data) {
   if (!questSystem) return;
   const newly = questSystem.reportCombatEvent(type, data);
@@ -491,7 +489,6 @@ function resumeSavedRun() {
     soundEngine.play('error');
     ui.toast('<span class="feed-enemy-ability">SAVED RUN WAS DAMAGED AND COULD NOT BE LOADED</span>');
     ui.showMenu(saveSystem.getProfile(), saveSystem.getMeta());
-    setupRiskSlider();
     return;
   }
   run = s.run;
@@ -1415,7 +1412,6 @@ function endRun(victory) {
     ui.showRiskUnlocked(run.riskUnlocked, CONFIG.risk.levels[run.riskUnlocked - 1]);
   }
   if (run.secretResult) ui.showSecretRisk(run.secretResult.unlocked, run.secretResult.fights);
-  setupRiskSlider();
 }
 
 // ---------- Encounters (small pool, can expand) ----------
@@ -1644,91 +1640,11 @@ function loop(now) {
 
 requestAnimationFrame(loop);
 
-/** Risk stepper: − / + buttons, one-line summary, full rule list in a pop-up. */
-function setupRiskSlider() {
-  const down = document.getElementById('risk-down');
-  const up = document.getElementById('risk-up');
-  const rulesBtn = document.getElementById('risk-rules');
-  if (!down || !up) return;
-  const change = (delta) => {
-    // A suspended run keeps the Risk it started on
-    if (hasSavedRun()) {
-      soundEngine.play('error');
-      return;
-    }
-    const next = saveSystem.getDifficultyLevel() + delta;
-    const levels = CONFIG.risk.levels.length;
-    // Past Risk 10 with the secret still sealed: a glitch and a clue
-    if (next === levels + 1 && !saveSystem.hasSecretRisk() && saveSystem.getMaxRiskUnlocked() >= levels) {
-      soundEngine.play('error');
-      haptics.impact('heavy');
-      ui.glitchRiskHint(CONFIG.risk.secret.hint);
-      return;
-    }
-    if (next < 0 || next > saveSystem.getMaxRiskUnlocked()) {
-      soundEngine.play('error');
-      return;
-    }
-    saveSystem.setDifficultyLevel(next);
-    soundEngine.playUI(delta > 0 ? 700 : 500);
-    haptics.impact('light');
-    updateRiskDisplay(next);
-  };
-  down.onclick = () => change(-1);
-  up.onclick = () => change(1);
-  rulesBtn.onclick = () => {
-    soundEngine.playUI();
-    ui.showRiskRules(saveSystem.getDifficultyLevel(), saveSystem.getMaxRiskUnlocked());
-  };
-  updateRiskDisplay(saveSystem.getDifficultyLevel());
-}
-
-/** Compact Risk panel for the selected ball: level, TP bonus, newest rule (the rest are in RULES). */
-function updateRiskDisplay(val) {
-  const max = saveSystem.getMaxRiskUnlocked();
-  const ball = OPERATOR;
-  const title = document.querySelector('.risk-title');
-  if (title) {
-    const look = skinColors(ball, 'default');
-    title.innerHTML = `<img class="risk-ball" src="${ballDataUrl({ ...look, pattern: look.pattern || CLASS_PATTERN[ball.id] }, ball.radiusMult)}" alt="" title="${ball.name}">RISK`;
-  }
-  const levels = CONFIG.risk.levels;
-  const valEl = document.getElementById('risk-level-val');
-  const summary = document.getElementById('risk-level-bonus');
-  const secretOpen = saveSystem.hasSecretRisk();
-  if (valEl) {
-    valEl.textContent = max === 0 ? 'LOCKED' : val > levels.length ? 'XI' : `${val}/${levels.length}`;
-    valEl.classList.toggle('secret', val > levels.length);
-  }
-  const locked = hasSavedRun(); // a run in progress keeps its Risk
-  document.getElementById('risk-down').disabled = val <= 0 || locked;
-  // At 10/10 the + stays live while the secret is sealed (it glitches and hints)
-  const sealed = !secretOpen && max >= levels.length;
-  const up = document.getElementById('risk-up');
-  up.disabled = (val >= max && !sealed) || locked;
-  up.classList.toggle('risk-sealed', sealed && val >= max && !locked);
-  document.querySelector('.difficulty-panel')?.classList.toggle('abyss', val > levels.length);
-  if (!summary) return;
-  if (locked) {
-    summary.innerHTML = '<span class="dim-text">Locked while a run is in progress</span>';
-  } else if (max === 0) {
-    summary.innerHTML = `<span class="dim-text">Win a run with ${ball.name} to unlock</span>`;
-  } else if (val === 0) {
-    summary.innerHTML = '<span class="dim-text">No extra rules</span>';
-  } else {
-    // Newest rule name only; RULES lists them all
-    const rule = saveSystem.riskLevels()[val - 1];
-    const more = val > 1 ? ` <span class="dim-text">+${val - 1}</span>` : '';
-    summary.innerHTML = `<span class="risk-tp-inline">+${val * CONFIG.risk.tpPerLevel}% TP</span> <b class="${rule.allElite ? 'abyss-text' : ''}" title="${rule.desc}">${rule.name}</b>${more}`;
-  }
-}
-
 // ---------- Boot ----------
 
 ui.showMenu(saveSystem.getProfile(), saveSystem.getMeta());
 soundEngine.playMusic('menu'); // begins after the first tap
 new MenuBackground(document.getElementById('menu-bg'));
-setupRiskSlider();
 bindMapClicks();
 bindAbilityButtons();
 // GitHub builds: offer a newer release once the menu is up (no-op on the web)

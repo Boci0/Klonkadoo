@@ -59,7 +59,7 @@ export function writeRun(s) {
   }
 }
 
-/** Update only the quest list of the stored run (quest TP is paid the moment it completes). */
+/** Update only the quest list of the stored run (quest scrap is paid the moment it completes). */
 export function patchRunQuests(quests) {
   try {
     const raw = localStorage.getItem(KEY);
