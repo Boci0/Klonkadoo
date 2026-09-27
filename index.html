@@ -10,8 +10,8 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/Slingshot-OPS/favicon-32.png" />
   <link rel="icon" type="image/png" sizes="512x512" href="/Slingshot-OPS/icon-512.png" />
   <link rel="apple-touch-icon" href="/Slingshot-OPS/icon-512.png" />
-  <script type="module" crossorigin src="/Slingshot-OPS/assets/index-CJR1uOkm.js"></script>
-  <link rel="stylesheet" crossorigin href="/Slingshot-OPS/assets/index-CRecn8mR.css">
+  <script type="module" crossorigin src="/Slingshot-OPS/assets/index-2ujRGFtf.js"></script>
+  <link rel="stylesheet" crossorigin href="/Slingshot-OPS/assets/index-Dkg07qU1.css">
 </head>
 
 <body>
@@ -26,21 +26,10 @@
           <p class="game-tagline">&gt; TACTICAL BALLISTIC ROGUELIKE_</p>
           <div id="menu-stats" class="menu-stats px-frame"></div>
           <button id="menu-daily" class="daily-card px-frame" type="button"></button>
-          <div class="difficulty-panel px-frame">
-            <div class="risk-row">
-              <span class="risk-title">RISK</span>
-              <button id="risk-down" class="btn btn-outline risk-step" aria-label="Lower risk">&minus;</button>
-              <strong id="risk-level-val" class="risk-value">0</strong>
-              <button id="risk-up" class="btn btn-outline risk-step" aria-label="Raise risk">+</button>
-              <button id="risk-rules" class="btn btn-outline risk-rules-btn">RULES</button>
-            </div>
-            <p id="risk-level-bonus" class="risk-summary"></p>
-          </div>
         </div>
         <div class="menu-buttons">
           <button id="btn-play" class="btn btn-primary btn-large btn-menu">&#9654; START OPERATION</button>
           <div class="menu-tiles">
-            <button id="btn-tech" class="menu-tile" data-icon="tp"><span>TECH</span></button>
             <button id="btn-gear" class="menu-tile" data-icon="gun"><span>RIG</span></button>
             <button id="btn-medals" class="menu-tile" data-icon="star"><span>MEDALS</span></button>
           </div>
@@ -49,19 +38,6 @@
             <button id="btn-support" class="btn btn-outline btn-menu btn-support" aria-label="Support the game">&#9829; SUPPORT</button>
           </div>
         </div>
-      </div>
-    </section>
-
-    <!-- ===== TECH TREE ===== -->
-    <section id="screen-tech" class="screen hidden">
-      <div class="screen-header">
-        <button id="btn-tech-back" class="btn btn-outline btn-back">&#9664; BACK</button>
-        <h2>TECH TREE</h2>
-        <div class="tp-display px-frame">TP <span id="tech-points">0</span></div>
-      </div>
-      <div id="tech-tree" class="tech-tree"></div>
-      <div class="screen-footer">
-        <button id="tech-apply" class="tech-apply" type="button"></button>
       </div>
     </section>
 
@@ -102,10 +78,6 @@
               <h3>STATUS</h3>
               <div id="run-stats" class="run-stats"></div>
               <div id="run-boons" class="run-boons"></div>
-            </div>
-            <div class="run-panel">
-              <h3>RELICS</h3>
-              <div id="run-relics" class="run-relics"></div>
             </div>
             <div class="run-panel">
               <h3>QUESTS</h3>
