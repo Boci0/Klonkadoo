@@ -123,7 +123,7 @@ export const PARTS = [
   // Drones: act every turn, any range, free to run
   { id: 'dr_gnat', type: 'drone', name: 'GNAT DRONE', rarity: 'common', dtype: 'phys', weight: 6, dmg: 3, color: '#94b0c2' },
   { id: 'dr_hornet', type: 'drone', name: 'HORNET DRONE', rarity: 'rare', dtype: 'phys', weight: 9, dmg: 5, color: '#ffcd75' },
-  { id: 'dr_medic', type: 'drone', name: 'MEDIC DRONE', rarity: 'rare', weight: 8, heal: 6, color: '#a7f070', desc: 'Repairs 6 HP every turn it is deployed. It never attacks, and its repair is the same at every level.' },
+  { id: 'dr_medic', type: 'drone', name: 'MEDIC DRONE', rarity: 'rare', weight: 8, heal: 5, color: '#a7f070', desc: 'Repairs you every turn it is deployed (grows with its level only). It never attacks.' },
   { id: 'dr_guardian', type: 'drone', name: 'GUARDIAN DRONE', rarity: 'epic', weight: 10, forcefieldEvery: 3, color: '#a7f070', desc: 'Forcefield every 3rd turn.' },
   { id: 'dr_reaper', type: 'drone', name: 'REAPER DRONE', rarity: 'legendary', dtype: 'energy', weight: 12, dmg: 9, fx: { crit: 0.2 }, color: '#ffcd75', desc: '20% crit chance.' },
   { id: 'dr_seraph', type: 'drone', name: 'SERAPH DRONE', rarity: 'mythic', dtype: 'energy', weight: 13, dmg: 11, fx: { crit: 0.25 }, color: '#ff5d73', desc: '25% crit chance.' },
@@ -167,8 +167,7 @@ export const INVENTORY_CAP = 60;
 export const levelMult = (lvl) => 1 + 0.05 * (lvl - 1);
 
 // Numeric fields that scale with level
-// Drone repair ('heal') is flat on purpose: healing never scales
-const SCALING = ['hp', 'def', 'dmg', 'stomp', 'atkPct', 'crit', 'powerPct', 'goldPct', 'healAfterWin', 'weaponDmgPct'];
+const SCALING = ['hp', 'def', 'dmg', 'heal', 'stomp', 'atkPct', 'crit', 'powerPct', 'goldPct', 'healAfterWin', 'weaponDmgPct'];
 
 /** A part's stats at the owned item's level. */
 export function partStats(owned) {
@@ -176,7 +175,7 @@ export function partStats(owned) {
   if (!base) return null;
   const k = levelMult(owned.level || 1);
   const out = { ...base, level: owned.level || 1, uid: owned.uid };
-  for (const f of SCALING) if (typeof base[f] === 'number') out[f] = base[f] * (f === 'hp' || f === 'dmg' || f === 'stomp' ? k : 1 + (k - 1) * 0.5);
+  for (const f of SCALING) if (typeof base[f] === 'number') out[f] = base[f] * (f === 'hp' || f === 'dmg' || f === 'heal' || f === 'stomp' ? k : 1 + (k - 1) * 0.5);
   if (base.res) out.res = Object.fromEntries(Object.entries(base.res).map(([t, v]) => [t, v * (1 + (k - 1) * 0.5)]));
   return out;
 }
