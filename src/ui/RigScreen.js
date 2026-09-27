@@ -535,7 +535,7 @@ export class RigScreen {
         ${got.map((o, i) => {
           const tier = tierOf(o);
           const p = getPart(o.id);
-          return `<button class="pcard3d" data-i="${i}" style="--pod:${crate.color};--rar:${rarityColor(tier)};--deal:${i * 0.12}s" data-tip-uid="${o.uid}">
+          return `<button class="pcard3d" data-i="${i}" style="--pod:${crate.color};--rar:${rarityColor(tier)};--deal:${i * 0.12}s">
             <span class="pcard-face back"><img src="${back}" alt=""><em>?</em></span>
             <span class="pcard-face front">
               <img src="${partIcon(p.id)}" alt="">
@@ -615,6 +615,7 @@ export class RigScreen {
       setTimeout(() => {
         el.classList.remove('charge');
         el.classList.add('flipped', `r${rank}`);
+        el.dataset.tipUid = owned.uid; // its hover card only once it's face up (no peeking)
         soundEngine.play(rank >= 3 ? 'alarm' : rank >= 1 ? 'coin' : 'confirm');
         haptics.impact(rank >= 2 ? 'heavy' : 'light');
         if (rank >= 3) {
