@@ -43,12 +43,18 @@ const LOADOUTS = {
   // Late game: epic / legendary kit (level 1, so a floor for what veterans bring)
   late: ['fr_colossus', 'lg_coil', 'wp_tesla', 'wp_beam', 'wp_rifle', 'wp_scatter', 'wp_missiles', 'wp_rail', 'dr_reaper', 'md_titanplate', 'md_overclock', 'md_composite', 'md_amp'],
   lateMedic: ['fr_colossus', 'lg_coil', 'wp_tesla', 'wp_beam', 'wp_rifle', 'wp_scatter', 'wp_missiles', 'wp_rail', 'dr_medic', 'md_titanplate', 'md_overclock', 'md_composite', 'md_amp'],
+  // Endgame tank + heal (what players actually bring to Risk 10-XI): max HP, resists, every heal
+  tankHeal: ['fr_reclaimer', 'lg_bulwark', 'wp_siphon', 'wp_omega', 'wp_needler', 'wp_tesla', 'wp_cluster', 'wp_nova', 'dr_medic', 'md_voidcore', 'md_titanplate', 'md_titanplate', 'md_heavyplate', 'md_composite', 'md_salvage', 'md_overclock', 'md_insulated'],
   // mid with one sustain piece each, to see what each is worth
   midMedic: ['fr_brawler', 'lg_strider', 'wp_blaster', 'wp_scatter', 'wp_rifle', 'wp_mortar', 'dr_medic', 'md_plating', 'md_physres', 'md_heavyplate'],
   midSiphon: ['fr_brawler', 'lg_strider', 'wp_blaster', 'wp_siphon', 'wp_rifle', 'wp_mortar', 'dr_hornet', 'md_plating', 'md_physres', 'md_heavyplate'],
   midSalvage: ['fr_reclaimer', 'lg_strider', 'wp_blaster', 'wp_scatter', 'wp_rifle', 'wp_mortar', 'dr_hornet', 'md_plating', 'md_physres', 'md_salvage'],
 };
-const gear = (args.gear || 'starter').split(',');
+// --kit=file.json: a real loadout ([{ id, tier, level }], e.g. decoded from a save export) as gear "kit"
+import { readFileSync } from 'node:fs';
+const KIT = args.kit ? JSON.parse(readFileSync(args.kit, 'utf8')) : null;
+if (KIT) LOADOUTS.kit = KIT.map((o) => o.id);
+const gear = (args.gear || (KIT ? 'kit' : 'starter')).split(',');
 
 // ---------- RNG (seeded, so rule sets see the same runs) ----------
 function mulberry(seed) {
@@ -93,6 +99,7 @@ function gunOf(w, dmg) {
 
 const ARCH_KEYS = (floor) => Object.entries(CONFIG.archetypeWeights[Math.min(5, floor)] || CONFIG.archetypeWeights[1]);
 function pickArch(floor, rnd) {
+  if (args.arch) return args.arch; // --arch=tank: every enemy is this archetype
   const list = ARCH_KEYS(floor);
   let r = rnd() * list.reduce((s, [, w]) => s + w, 0);
   for (const [k, w] of list) if ((r -= w) <= 0) return k;
@@ -143,6 +150,8 @@ function riskData() {
 
 /** An owned part: --gearLvl=max levels it to its tier cap, --tierUp=N transforms it N tiers (as far as it goes). */
 function ownedPart(id) {
+  const real = KIT?.find((o) => o.id === id);
+  if (real && !args.tierUp && !args.gearLvl) return { id, tier: real.tier, level: real.level };
   const base = getPart(id);
   const top = RARITY_ORDER.indexOf(tierRange(base)[1]);
   const tier = RARITY_ORDER[Math.min(top, RARITY_ORDER.indexOf(base.rarity) + Number(args.tierUp || 0))];
