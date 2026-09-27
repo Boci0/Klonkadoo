@@ -313,7 +313,7 @@ function autoRunAllowed() {
   if (!run || run.runOver) return { ok: false, why: '' };
   if (run.floor >= CONFIG.map.floors) return { ok: false, why: 'Not in the Abyss' };
   const best = saveSystem.getBallStats(run.ballType).bestRiskWin ?? -1;
-  if (best < (run.risk ?? 0)) return { ok: false, why: `Win a run on Risk ${run.risk ?? 0} first` };
+  if (best < (run.risk ?? 0)) return { ok: false, why: 'Win a run on this Risk first' };
   return { ok: true, why: '' };
 }
 
@@ -610,6 +610,7 @@ function startNewRun(skin = 'default') {
 
   setState(State.RUN_MAP);
   ui.showRunScreen(run, map, 0);
+  updateAutoRunBtn();
   buildFloorTabs();
   if (cond.id === 'supplied') {
     const boon = CONFIG.boons[Math.floor(Math.random() * CONFIG.boons.length)];
@@ -666,6 +667,7 @@ function resumeSavedRun() {
 
   setState(State.RUN_MAP);
   ui.showRunScreen(run, map, run.floor);
+  updateAutoRunBtn();
   buildFloorTabs();
   soundEngine.play('confirm');
 
