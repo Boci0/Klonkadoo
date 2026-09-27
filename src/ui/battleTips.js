@@ -89,6 +89,20 @@ function droneTip(game, i) {
     <p>${d.off ? 'Tap to DEPLOY: uses 1 action, then it works every turn.' : 'Tap to recall it (free).'}</p>`;
 }
 
+/** A team mech in the team bar. */
+function swapTip(game, i) {
+  const m = game.team?.[i];
+  if (!m) return '';
+  const active = i === game.teamIndex;
+  const guns = (m.weapons || []).map((w) => w.name).join(' + ') || 'No guns';
+  const hp = Math.round(active ? game.player.hp : m.hp);
+  const state = active ? 'FIGHTING' : hp <= 0 ? 'KNOCKED OUT' : 'SWAP · whole turn';
+  return `<h4>${m.name} <em>${state}</em></h4>
+    ${row('HP', `${hp}/${Math.round(m.maxHp)}`, '#a7f070')}
+    <p>${guns}</p>
+    <p>${active ? 'The mech on the lane.' : 'SWAP brings it in on the same position. It takes your whole turn, so do it at the start. If the fighting mech is knocked out, the next one drops in by itself.'}</p>`;
+}
+
 export class BattleTips {
   constructor(game, hud) {
     this.game = game;
@@ -100,7 +114,7 @@ export class BattleTips {
     // Mouse only: on touch the chips act on press, so there's nothing to hover
     hud.addEventListener('pointerover', (e) => {
       if (e.pointerType !== 'mouse') return;
-      const el = e.target.closest('#btn-vent, #btn-end-turn, #btn-barrier, #btn-stomp, [data-gun], [data-drone]');
+      const el = e.target.closest('#btn-vent, #btn-end-turn, #btn-barrier, #btn-stomp, [data-gun], [data-drone], [data-swap]');
       if (el) this.show(el);
     });
     hud.addEventListener('pointerout', (e) => {
@@ -131,13 +145,14 @@ export class BattleTips {
       // The gun chips are rebuilt when their state changes: follow the same chip
       const gun = el.dataset?.gun;
       const drone = el.dataset?.drone;
-      const again = gun !== undefined ? this.hud.querySelector(`[data-gun="${gun}"]`) : drone !== undefined ? this.hud.querySelector(`[data-drone="${drone}"]`) : null;
+      const swap = el.dataset?.swap;
+      const again = gun !== undefined ? this.hud.querySelector(`[data-gun="${gun}"]`) : drone !== undefined ? this.hud.querySelector(`[data-drone="${drone}"]`) : swap !== undefined ? this.hud.querySelector(`[data-swap="${swap}"]`) : null;
       if (!again) return this.hide();
       this.target = again;
     }
     const t = this.target;
     const g = this.game;
-    const html = t.id === 'btn-vent' ? ventTip(g) : t.id === 'btn-end-turn' ? endTip(g) : t.id === 'btn-barrier' ? barrierTip(g) : t.id === 'btn-stomp' ? stompTip(g) : t.dataset.gun !== undefined ? gunTip(g, Number(t.dataset.gun)) : droneTip(g, Number(t.dataset.drone));
+    const html = t.id === 'btn-vent' ? ventTip(g) : t.id === 'btn-end-turn' ? endTip(g) : t.id === 'btn-barrier' ? barrierTip(g) : t.id === 'btn-stomp' ? stompTip(g) : t.dataset.swap !== undefined ? swapTip(g, Number(t.dataset.swap)) : t.dataset.gun !== undefined ? gunTip(g, Number(t.dataset.gun)) : droneTip(g, Number(t.dataset.drone));
     if (html !== this._html) {
       this.el.innerHTML = html;
       this._html = html;

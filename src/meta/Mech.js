@@ -46,8 +46,8 @@ const RARITY_ORDER = ['common', 'rare', 'epic', 'legendary', 'mythic'];
 /** Damage types. Heat also heats the target, Energy drains it (Game._reactorFx). */
 export const DTYPES = {
   phys: { name: 'PHYSICAL', short: 'PHY', color: '#f4f4f4', icon: 'dmg' },
-  heat: { name: 'HEAT', short: 'HEAT', color: '#ef7d57', icon: 'heat' },
-  energy: { name: 'ENERGY', short: 'EN', color: '#73eff7', icon: 'energy' },
+  heat: { name: 'EXPLOSIVE', short: 'EXP', color: '#ef7d57', icon: 'heat' },
+  energy: { name: 'ELECTRIC', short: 'ELEC', color: '#73eff7', icon: 'energy' },
 };
 export const DTYPE_KEYS = Object.keys(DTYPES);
 export const dtypeOf = (w) => (DTYPES[w?.dtype] ? w.dtype : 'phys');
@@ -58,7 +58,7 @@ export const resistOf = (ball, type) => (ball.def || 0) + (ball.res?.[type] || 0
 // Weapons: reach [min, max] in lane positions (1 = the next position), dmg per shot, en = energy per shot, heat = heat per shot,
 // ammo = shots per battle (strong guns only), arc = lobbed over cover
 // (everything else needs a clear line to the target).
-// fx: burn / freeze / corrode / splash / chain / pierce (ignores DEF) / crit
+// fx: burn / freeze / corrode / splash / line (burns through cover) / pierce (ignores DEF) / crit
 //     burst (hits N times) / line (hits every enemy along the shot)
 //     drain (burns target energy) / heat (adds target heat) / push / pull (px)
 //     mine (the shot plants a mine near the target instead of hitting it)
@@ -68,10 +68,10 @@ export const PARTS = [
   // Frames: base HP + weight capacity (frames weigh nothing) + reactor
   { id: 'fr_scout', type: 'frame', name: 'SCOUT FRAME', rarity: 'common', hp: 0, capacity: 60, energy: 30, regen: 14, heatCap: 30, cool: 12 },
   { id: 'fr_brawler', type: 'frame', name: 'BRAWLER FRAME', rarity: 'rare', hp: 15, capacity: 72, energy: 32, regen: 14, heatCap: 40, cool: 13 },
-  { id: 'fr_phantom', type: 'frame', name: 'PHANTOM FRAME', rarity: 'epic', hp: 5, capacity: 80, powerPct: 0.1, energy: 40, regen: 19, heatCap: 34, cool: 14 },
+  { id: 'fr_phantom', type: 'frame', name: 'PHANTOM FRAME', rarity: 'epic', hp: 5, capacity: 80, freeFirstShot: true, desc: 'The first gun you fire each battle costs no energy.', energy: 40, regen: 19, heatCap: 34, cool: 14 },
   { id: 'fr_titan', type: 'frame', name: 'TITAN FRAME', rarity: 'epic', hp: 30, capacity: 88, energy: 34, regen: 15, heatCap: 50, cool: 15 },
   { id: 'fr_colossus', type: 'frame', name: 'COLOSSUS FRAME', rarity: 'legendary', hp: 40, capacity: 104, energy: 44, regen: 19, heatCap: 56, cool: 17 },
-  { id: 'fr_leviathan', type: 'frame', name: 'LEVIATHAN FRAME', rarity: 'mythic', hp: 46, capacity: 112, powerPct: 0.05, energy: 50, regen: 21, heatCap: 62, cool: 19, color: '#ff5d73' },
+  { id: 'fr_leviathan', type: 'frame', name: 'LEVIATHAN FRAME', rarity: 'mythic', hp: 46, capacity: 112, energy: 50, regen: 21, heatCap: 62, cool: 19, color: '#ff5d73' },
 
   // Legs (weightless, like frames) decide how you move on the lane:
   // walk = up to N positions along the ground (not through mechs or cover);
@@ -111,7 +111,7 @@ export const PARTS = [
   { id: 'wp_grapple', type: 'weapon', name: 'GRAPPLE HOOK', rarity: 'rare', dtype: 'phys', weight: 12, reach: [2, 6], dmg: 9, en: 8, heat: 4, fx: { pull: 2 }, color: '#94b0c2', desc: 'Pulls the target 2 positions toward you.' },
   { id: 'wp_minelauncher', type: 'weapon', name: 'MINE LAUNCHER', rarity: 'rare', dtype: 'phys', weight: 16, reach: [2, 8], dmg: 17, en: 8, heat: 6, ammo: 3, arc: true, fx: { mine: true }, color: '#ef7d57', desc: 'Plants a mine next to the target: it blasts whoever steps there. 3 mines.' },
   { id: 'wp_rocket', type: 'weapon', name: 'ROCKET LAUNCHER', rarity: 'rare', dtype: 'phys', weight: 20, reach: [2, 8], dmg: 19, en: 10, heat: 10, ammo: 2, arc: true, fx: { splash: 1 }, color: '#ffcd75', desc: 'Lobbed. 2 rockets per battle.' },
-  { id: 'wp_tesla', type: 'weapon', name: 'TESLA COIL', rarity: 'epic', dtype: 'energy', weight: 20, reach: [1, 3], dmg: 16, en: 16, heat: 12, fx: { chain: 2 }, color: '#c46fd6', desc: 'Arcs to an enemy within 2 positions.' },
+  { id: 'wp_tesla', type: 'weapon', name: 'TESLA COIL', rarity: 'epic', dtype: 'energy', weight: 20, reach: [1, 3], dmg: 16, en: 16, heat: 12, fx: { line: true }, color: '#c46fd6', desc: 'Arcs through cover (chipping walls on the way).' },
   { id: 'wp_missiles', type: 'weapon', name: 'MISSILE POD', rarity: 'epic', dtype: 'phys', weight: 24, reach: [1, 11], dmg: 16, en: 12, heat: 8, ammo: 3, arc: true, color: '#ff5d73', desc: 'Any range, over cover. 3 salvos.' },
   { id: 'wp_rail', type: 'weapon', name: 'RAIL LANCE', rarity: 'epic', dtype: 'energy', weight: 26, reach: [4, 11], dmg: 20, en: 20, heat: 18, fx: { pierce: true }, color: '#41a6f6', desc: 'Ignores DEF.' },
   { id: 'wp_heatray', type: 'weapon', name: 'HEAT RAY', rarity: 'epic', dtype: 'heat', weight: 18, reach: [1, 4], dmg: 11, en: 10, heat: 8, fx: { heat: 16 }, color: '#ef7d57', desc: 'Pumps 16 heat into the target.' },
@@ -130,14 +130,14 @@ export const PARTS = [
 
   // Modules: passive bonuses
   { id: 'md_target', type: 'module', name: 'TARGETING CPU', rarity: 'common', weight: 4, crit: 0.03 },
-  { id: 'md_servo', type: 'module', name: 'SERVO BOOST', rarity: 'common', weight: 4, powerPct: 0.05 },
+  { id: 'md_servo', type: 'module', name: 'STOMP SERVO', rarity: 'common', weight: 4, stompPct: 0.5, desc: '+50% STOMP damage.' },
   { id: 'md_bounty', type: 'module', name: 'BOUNTY CHIP', rarity: 'common', weight: 3, goldPct: 0.15 },
-  { id: 'md_battery', type: 'module', name: 'BATTERY PACK', rarity: 'common', weight: 5, energy: 12, desc: '+12 energy pool.' },
-  { id: 'md_coolant', type: 'module', name: 'COOLANT LOOP', rarity: 'common', weight: 5, cool: 5, desc: 'Cools 5 more heat per turn.' },
+  { id: 'md_battery', type: 'module', name: 'BATTERY PACK', rarity: 'common', weight: 5, energy: 14, desc: 'A bigger energy pool (grows with level).' },
+  { id: 'md_coolant', type: 'module', name: 'COOLANT LOOP', rarity: 'common', weight: 5, cool: 6, desc: 'Cools more heat per turn (grows with level).' },
   { id: 'md_amp', type: 'module', name: 'DAMAGE AMP', rarity: 'rare', weight: 6, atkPct: 0.08 },
   { id: 'md_repair', type: 'module', name: 'NANO REPAIR', rarity: 'rare', weight: 6, healAfterWin: 0.05, desc: 'Heal after every won battle.' },
-  { id: 'md_heatsink', type: 'module', name: 'HEAT SINK', rarity: 'rare', weight: 5, heatCap: 12, desc: '+12 heat capacity.' },
-  { id: 'md_generator', type: 'module', name: 'POWER CORE', rarity: 'rare', weight: 6, regen: 5, desc: 'Refills 5 more energy per turn.' },
+  { id: 'md_heatsink', type: 'module', name: 'HEAT SINK', rarity: 'rare', weight: 5, heatCap: 14, desc: 'A higher heat cap (grows with level).' },
+  { id: 'md_generator', type: 'module', name: 'POWER CORE', rarity: 'rare', weight: 6, regen: 6, desc: 'Refills more energy per turn (grows with level).' },
   { id: 'md_range', type: 'module', name: 'RANGE EXTENDER', rarity: 'epic', weight: 5, reachBonus: 1, desc: '+1 max range on every gun.' },
   { id: 'md_overclock', type: 'module', name: 'OVERCLOCK CORE', rarity: 'legendary', weight: 8, atkPct: 0.1, weaponDmgPct: 0.12 },
   { id: 'md_singularity', type: 'module', name: 'SINGULARITY CHIP', rarity: 'mythic', weight: 8, atkPct: 0.12, weaponDmgPct: 0.15, crit: 0.03, color: '#ff5d73' },
@@ -167,7 +167,9 @@ export const INVENTORY_CAP = 60;
 export const levelMult = (lvl) => 1 + 0.05 * (lvl - 1);
 
 // Numeric fields that scale with level
-const SCALING = ['hp', 'def', 'dmg', 'heal', 'stomp', 'atkPct', 'crit', 'powerPct', 'goldPct', 'healAfterWin', 'weaponDmgPct'];
+const SCALING = ['hp', 'def', 'dmg', 'heal', 'stomp', 'atkPct', 'crit', 'stompPct', 'goldPct', 'healAfterWin', 'weaponDmgPct'];
+// Reactor modules (Battery Pack, Coolant Loop, Heat Sink, Power Core) grow fully with level; frames' reactors don't
+const REACTOR = ['energy', 'regen', 'heatCap', 'cool'];
 
 /** A part's stats at the owned item's level. */
 export function partStats(owned) {
@@ -176,6 +178,7 @@ export function partStats(owned) {
   const k = levelMult(owned.level || 1);
   const out = { ...base, level: owned.level || 1, uid: owned.uid };
   for (const f of SCALING) if (typeof base[f] === 'number') out[f] = base[f] * (f === 'hp' || f === 'dmg' || f === 'heal' || f === 'stomp' ? k : 1 + (k - 1) * 0.5);
+  if (base.type === 'module') for (const f of REACTOR) if (typeof base[f] === 'number') out[f] = Math.round(base[f] * k);
   if (base.res) out.res = Object.fromEntries(Object.entries(base.res).map(([t, v]) => [t, v * (1 + (k - 1) * 0.5)]));
   return out;
 }
@@ -210,7 +213,7 @@ export function describePart(owned) {
   if (p.atkPct) L.push(`DMG +${Math.round(p.atkPct * 100)}%`);
   if (p.weaponDmgPct) L.push(`GUNS +${Math.round(p.weaponDmgPct * 100)}%`);
   if (p.crit) L.push(`CRIT +${(p.crit * 100).toFixed(1)}%`);
-  if (p.powerPct) L.push(`POWER +${Math.round(p.powerPct * 100)}%`);
+  if (p.stompPct) L.push(`STOMP +${Math.round(p.stompPct * 100)}%`);
   if (p.goldPct) L.push(`GOLD +${Math.round(p.goldPct * 100)}%`);
   if (p.reachBonus) L.push(`RANGE +${p.reachBonus}`);
   if (p.healAfterWin) L.push(`+${Math.round(p.healAfterWin * 100)}% HP/win`);
@@ -247,7 +250,8 @@ export function partChips(owned) {
   add(p.atkPct, 'dmg', `+${Math.round(p.atkPct * 100)}%`);
   add(p.weaponDmgPct, 'gun', `+${Math.round(p.weaponDmgPct * 100)}%`);
   add(p.crit, 'star', `+${(p.crit * 100).toFixed(1)}%`);
-  add(p.powerPct, 'move', `+${Math.round(p.powerPct * 100)}%`);
+  add(p.stompPct, 'dmg', `STOMP +${Math.round(p.stompPct * 100)}%`);
+  add(p.freeFirstShot, 'energy', '1ST SHOT FREE');
   add(p.goldPct, 'gold', `+${Math.round(p.goldPct * 100)}%`);
   add(p.reachBonus, 'range', `+${p.reachBonus}`);
   add(p.healAfterWin, 'heal', `+${Math.round(p.healAfterWin * 100)}%/WIN`);
@@ -284,7 +288,7 @@ export const TYPE_LABEL = { frame: 'FRAME', legs: 'LEGS', armor: 'ARMOR', weapon
 /** Totals for a loadout (array of owned parts, nulls allowed). */
 export function loadoutTotals(ownedParts) {
   const t = {
-    capacity: 0, weight: 0, hp: 0, def: 0, res: { phys: 0, heat: 0, energy: 0 }, atkPct: 0, crit: 0, powerPct: 0, goldPct: 0,
+    capacity: 0, weight: 0, hp: 0, def: 0, res: { phys: 0, heat: 0, energy: 0 }, atkPct: 0, crit: 0, stompPct: 0, freeFirstShot: false, goldPct: 0,
     healAfterWin: 0, weaponDmgPct: 0, reachBonus: 0, startForcefield: false,
     weapons: [], drones: [],
     // Reactor (gear combat): the frame sets it, modules add to it
@@ -299,7 +303,8 @@ export function loadoutTotals(ownedParts) {
     }
     for (const f of ['energy', 'regen', 'heatCap', 'cool']) t[f] += p[f] || 0;
     t.weight += p.weight || 0;
-    for (const f of ['hp', 'def', 'atkPct', 'crit', 'powerPct', 'goldPct', 'healAfterWin', 'weaponDmgPct', 'reachBonus']) t[f] += p[f] || 0;
+    for (const f of ['hp', 'def', 'atkPct', 'crit', 'stompPct', 'goldPct', 'healAfterWin', 'weaponDmgPct', 'reachBonus']) t[f] += p[f] || 0;
+    if (p.freeFirstShot) t.freeFirstShot = true;
     if (p.startForcefield) t.startForcefield = true;
     for (const k of DTYPE_KEYS) t.res[k] += p.res?.[k] || 0;
     if (p.type === 'weapon') t.weapons.push(p);
@@ -331,7 +336,6 @@ export function withMech(base, ownedParts) {
     hpBonus: (base.hpBonus || 0) + Math.round(t.hp),
     defBonus: (base.defBonus || 0) + t.def,
     res: t.res,
-    gearPowerPct: t.powerPct,
     gearGoldPct: t.goldPct,
     mech: {
       parts: ownedParts.filter(Boolean).map((o) => o.id), // for the sprite
@@ -339,8 +343,13 @@ export function withMech(base, ownedParts) {
       drones: t.drones,
       healAfterWin: t.healAfterWin,
       startForcefield: t.startForcefield,
+      freeFirstShot: t.freeFirstShot,
       rig: { energy: t.energy, regen: t.regen, heatCap: t.heatCap, cool: t.cool },
-      legs: legsRules(t.legs),
+      legs: (() => {
+        const l = legsRules(t.legs);
+        l.stomp = Math.round(l.stomp * (1 + t.stompPct)); // Stomp Servo
+        return l;
+      })(),
     },
   };
 }
@@ -393,7 +402,7 @@ export function tokenReward(nodeType, risk = 0) {
  */
 export const ENEMY_LOADOUTS = {
   standard: { legs: ['lg_strider', 'lg_hopper'], armor: 'ar_scrap', guns: [['wp_blaster', 'wp_scatter', 'wp_smg'], ['wp_rifle', 'wp_acid']] },
-  tank: { legs: ['lg_treads', 'lg_anchor'], armor: 'ar_titanium', guns: [['wp_scatter'], ['wp_repulsor']] },
+  tank: { legs: ['lg_treads'], armor: 'ar_titanium', guns: [['wp_scatter'], ['wp_repulsor']] },
   striker: { legs: ['lg_catapult', 'lg_strider'], armor: 'ar_kevlar', guns: [['wp_rifle'], ['wp_blaster']], heavy: 'wp_sniper' },
   vampire: { legs: ['lg_coil', 'lg_strider'], armor: 'ar_aegis', guns: [['wp_scythe'], ['wp_smg']] },
   pyromancer: { legs: ['lg_treads', 'lg_strider'], armor: 'ar_reactive', guns: [['wp_flamer'], ['wp_mortar']] },
@@ -403,6 +412,8 @@ export const ENEMY_LOADOUTS = {
   minelayer: { legs: ['lg_treads', 'lg_hopper'], armor: 'ar_reactive', guns: [['wp_minelauncher'], ['wp_blaster', 'wp_scatter']] },
   // The Sector Commander: bolted down, shells you from anywhere
   boss: { frame: 'fr_leviathan', legs: ['lg_anchor'], armor: 'ar_void', guns: [['wp_howitzer'], ['wp_rail']] },
+  // Abyss 5's true final boss: fast, reaches everywhere, and hits hard up close
+  final: { frame: 'fr_leviathan', legs: ['lg_phase'], armor: 'ar_void', guns: [['wp_nova'], ['wp_scythe']] },
 };
 
 /** Frame (for its look and reactor tier) by fight tier. */
@@ -424,10 +435,10 @@ export function enemyRig(nodeType, { cdCut = 0 } = {}) {
  * than yours (enemyDmgScale); `atkMult` is the same Risk / condition / wave
  * multiplier the enemy's ATK gets.
  */
-export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMult = 1, boss = false } = {}) {
+export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMult = 1, boss = false, final = false } = {}) {
   const f = Math.max(1, Math.min(5, floor));
   const tier = ['elite', 'miniboss', 'boss'].includes(nodeType) ? nodeType : 'combat';
-  const L = boss ? ENEMY_LOADOUTS.boss : ENEMY_LOADOUTS[archetype] || ENEMY_LOADOUTS.standard;
+  const L = final ? ENEMY_LOADOUTS.final : boss ? ENEMY_LOADOUTS.boss : ENEMY_LOADOUTS[archetype] || ENEMY_LOADOUTS.standard;
   const pick = (list) => list[Math.floor(rnd() * list.length)];
 
   const slots = tier === 'combat' ? L.guns.slice(0, 1) : L.guns;

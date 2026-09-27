@@ -235,6 +235,9 @@ export class Game {
     b.res = { ...(e.res || {}) };
     b.parts = e.parts || null;
     this._initRig(b, e.rig || G.enemyRig[['elite', 'miniboss', 'boss'].includes(this.battleConfig.nodeType) ? this.battleConfig.nodeType : 'combat']);
+    // Operation conditions hit every mech
+    if (this.battleConfig.condition === 'overcharged') b.regen += 5;
+    if (this.battleConfig.condition === 'heatwave') b.cool = Math.max(1, b.cool - 5);
     return b;
   }
 
@@ -244,8 +247,13 @@ export class Game {
   _memberFrom(src, index) {
     const mech = src.rigStats?.mech || {};
     const maxHp = src.maxHp || B.maxHp;
-    const legs = laneLegs(mech.legs);
-    const rig = mech.rig || G.baseRig;
+    const cfg = this.battleConfig;
+    const legs = { ...laneLegs(mech.legs) };
+    if (!legs.anchored && cfg.walkBonus) legs.walk = (legs.walk || 0) + cfg.walkBonus; // Swift Loader
+    const rig = { ...(mech.rig || G.baseRig) };
+    if (cfg.condition === 'overcharged') rig.regen += 5;
+    if (cfg.condition === 'heatwave') rig.cool = Math.max(1, rig.cool - 5);
+    const reachUp = cfg.reachBonus || 0; // Long Barrel
     return {
       index,
       name: `MECH ${index + 1}`,
@@ -266,7 +274,11 @@ export class Game {
       heatCap: rig.heatCap,
       heat: 0,
       cool: rig.cool,
-      weapons: (mech.weapons || []).map((w) => ({ ...laneGun(w), dmg: w.dmg * G.dmgScale, ammoLeft: w.ammo || 0 })),
+      weapons: (mech.weapons || []).map((w) => {
+        const g = laneGun(w);
+        return { ...g, reach: [g.reach[0], Math.min(L.size - 1, g.reach[1] + reachUp)], dmg: w.dmg * G.dmgScale, ammoLeft: w.ammo || 0 };
+      }),
+      freeShot: !!mech.freeFirstShot, // Phantom frame: the first gun fired costs no energy
       // Drones start docked: DEPLOY (an action) launches one for the rest of the battle
       drones: (mech.drones || []).map((d) => ({ ...d, dmg: d.dmg ? d.dmg * G.dmgScale : d.dmg, off: true })),
       burnTicks: 0,
@@ -807,7 +819,7 @@ export class Game {
     if (w.ammo && w.ammoLeft <= 0) return { ok: false, reason: 'EMPTY' };
     if (w.usedOn === shooter.turnNo) return { ok: false, reason: 'USED' };
     if (shooter.heat > shooter.heatCap) return { ok: false, reason: 'HOT' };
-    if (shooter.energy < (w.en || 0)) return { ok: false, reason: 'ENERGY' };
+    if (shooter.energy < (w.en || 0) && !this._freeShot(shooter)) return { ok: false, reason: 'ENERGY' };
     if (!target) return { ok: false, reason: 'NO TARGET' };
     // Direct fire into a wall hits the wall (lobs arc over, beams burn through),
     // so the range that counts is the range to that wall
@@ -840,8 +852,14 @@ export class Game {
     return Math.max(1, Math.round(dmg));
   }
 
+  /** Phantom frame: the active mech's first shot this battle is free. */
+  _freeShot(shooter) {
+    return shooter === this.player && !!this.team?.[this.teamIndex]?.freeShot;
+  }
+
   _payForShot(shooter, w) {
-    shooter.energy -= w.en || 0;
+    if (this._freeShot(shooter)) this.team[this.teamIndex].freeShot = false;
+    else shooter.energy -= w.en || 0;
     shooter.heat += w.heat || 0;
     if (w.ammo) w.ammoLeft -= 1;
     w.usedOn = shooter.turnNo; // each gun once per turn

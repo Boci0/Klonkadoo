@@ -929,7 +929,6 @@ export class UIManager {
     const res = run.res;
     const red = Math.max(-0.5, Math.min(0.85, run.damageReductionPct || 0));
     const taken = Math.round(((1 - red) * (1 + (risk.plusDmgTaken || 0) / 100) - 1) * 100);
-    const power = Math.round((run.launchPowerMult - 1) * 100);
 
     const rows = [
       { label: 'HP', value: `${Math.ceil(run.hp)}/${run.maxHp}${run.shieldHp > 0 ? ` +${Math.ceil(run.shieldHp)}` : ''}`, hint: run.shieldHp > 0 ? 'includes shield' : ball.name },
@@ -942,7 +941,8 @@ export class UIManager {
       { label: 'DAMAGE TAKEN', value: signed(taken), tone: tone(taken, false), hint: 'Risk' },
       { label: 'ENERGY', value: `${rig.energy} +${rig.regen}/T`, hint: 'per shot, refills each turn' },
       { label: 'HEAT', value: `${rig.heatCap} -${rig.cool}/T`, hint: 'cap, cools each turn' },
-      { label: 'MOVE POWER', value: signed(power), tone: tone(power), hint: 'max launch speed / range' },
+      ...(run.walkBonus ? [{ label: 'WALK', value: `+${run.walkBonus}`, tone: 'good', hint: 'Swift Loader' }] : []),
+      ...(run.reachBonus ? [{ label: 'GUN RANGE', value: `+${run.reachBonus}`, tone: 'good', hint: 'Long Barrel' }] : []),
     ];
     rows.push({ label: 'FLOOR', value: run.floorProgress });
     return rows;
@@ -1451,8 +1451,11 @@ export class UIManager {
         <div class="reward-tile" style="--c:#ffcd75">${ico('key')}<strong>+${rewards.keys}</strong><span>KEYS</span></div>
         <div class="reward-tile" style="--c:#94b0c2">${ico('scrap')}<strong>+${rewards.scrap}</strong><span>SCRAP</span></div>
       </div>` : '';
-    this.openModal(first ? 'SECTOR CLEAR' : `ABYSS ${depth} CLEARED`, `
-      ${first ? '<p class="node-line">The run counts as a win. Something waits below.</p>' : reward}
+    const final = rewards?.final;
+    this.openModal(first ? 'SECTOR CLEAR' : final ? 'TRUE FINAL BOSS DOWN' : `ABYSS ${depth} CLEARED`, `
+      ${first ? '<p class="node-line">The run counts as a win. Five Abyss floors wait below, and something at the bottom.</p>' : ''}
+      ${final ? '<p class="node-line">KLONKADOO PRIME is scrap. From here the Abyss is endless: how deep can you go?</p>' : ''}
+      ${first ? '' : reward}
       <div class="node-chips">
         <span class="node-chip">${ico('hp')}${Math.ceil(hp)}/${maxHp}</span>
         <span class="node-chip bad">${ico('skull')}ABYSS ${next}: +${next * 8}% HP</span>

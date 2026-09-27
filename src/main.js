@@ -54,7 +54,6 @@ let currentFloorView = 0;
 let pendingBoon = null;
 let lostAnyCombat = false;
 let activeNode = null; // node currently being resolved
-const BASE_GRAVITY = CONFIG.world.gravity; // operation conditions scale this per run
 let prevPosition = null; // where the player stood before selecting activeNode (for BACK / RETREAT)
 let battlePaused = false; // battle simulation frozen (e.g. retreat confirmation open)
 let minigameResultShown = false;
@@ -398,10 +397,6 @@ function updateAbilityHud() {
 
 // ---------- Run flow ----------
 
-function applyConditionGravity(condId) {
-  CONFIG.world.gravity = BASE_GRAVITY * (condId === 'heavy_gravity' ? 1.2 : condId === 'low_gravity' ? 0.8 : 1);
-}
-
 /** Report a quest event; newly completed quests are written into the saved run at once (their scrap is already paid). */
 function reportQuest(type, data) {
   if (!questSystem) return;
@@ -445,7 +440,6 @@ function startNewRun(skin = 'default') {
   // One random operation condition per run
   const cond = CONFIG.runConditions[Math.floor(Math.random() * CONFIG.runConditions.length)];
   run.condition = cond.id;
-  applyConditionGravity(cond.id);
   map = new RogueMap(runSeed);
   // Risk 11 (ABYSS): every common hostile on the map becomes an elite
   if (saveSystem.getRiskData().allElite) {
@@ -506,7 +500,6 @@ function resumeSavedRun() {
   run.questSystem = questSystem;
   saveSystem.setSelectedBall(run.ballType);
   saveSystem.setDifficultyLevel(run.risk || 0, run.ballType);
-  applyConditionGravity(run.condition);
   pendingBoon = null;
   activeNode = null;
   prevPosition = null;
@@ -849,7 +842,6 @@ function startCombat(node) {
   // Ensure player HP carries over safely (at least 1 HP)
   if (run.hp <= 0) run.hp = 1;
 
-  const maxPowerMult = run.launchPowerMult;
   const thinkDelay = CONFIG.ai.thinkDelay;
   const riskLevel = saveSystem.getDifficultyLevel();
   const riskData = saveSystem.getRiskData();
@@ -874,9 +866,9 @@ function startCombat(node) {
   const floorAtk = 1 + CONFIG.floorScaling.atkPerFloor * floorsAbove;
 
   const count = (CONFIG.enemyCounts[node.type] || {})[floorKey] || 1;
-  // Every enemy fires each round, so multi-enemy waves trim ATK harder than HP.
-  const waveHpScale = count === 3 ? 0.65 : count === 2 ? 0.8 : 1.0;
-  const waveAtkScale = count === 3 ? 0.55 : count === 2 ? 0.7 : 1.0;
+  // One mech fights at a time, so a team only trims each mech's HP a little
+  const waveHpScale = count === 3 ? 0.75 : count === 2 ? 0.85 : 1.0;
+  const waveAtkScale = 1.0;
   const enemies = [];
   const devHp = devTools?.overrides?.enemyHpMult ?? 1.0;
   const devAtk = devTools?.overrides?.enemyAtkMult ?? 1.0;
@@ -886,9 +878,10 @@ function startCombat(node) {
     const archetype = pickArchetype(node.type, floorKey, i);
     const arch = CONFIG.enemyArchetypes[archetype];
     const isBoss = node.type === 'boss' && i === 0;
-    const mech = enemyMech(node.type, archetype, run.floor + 1, Math.random, { atkMult: atkMult * waveAtkScale, boss: isBoss });
+    const isFinal = isBoss && abyssDepth === ABYSS_FINAL_DEPTH; // the true final boss
+    const mech = enemyMech(node.type, archetype, run.floor + 1, Math.random, { atkMult: atkMult * waveAtkScale, boss: isBoss, final: isFinal });
 
-    const finalHp = Math.round(tier.hp * arch.hpMult * hpMult * floorHp * devHp * waveHpScale);
+    const finalHp = Math.round(tier.hp * arch.hpMult * hpMult * floorHp * devHp * waveHpScale * (isFinal ? 1.5 : 1) * (node.type === 'boss' && i > 0 ? 0.55 : 1)); // boss escorts are lighter
     const finalAtk = Math.round((tier.atk * arch.atkMult * atkMult * floorAtk * devAtk * waveAtkScale) * 100) / 100;
     const finalDef = Math.max(0, Math.round((tier.def + arch.defBonus) * defMult) + devDef);
 
@@ -898,7 +891,7 @@ function startCombat(node) {
       maxHp: finalHp,
       atk: finalAtk,
       def: finalDef,
-      displayName: isBoss ? (abyssDepth ? `ABYSS WARDEN ${abyssDepth}` : 'SECTOR COMMANDER') : arch.name,
+      displayName: isFinal ? 'KLONKADOO PRIME' : isBoss ? (abyssDepth ? `ABYSS WARDEN ${abyssDepth}` : 'SECTOR COMMANDER') : arch.name,
       rank: node.type === 'boss' || node.type === 'miniboss' ? node.type : null,
       archetype,
       aiDifficulty: Math.min(0.95, tier.aiDifficulty + arch.aiShift + riskData.aiBonus),
@@ -938,7 +931,9 @@ function startCombat(node) {
     riskPlusDmgTaken: riskData.plusDmgTaken || 0,
     riskDefPierce: riskData.defPierce || 0,
     floor: run.floor + 1,
-    maxPowerMult,
+    walkBonus: run.walkBonus,
+    reachBonus: run.reachBonus,
+    condition: run.condition,
   };
 
   // Wire quest hooks (clear old listeners first so no stacking)
@@ -971,9 +966,11 @@ function startCombat(node) {
     const arch = CONFIG.enemyArchetypes[boss.archetype];
     battlePaused = true;
     ui.showBossIntro({
-      title: node.type === 'boss' ? (run.floor >= CONFIG.map.floors ? `ABYSS ${run.floor - CONFIG.map.floors + 1}` : 'FINAL BOSS') : `FLOOR ${run.floor + 1} MINI-BOSS`,
+      title: node.type === 'boss' ? (run.floor - CONFIG.map.floors + 1 === ABYSS_FINAL_DEPTH ? 'TRUE FINAL BOSS' : run.floor >= CONFIG.map.floors ? `ABYSS ${run.floor - CONFIG.map.floors + 1}` : 'FINAL BOSS') : `FLOOR ${run.floor + 1} MINI-BOSS`,
       name: boss.displayName,
-      desc: boss.weapons.map((w) => w.name).join(' + ') + (node.type === 'boss' ? '. Bolted down, reaches anywhere. Reinforcements at half HP.' : `. ${arch?.desc || ''}`),
+      desc: boss.weapons.map((w) => w.name).join(' + ') + (node.type !== 'boss' ? `. ${arch?.desc || ''}`
+        : run.floor - CONFIG.map.floors + 1 === ABYSS_FINAL_DEPTH ? '. Phase legs, reaches everywhere, and a blade for anyone who comes close.'
+          : '. Bolted down with long guns: they can\'t hit you up close.'),
       color: arch?.color,
     }, () => {
       battlePaused = false;
@@ -1339,7 +1336,9 @@ function finishMinigame() {
 
 // ---------- Run end ----------
 
-// Endless Abyss: extra enemy scaling per floor below floor 5
+// Endless Abyss: extra enemy scaling per floor below floor 5. Abyss 5's
+// boss is the true final boss; past it the Abyss goes on without end.
+const ABYSS_FINAL_DEPTH = 5;
 const ABYSS_HP_PER_DEPTH = 0.08;
 const ABYSS_ATK_PER_DEPTH = 0.05;
 
@@ -1356,11 +1355,16 @@ function sectorCleared() {
   } else {
     run.abyssDepth = depth;
     saveSystem.recordAbyssDepth(run.ballType, depth);
-    const keys = 3 + depth * 2;
-    const scrap = Math.round((10 + depth * 5) * saveSystem.getScrapMultiplier());
+    const final = depth === ABYSS_FINAL_DEPTH;
+    const keys = 3 + depth * 2 + (final ? 15 : 0);
+    const scrap = Math.round((10 + depth * 5 + (final ? 60 : 0)) * saveSystem.getScrapMultiplier());
     saveSystem.addTokens(keys);
     saveSystem.addScrap(scrap);
-    rewards = { keys, scrap };
+    rewards = { keys, scrap, final };
+    if (final) {
+      saveSystem.bumpLifetime('trueFinalClears', 1, 'add');
+      addFeedEntry('<span class="feed-boon">KLONKADOO PRIME IS DOWN: THE ABYSS GOES ON FOREVER</span>');
+    }
   }
   ui.updateRunHud(run);
   persistRun('descend', { descend: { depth, next: depth + 1 } });

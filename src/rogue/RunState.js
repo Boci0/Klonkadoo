@@ -94,8 +94,13 @@ export class RunState {
   }
 
   /** Multiplier on maximum launch power (boons + gear). */
-  get launchPowerMult() {
-    return 1 + (this.getBoonCount('boon_power') + this.getBoonCount('boon_swift')) * 0.15 + (this.ball?.powerPct || 0) + (this.permanent?.gearPowerPct || 0);
+  /** Boons: Swift Loader +1 walk, Long Barrel +1 max range (every team mech). */
+  get walkBonus() {
+    return this.getBoonCount('boon_swift');
+  }
+
+  get reachBonus() {
+    return this.getBoonCount('boon_power');
   }
 
   get floorProgress() {

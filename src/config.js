@@ -77,7 +77,7 @@ export const CONFIG = {
     dmgScale: 1.3, // gun/drone damage vs the classic numbers (bodies no longer hit)
     enemyDmgScale: 0.4, // enemy guns hit this much of a same-level player gun
     exposedMult: 1.25, // rammed targets take +25% gun damage until their next turn
-    // Damage types (Mech.DTYPES): Heat hits add heat and Energy hits drain energy,
+    // Damage types (Mech.DTYPES): Explosive hits add heat and Electric hits drain energy,
     // dtypeLoad x the hit; whatever the reactor can't absorb spills into HP at dtypeSpill x
     dtypeLoad: 0.5,
     dtypeSpill: 0.5,
@@ -204,10 +204,11 @@ export const CONFIG = {
   },
   // Multi-enemy waves per node type + floor (1 to 3 enemies per stage)
   enemyCounts: {
-    combat: { 1: 1, 2: 1, 3: 2, 4: 2, 5: 2 },
-    elite: { 1: 1, 2: 2, 3: 2, 4: 2, 5: 3 },
+    // Enemy teams (one fights at a time, the rest drop in): 1 normal, 2 elite, 3 boss
+    combat: { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1 },
+    elite: { 1: 2, 2: 2, 3: 2, 4: 2, 5: 2 },
     miniboss: { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1 },
-    boss: { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1 },
+    boss: { 1: 3, 2: 3, 3: 3, 4: 3, 5: 3 },
   },
   // Archetype pick weights per floor (proportion of each type)
   archetypeWeights: {
@@ -296,8 +297,8 @@ export const CONFIG = {
   // --- Operation conditions: one random twist per run ---
   runConditions: [
     { id: 'gold_rush', name: 'GOLD RUSH', desc: '+30% gold, but enemies +10% HP.' },
-    { id: 'heavy_gravity', name: 'HEAVY GRAVITY', desc: 'Gravity +20%: shots drop faster.' },
-    { id: 'low_gravity', name: 'LOW GRAVITY', desc: 'Gravity -20%: shots fly further.' },
+    { id: 'overcharged', name: 'OVERCHARGED GRID', desc: 'Every mech refills +5 energy per turn.' },
+    { id: 'heatwave', name: 'HEATWAVE', desc: 'Every mech cools 5 less heat per turn.' },
     { id: 'supplied', name: 'WELL SUPPLIED', desc: 'Start with a random boon.' },
     { id: 'glass_war', name: 'GLASS WAR', desc: 'Everyone deals +30% damage.' },
     { id: 'scouted', name: 'SCOUTED', desc: '+1 move on every floor.' },
@@ -309,11 +310,11 @@ export const CONFIG = {
   nodes: {
     // Appearance weights per floor
     floorWeights: {
-      1: { combat: 6, encounter: 3, shop: 1, rest: 1, minigame: 1, elite: 1, treasure: 1, gamble: 1 },
-      2: { combat: 4, encounter: 4, shop: 2, rest: 2, minigame: 1, elite: 2, treasure: 1, gamble: 1 },
-      3: { combat: 4, encounter: 3, shop: 2, rest: 2, minigame: 1, elite: 2, treasure: 1, gamble: 1 },
-      4: { combat: 3, encounter: 3, shop: 2, rest: 1, minigame: 1, elite: 3, treasure: 1, gamble: 1 },
-      5: { combat: 3, encounter: 3, shop: 2, rest: 2, minigame: 1, elite: 3, treasure: 1, gamble: 1 },
+      1: { combat: 6, encounter: 3, shop: 1, rest: 1, elite: 1, treasure: 1, gamble: 1 },
+      2: { combat: 4, encounter: 4, shop: 2, rest: 2, elite: 2, treasure: 1, gamble: 1 },
+      3: { combat: 4, encounter: 3, shop: 2, rest: 2, elite: 2, treasure: 1, gamble: 1 },
+      4: { combat: 3, encounter: 3, shop: 2, rest: 1, elite: 3, treasure: 1, gamble: 1 },
+      5: { combat: 3, encounter: 3, shop: 2, rest: 2, elite: 3, treasure: 1, gamble: 1 },
     },
     rewards: {
       // scrap upgrades parts on the Rig screen; Keys come from Mech.tokenReward
@@ -336,7 +337,6 @@ export const CONFIG = {
     { id: 'quest_speed_win', name: 'Blitz', desc: 'Win a combat in 3 turns or fewer', reward: 10 },
     { id: 'quest_shopping', name: 'All In', desc: 'Spend 40+ Gold at shops across one run', reward: 10 },
     { id: 'quest_boss_kill', name: 'Slayer', desc: 'Defeat a boss node', reward: 20 },
-    { id: 'quest_minigame', name: 'Precision', desc: 'Win a minigame node with perfect timing', reward: 10 },
     { id: 'quest_perfect', name: 'Flawless Run', desc: 'Reach floor 5 without losing a combat', reward: 25 },
     { id: 'quest_elite', name: 'Elite Killer', desc: 'Defeat an elite combat node', reward: 15 },
     { id: 'quest_rest', name: 'Recovery', desc: 'Use a Safe Zone node to heal 40+ HP in one run', reward: 5 },
@@ -349,8 +349,8 @@ export const CONFIG = {
     { id: 'boon_def', name: 'Hardened Shell', desc: '+4 DEF.', color: '#41a6f6' },
     { id: 'boon_hp', name: 'Colossus', desc: '+40 max HP.', color: '#a7f070' },
     { id: 'boon_greed', name: 'Greed', desc: '+25% gold, but -5 max HP.', color: '#ffcd75' },
-    { id: 'boon_swift', name: 'Swift Loader', desc: '+15% move power, +15% ATK.', color: '#c46fd6' },
-    { id: 'boon_power', name: 'Long Draw', desc: '+15% move power.', color: '#ef7d57' },
+    { id: 'boon_swift', name: 'Swift Loader', desc: '+15% ATK, +1 walk.', color: '#c46fd6' },
+    { id: 'boon_power', name: 'Long Barrel', desc: '+1 max range on every gun.', color: '#ef7d57' },
     { id: 'boon_regen', name: 'Regeneration', desc: 'Heal 10 HP after each battle won.', color: '#a7f070' },
   ],
 
