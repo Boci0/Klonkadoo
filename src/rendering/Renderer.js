@@ -15,7 +15,7 @@ import { CONFIG } from '../config.js';
 import { getTerrain, groundAt } from '../core/Terrain.js';
 import { fitCanvas, clientToWorld } from './viewport.js';
 import { partCanvas, iconCanvas } from './pixelIcons.js';
-import { DTYPES, DTYPE_KEYS, dtypeOf, resistOf, legsLabel, reachLabel, LANE_SIZE } from '../meta/Mech.js';
+import { DTYPES, DTYPE_KEYS, dtypeOf, resistOf, legsLabel, reachLabel, LANE_SIZE, dmgLabel } from '../meta/Mech.js';
 import { mechLook, torsoCanvas, legsCanvas } from './mechSprite.js';
 
 const C = CONFIG.colors;
@@ -939,13 +939,15 @@ export class Renderer {
     const isPlayer = ball === world.player;
     let guns = isPlayer ? world.playerWeapons || [] : ball.weapons || [];
     if (ins.weapon !== undefined) guns = guns.filter((_, i) => i === ins.weapon);
-    if (isPlayer && ins.weapon === undefined) guns = [...guns, ...(world.playerDrones || []).map((d) => ({ ...d, drone: true }))];
+    if (ins.weapon === undefined) guns = [...guns, ...((isPlayer ? world.playerDrones : ball.drones) || []).map((d) => ({ ...d, drone: true }))];
     if (ins.weapon === undefined) guns = [...guns, ...((isPlayer ? world.playerSpecials : ball.specials) || []).map((sp) => ({ ...sp, specialRow: true }))];
 
     // Sized for phones: the world is drawn at roughly 0.6x on a small screen
-    const S = 5; // gun icon scale
-    const rowH = 72;
     const head = 142; // name, small line, big stats
+    // Rows shrink so a full mech (6 guns, drone, specials) still fits the screen
+    const rowH = Math.max(40, Math.min(72, Math.floor((W.height - head - 40) / Math.max(1, guns.length))));
+    const S = rowH >= 64 ? 5 : rowH >= 50 ? 4 : 3; // gun icon scale
+    const big = Math.round(rowH * 0.42); // row font size
     const w = 600;
     const h = head + Math.max(1, guns.length) * rowH + 8;
     const x = Math.round(Math.max(8, Math.min(W.width - w - 8, ball.x - w / 2)));
@@ -1040,13 +1042,13 @@ export class Renderer {
       ctx.globalAlpha = spent ? 0.4 : 1;
       ctx.drawImage(ic, x + 16, Math.round(cy - (ic.height * S) / 2), ic.width * S, ic.height * S);
       let cx = x + 100;
-      ctx.font = `700 30px ${FONT}`;
+      ctx.font = `700 ${big}px ${FONT}`;
       if (g.specialRow) {
         ctx.fillStyle = '#f4f4f4';
         ctx.font = `700 24px ${FONT}`;
         ctx.fillText(g.name, cx, cy);
         icon('ammo', cx + 330, cy);
-        ctx.font = `700 30px ${FONT}`;
+        ctx.font = `700 ${big}px ${FONT}`;
         ctx.fillStyle = g.usesLeft > 0 ? '#ffcd75' : '#566c86';
         ctx.fillText(`${g.usesLeft}/${g.uses}`, cx + 370, cy);
         ctx.globalAlpha = 1;
@@ -1063,20 +1065,26 @@ export class Renderer {
       }
       // Damage in its type's colour
       ctx.fillStyle = DTYPES[dtypeOf(g)].color;
-      const dmg = `${Math.round(g.dmg * (g.fx?.burst || 1))}`;
+      const dmg = dmgLabel(g.dmg * (g.fx?.burst || 1));
       ctx.fillText(dmg, cx, cy);
       const dw = ctx.measureText(dmg).width;
       ctx.font = `700 16px ${FONT}`;
       ctx.fillText(DTYPES[dtypeOf(g)].short, cx + dw + 8, cy + 4);
       // Range: big numbers
-      cx += 150;
+      cx += 190;
       icon('range', cx, cy);
-      ctx.font = `700 30px ${FONT}`;
+      ctx.font = `700 ${big}px ${FONT}`;
       ctx.fillStyle = '#f4f4f4';
       ctx.fillText(g.reach ? reachLabel(g.reach) : '-', cx + 40, cy);
       // Ammo only when the gun has a limit
+      if (g.mount === 'top') icon('top', x + 16 + ic.width * S + 4, cy - rowH / 4, 2);
+      if (g.backfire) {
+        icon('backfire', cx + 110, cy);
+        ctx.fillStyle = '#ff5d73';
+        ctx.fillText(`${Math.round(g.backfire)}`, cx + 146, cy);
+      }
       if (g.ammo) {
-        cx += 170;
+        cx += 190;
         icon('ammo', cx, cy);
         ctx.fillStyle = g.ammoLeft > 0 ? '#ffcd75' : '#566c86';
         ctx.fillText(`${g.ammoLeft}/${g.ammo}`, cx + 40, cy);

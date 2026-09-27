@@ -26,7 +26,7 @@ import { checkMedals } from './meta/Medals.js';
 import './platform/native.js';
 import './platform/desktop.js';
 import { withMech, tokenReward, enemyMech, enemyRig, CLEAN_WIN_KEYS, DTYPES, dtypeOf, droneUpkeep } from './meta/Mech.js';
-import { partIcon } from './rendering/pixelIcons.js';
+import { partIcon, ico } from './rendering/pixelIcons.js';
 import { withMastery, masteryLevel, runXp } from './meta/Mastery.js';
 import { writeRun, readRun, clearRun, hasSavedRun, savedRunInfo, patchRunQuests } from './rogue/RunSave.js';
 
@@ -206,27 +206,44 @@ function bindAbilityButtons() {
   // Gear combat: END TURN (skip the actions you have left) and VENT (1 action)
   document.getElementById('btn-end-turn')?.addEventListener('click', () => {
     if (state !== State.BATTLE || battlePaused) return;
+    takeControl();
     if (game.endPlayerTurn()) soundEngine.playUI();
     else soundEngine.play('error');
   });
   document.getElementById('btn-vent')?.addEventListener('click', () => {
     if (state !== State.BATTLE || battlePaused) return;
+    takeControl();
     if (!game.ventPlayer()) soundEngine.play('error');
   });
 
-  // Keyboard hotkeys: [Q] [E] guns, [Z] [X] specials, [F] stomp, [V] vent, [Space] end turn
+  // AUTO: the planner plays your turns (any action you take yourself switches it off)
+  document.getElementById('btn-auto')?.addEventListener('click', () => {
+    if (state !== State.BATTLE || battlePaused || autoRun) return;
+    setAutoBattle(!autoBattle);
+    soundEngine.playUI();
+  });
+
+  // Keyboard hotkeys: [1-6] (or [Q] [E]) guns, [Z] [X] [C] specials, [F] stomp, [V] vent, [Space] end turn, [A] auto
   window.addEventListener('keydown', (e) => {
     if (state !== State.BATTLE || battlePaused) return;
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
-    if (e.code === 'KeyQ' || e.code === 'KeyE') {
+    const digit = /^Digit([1-6])$/.exec(e.code);
+    if (e.code === 'KeyA') {
+      if (!autoRun) setAutoBattle(!autoBattle);
+      return;
+    }
+    if (digit || ['KeyQ', 'KeyE', 'Space', 'KeyV', 'KeyZ', 'KeyX', 'KeyC', 'KeyF'].includes(e.code)) takeControl();
+    if (digit) {
+      fireGun(Number(digit[1]) - 1);
+    } else if (e.code === 'KeyQ' || e.code === 'KeyE') {
       fireGun(e.code === 'KeyQ' ? 0 : 1);
     } else if (e.code === 'Space') {
       e.preventDefault();
       if (game.endPlayerTurn()) soundEngine.playUI();
     } else if (e.code === 'KeyV') {
       if (!game.ventPlayer()) soundEngine.play('error');
-    } else if (e.code === 'KeyZ' || e.code === 'KeyX') {
-      useSpecial(e.code === 'KeyZ' ? 0 : 1);
+    } else if (e.code === 'KeyZ' || e.code === 'KeyX' || e.code === 'KeyC') {
+      useSpecial({ KeyZ: 0, KeyX: 1, KeyC: 2 }[e.code]);
     } else if (e.code === 'KeyF') {
       triggerStomp();
     }
@@ -260,6 +277,25 @@ function fireGun(i) {
   soundEngine.play('error');
   const label = GUN_BLOCK_LABEL[res.reason];
   if (label) game.renderer.addCallout(game.player, label, '#94b0c2');
+}
+
+// AUTO battle: the planner plays your turns. It stays on between fights until
+// you switch it off (or act yourself); AUTO RUN keeps it on for the whole run.
+let autoBattle = false;
+let autoRun = false;
+function setAutoBattle(on) {
+  autoBattle = !!on;
+  game.autoPlayer = autoBattle;
+  const b = document.getElementById('btn-auto');
+  if (b) {
+    b.classList.toggle('btn-accent', autoBattle);
+    b.classList.toggle('btn-outline', !autoBattle);
+    b.innerHTML = `${ico('auto')}${autoBattle ? 'AUTO ON' : 'AUTO'}`;
+  }
+}
+/** A manual action: switch AUTO battle off (AUTO RUN keeps control). */
+function takeControl() {
+  if (autoBattle && !autoRun) setAutoBattle(false);
 }
 
 let mechHudSig = '';
@@ -329,16 +365,19 @@ function updateGearHud(el, endBtn, ventBtn) {
   el.querySelectorAll('[data-gun]').forEach((b) => b.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
     if (battlePaused) return;
+    takeControl();
     fireGun(Number(b.dataset.gun));
   }));
   el.querySelectorAll('[data-special]').forEach((b) => b.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
     if (battlePaused) return;
+    takeControl();
     useSpecial(Number(b.dataset.special));
   }));
   el.querySelectorAll('[data-drone]').forEach((b) => b.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
     if (battlePaused) return;
+    takeControl();
     const res = game.toggleDrone(Number(b.dataset.drone));
     if (res.ok) {
       soundEngine.playUI();
@@ -973,6 +1012,7 @@ function startCombat(node) {
   game.run = run;
   battleConfig.arena = run.condition === 'calm' ? pickArena(0, () => 0) : pickArena(run.floor + 1);
   game.startBattle(battleConfig);
+  setAutoBattle(autoBattle || autoRun); // AUTO carries over between fights
 
   // Bosses get an intro card; the fight is frozen until it is dismissed
   if (node.type === 'miniboss' || node.type === 'boss') {

@@ -1343,6 +1343,43 @@ export class Game {
     this._afterAction(e, 0.1);
   }
 
+  /**
+   * AUTO: the same planner the enemies use plays your turn, always taking
+   * its best line. Docked drones launch first (while there's energy to run
+   * them). One action at a time; it re-plans after each.
+   */
+  _autoAct() {
+    const p = this.player;
+    const e = this.activeEnemy;
+    if (!this.canPlayerAct || !e) return;
+    const docked = (this.playerDrones || []).findIndex((d) => d.off && p.energy >= droneUpkeep(d).en * 2);
+    if (docked >= 0 && this.toggleDrone(docked).ok) return;
+    const plan = planTurn(
+      {
+        size: L.size,
+        me: this._aiUnit(p, this.playerWeapons || []),
+        foe: this._aiUnit(e, e.weapons || []),
+        mines: this.hazards.filter((h) => h.type === 'mine').map((h) => ({ pos: h.pos, owner: h.owner, dmg: h.dmg })),
+        stompHeat: G.stompHeat,
+      },
+      { difficulty: 1, aggression: this.aggression },
+    );
+    const a = plan[0] || { type: 'end' };
+    let ok = false;
+    if (a.type === 'fire') ok = this.firePlayerWeapon(a.gun).ok;
+    else if (a.type === 'move') ok = this.moveMap.has(a.pos) && this.movePlayerTo(a.pos);
+    else if (a.type === 'special') {
+      const sp = this.playerSpecials?.[a.i];
+      if (sp && this.specialStatus(p, sp, e).ok) {
+        this._useSpecial(p, sp, e, a.pos);
+        this._afterAction(p, 0.35);
+        ok = true;
+      }
+    } else if (a.type === 'stomp') ok = this.stompPlayer();
+    else if (a.type === 'vent') ok = this.ventPlayer();
+    if (!ok) this.endPlayerTurn();
+  }
+
   // ---------- Input: tap a lit plate to move, tap a mech to inspect ----------
 
   _bindInput() {
@@ -1354,9 +1391,14 @@ export class Game {
       if (e.pointerType !== 'mouse' || !this.running) return;
       const w = this.renderer.clientToWorld(e.clientX, e.clientY);
       this.hoverPos = w.y > W.groundY - 220 && w.y < W.groundY + 60 ? posAt(w.x) : null;
+      // Hovering a mech shows its card (a tap pins it)
+      const onLane = w.y > W.groundY - 260 && w.y < W.groundY + 80;
+      const hit = onLane && [this.player, ...this.enemies].find((b) => b && b.hp > 0 && Math.abs(b.x - w.x) < W.width / L.size / 2);
+      this.hoverInspect = hit ? { ball: hit } : null;
     });
     this.canvas.addEventListener('pointerleave', () => {
       this.hoverPos = null;
+      this.hoverInspect = null;
     });
     this.canvas.addEventListener('pointerup', (e) => {
       if (!down || !this.running) return;
@@ -1475,6 +1517,14 @@ export class Game {
     this._updateProjectiles(dt);
     if (!this.running) return;
 
+    // AUTO: your mech thinks a moment, then acts
+    if (this.autoPlayer && this.turnSystem.phase === TurnPhase.PLAYER_AIM && !moving && !this.waitThen) {
+      this.autoThink = (this.autoThink ?? 0.5) - dt;
+      if (this.autoThink <= 0) {
+        this.autoThink = 0.45;
+        this._autoAct();
+      }
+    } else if (this.turnSystem.phase !== TurnPhase.PLAYER_AIM) this.autoThink = 0.5;
     // Enemy thinking, then acting
     if (this.turnSystem.phase === TurnPhase.ENEMY_AIM && !moving) {
       this.enemyThink -= dt;
@@ -1571,7 +1621,7 @@ export class Game {
       gear: true,
       showHints: !!this.battleConfig?.showHints,
       fireTarget: this.activeEnemy,
-      inspected: this.inspected && this.inspected.ball.hp > 0 ? this.inspected : null,
+      inspected: this.inspected && this.inspected.ball.hp > 0 ? this.inspected : this.hoverInspect?.ball?.hp > 0 && this.previewGun == null ? this.hoverInspect : null,
       lane: {
         size: L.size,
         moves: this.turnSystem.phase === TurnPhase.PLAYER_AIM ? this.moveMap : null,

@@ -7,7 +7,8 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
-import { DTYPES, dtypeOf, partNote, reachLabel, droneUpkeep } from '../meta/Mech.js';
+import { DTYPES, dtypeOf, partNote, reachLabel, droneUpkeep, dmgLabel } from '../meta/Mech.js';
+import { ico, partIcon } from '../rendering/pixelIcons.js';
 
 const G = CONFIG.gear;
 
@@ -37,14 +38,21 @@ function endTip(game) {
     ${p.heat > p.heatCap ? `<p class="tip-bad">Over your heat cap: your next turn is lost (overheat)${p.heat - p.cool > p.heatCap ? ', and the one after (shutdown)' : ''}.</p>` : ''}`;
 }
 
+/** An icon row: symbol, value, what it means on hover. */
+const irow = (icon, value, tip, color = '') => `<div class="tip-row" title="${tip}"><span>${ico(icon)}</span><b${color ? ` style="color:${color}"` : ''}>${value}</b><em>${tip}</em></div>`;
+
 function stompTip(game) {
   const p = game.player;
   const st = game.stompStatus(p, game.activeEnemy);
-  const why = { 'NOT ADJACENT': 'Get right next to the enemy.', USED: 'Once per turn.', HOT: 'Too hot to move.' }[st.reason] || '';
-  return `<h4>STOMP <em>[F] · 1 action</em></h4>
-    ${row('Damage', `${Math.round(p.stompDmg || 0)} Physical`)}
-    ${row('Heat', `+${G.stompHeat}`, '#ef7d57')}
-    <p>Kick the enemy right next to you and knock it back 1. Damage comes from your legs. Once per turn, no energy.</p>
+  const legs = p.legs || {};
+  const t = DTYPES[legs.stompType] || DTYPES.phys;
+  const why = { 'NOT ADJACENT': 'Get right next to the enemy', USED: 'Once per turn', HOT: 'Too hot', ENERGY: 'Not enough energy' }[st.reason] || '';
+  return `<h4>${ico('stomp')} STOMP <em>[F] · 1 action</em></h4>
+    ${irow(t.icon, dmgLabel(p.stompDmg || 0), `${t.name} damage`, t.color)}
+    ${irow('range', '1', 'Range: right next to you')}
+    ${irow('push', '1', 'Knocks back')}
+    ${legs.stompEn ? irow('energy', legs.stompEn, 'Energy', DTYPES.energy.color) : ''}
+    ${irow('heat', `+${legs.stompHeat ?? G.stompHeat}`, 'Heat', DTYPES.heat.color)}
     ${why ? `<p class="tip-why">${why}</p>` : ''}`;
 }
 
@@ -54,15 +62,20 @@ function gunTip(game, i) {
   const st = game.playerGunState(i);
   const t = DTYPES[dtypeOf(w)];
   const p = game.player;
-  const hits = w.fx?.burst ? ` (${w.fx.burst} hits)` : '';
-  return `<h4 style="color:${w.color || '#f4f4f4'}">${w.name} <em>[${i ? 'E' : 'Q'}] · 1 action</em></h4>
-    ${row('Damage', w.fx?.mine ? `${Math.round(w.dmg)} mine` : `~${st.dmg || Math.round(w.dmg)}${hits} ${t.name}`, t.color)}
-    ${row('Range', `${reachLabel(w.reach)} position${w.reach[1] > 1 ? 's' : ''}${w.arc ? ' · lobbed' : ''}`)}
-    ${row('Energy', `${w.en || 0} (have ${Math.floor(p.energy)})`, '#73eff7')}
-    ${row('Heat', `+${w.heat || 0} (${Math.ceil(p.heat)}/${p.heatCap})`, '#ef7d57')}
-    ${w.ammo ? row('Ammo', `${w.ammoLeft}/${w.ammo}`, '#ffcd75') : ''}
-    <p>${partNote(w)}</p>
-    ${st.ok && st.overheats ? `<p class="tip-bad">Overheats you (${Math.ceil(p.heat + (w.heat || 0))}/${p.heatCap}): your next turn is lost, more if cooling can't bring you back under.</p>` : ''}
+  const hits = w.fx?.burst ? ` x${w.fx.burst}` : '';
+  return `<h4 style="color:${w.color || '#f4f4f4'}"><img class="pxi" src="${partIcon(w.id)}" alt=""> ${w.name} <em>[${i + 1}] · 1 action</em></h4>
+    ${irow(t.icon, w.fx?.mine ? `${dmgLabel(w.dmg)} mine` : `${dmgLabel(st.dmg || w.dmg)}${hits}`, `${t.name} damage${st.dmg ? ' vs this target' : ''}`, t.color)}
+    ${irow('range', `${reachLabel(w.reach)}${w.arc ? ' ⌒' : ''}`, w.arc ? 'Range · lobbed over cover' : 'Range · needs a clear line')}
+    ${irow('energy', `${w.en || 0} <small>/ ${Math.floor(p.energy)}</small>`, 'Energy (you have)', DTYPES.energy.color)}
+    ${irow('heat', `+${w.heat || 0} <small>${Math.ceil(p.heat)}/${p.heatCap}</small>`, 'Heat (yours / cap)', DTYPES.heat.color)}
+    ${w.ammo ? irow('ammo', `${w.ammoLeft}/${w.ammo}`, 'Shots left', '#ffcd75') : ''}
+    ${w.backfire ? irow('backfire', `-${Math.round(w.backfire)}`, 'Backfire: costs you HP', '#ff5d73') : ''}
+    ${Object.entries(w.fx?.resDrain || {}).map(([k, v]) => irow('resdrain', `-${v}`, `${DTYPES[k].name} resist, rest of fight`, DTYPES[k].color)).join('')}
+    ${w.fx?.drain ? irow('drain', w.fx.drain, 'Drains their energy', DTYPES.energy.color) : ''}
+    ${w.fx?.push ? irow('push', w.fx.push, 'Knocks back') : ''}
+    ${w.fx?.pull ? irow('pull', w.fx.pull, 'Pulls in') : ''}
+    ${w.desc ? `<p>${w.desc}</p>` : ''}
+    ${st.ok && st.overheats ? `<p class="tip-bad">${ico('heat')} ${Math.ceil(p.heat + (w.heat || 0))}/${p.heatCap}: overheats you, next turn lost</p>` : ''}
     ${st.ok ? '' : `<p class="tip-bad">${WHY[st.reason] || st.reason}</p>`}`;
 }
 
@@ -70,11 +83,12 @@ function droneTip(game, i) {
   const d = game.playerDrones?.[i];
   if (!d) return '';
   const { en, heat } = droneUpkeep(d);
-  const does = d.heal ? `Repairs ${Math.round(d.heal)} HP` : d.forcefieldEvery ? `Forcefield every ${d.forcefieldEvery} turns` : `Shoots for ~${Math.round(d.dmg)} ${DTYPES[dtypeOf(d)].name}`;
-  return `<h4 style="color:${d.color || '#f4f4f4'}">${d.name} <em>${d.off ? 'DOCKED' : 'DEPLOYED'}</em></h4>
-    <p>${does} at the end of each of your turns, any range.</p>
-    ${row('Upkeep', `${en} EN per turn${heat ? ` · +${heat} heat` : ''}`, '#73eff7')}
-    <p>${d.off ? 'Tap to DEPLOY: uses 1 action, then it works every turn.' : 'Tap to recall it (free).'}</p>`;
+  const t = DTYPES[dtypeOf(d)];
+  return `<h4 style="color:${d.color || '#f4f4f4'}"><img class="pxi" src="${partIcon(d.id)}" alt=""> ${d.name} <em>${d.off ? 'DOCKED' : 'DEPLOYED'}</em></h4>
+    ${d.heal ? irow('heal', `+${Math.round(d.heal)}`, 'Repair every turn', '#a7f070') : d.forcefieldEvery ? irow('def', `1/${d.forcefieldEvery}`, 'Forcefield every few turns', '#a7f070') : irow(t.icon, dmgLabel(d.dmg), `${t.name} damage every turn, any range`, t.color)}
+    ${irow('energy', `${en}/T`, 'Energy per turn', DTYPES.energy.color)}
+    ${heat ? irow('heat', `+${heat}/T`, 'Heat per turn', DTYPES.heat.color) : ''}
+    <p>${d.off ? 'Tap: DEPLOY (1 action)' : 'Tap: recall (free)'}</p>`;
 }
 
 /** A special chip: what it does and what it costs. */
@@ -82,13 +96,15 @@ function specialTip(game, i) {
   const sp = game.playerSpecials?.[i];
   if (!sp) return '';
   const st = game.specialStatus(game.player, sp, game.activeEnemy);
-  const key = i === 0 ? 'Z' : 'X';
-  return `<h4 style="color:${sp.color || '#f4f4f4'}">${sp.name} <em>[${key}] · 1 action</em></h4>
+  return `<h4 style="color:${sp.color || '#f4f4f4'}"><img class="pxi" src="${partIcon(sp.id)}" alt=""> ${sp.name} <em>1 action</em></h4>
+    ${sp.ram ? irow('dmg', Math.round(sp.ram), 'Ram: Physical damage + knockback') : ''}
+    ${sp.dist ? irow('move', sp.dist, 'Dash distance') : ''}
+    ${sp.range ? irow('range', `2-${sp.range}`, 'Hook range') : ''}
+    ${sp.absorb ? irow('def', Math.round(sp.absorb), 'Soaks damage') : ''}
+    ${irow('energy', sp.en || 0, 'Energy', DTYPES.energy.color)}
+    ${irow('heat', `+${sp.heat || 0}`, 'Heat', DTYPES.heat.color)}
+    ${irow('ammo', `${sp.usesLeft}/${sp.uses}`, 'Uses left', '#ffcd75')}
     <p>${partNote(sp)}</p>
-    ${sp.ram ? row('Ram', `${Math.round(sp.ram)} Physical`) : ''}
-    ${sp.absorb ? row('Soaks', `${Math.round(sp.absorb)} damage`) : ''}
-    ${row('Cost', `${sp.en || 0} EN · +${sp.heat || 0} heat`, '#73eff7')}
-    ${row('Uses left', `${sp.usesLeft}/${sp.uses}`)}
     ${st.ok ? '' : `<p class="tip-bad">${WHY[st.reason] || st.reason}</p>`}`;
 }
 
