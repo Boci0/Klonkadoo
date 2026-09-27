@@ -86,7 +86,7 @@ export class QuestSystem {
       case 'quest_elite':
         return eventType === 'combat_end' && data.won && data.nodeType === 'elite';
       case 'quest_rest':
-        return eventType === 'rest' && data.healed >= 40;
+        return eventType === 'rest' && data.healed >= 150;
       case 'quest_lowhp':
         return eventType === 'combat_end' && data.won && data.playerHpLeft <= 10;
       default:

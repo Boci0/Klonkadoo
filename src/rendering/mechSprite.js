@@ -92,6 +92,48 @@ const TORSOS = {
     '..kdddddddddddddddddddk.',
     '...kkkkkkkkkkkkkkkkkkk..',
   ],
+  fr_furnace: [
+    '....kkkkkkkkkkkk....',
+    '...khhhhhhhhhhhhk...',
+    '..khbbbbbbbbbbbbdk..',
+    '.khbbbkkkkkkkkbbbdk.',
+    '.khbbkvvvvvvvvkbbdk.',
+    '.khbbbkkkkkkkkbbbdk.',
+    '.khbbbbbbbbbbbbbbdk.',
+    '.khmkmkmkmkmkmkmbdk.',
+    '.khmkmkmkmkmkmkmbdk.',
+    '..kbbbbbbbbbbbbbdk..',
+    '...kddddddddddddk...',
+    '....kkkkkkkkkkkk....',
+  ],
+  fr_conduit: [
+    '......kkkkkkkk......',
+    '.....khhhhhhhhk.....',
+    '.kkk.khbbbbbbdk.kkk.',
+    '.klk.khbkkkkbdk.klk.',
+    '.kmk.khkvvvvkdk.kmk.',
+    '.klkkkhkvvvvkdkkklk.',
+    '.kmk.khbkkkkbdk.kmk.',
+    '.klk.khbbbbbbdk.klk.',
+    '.kkk..kbbbbbdk..kkk.',
+    '.......kddddk.......',
+    '........kkkk........',
+  ],
+  fr_reclaimer: [
+    '.kk..kkkkkkkkkkkk..kk.',
+    'kmmk.khhhhhhhhhhk.kmmk',
+    'kmlkkhbbbbbbbbbbdkklmk',
+    '.kkkhbbbkkkkkkbbbdkkk.',
+    '...khbbkvvvvvvkbbdk...',
+    '...khbbkvvvvvvkbbdk...',
+    '...khbbbkkkkkkbbbdk...',
+    '...khbbbbbbbbbbbbdk...',
+    '...khbmmbbbbbbmmbdk...',
+    '...khbbbbbbbbbbbbdk...',
+    '....kbbbbbbbbbbbddk...',
+    '.....kddddddddddkk....',
+    '......kkkkkkkkkk......',
+  ],
   fr_leviathan: [
     '..k....kkkkkkkkkkk....k..',
     '.khk.kkhhhhhhhhhhhkk.khk.',
@@ -209,6 +251,30 @@ const LEGS = {
     '....................',
     '....................',
   ],
+  lg_skids: [
+    '....kkkkkkkkkkkk....',
+    '....kmmmmmmmmmmk....',
+    '.....kmk....kmk.....',
+    '.....klk....klk.....',
+    '.....kmk....kmk.....',
+    '....kbbbk..kbbbk....',
+    '.....kmk....kmk.....',
+    '..kkkkkkkk.kkkkkkkk.',
+    '.kllllllllkllllllllk',
+    '..kkkkkkkkkkkkkkkkk.',
+  ],
+  lg_bulwark: [
+    '...kkkkkkkkkkkkkk...',
+    '...kmmmmmmmmmmmmk...',
+    '..kbbbbk....kbbbbk..',
+    '..khbbdk....khbbdk..',
+    '..kbbbbk....kbbbbk..',
+    '..kmllmk....kmllmk..',
+    '..khbbdk....khbbdk..',
+    '..kbbbbk....kbbbbk..',
+    '.kmmmmmmk..kmmmmmmk.',
+    '.kkkkkkkk..kkkkkkkk.',
+  ],
   lg_phase: [
     '.....kkkkkkkkkk.....',
     '.....kmmmmmmmmk.....',
@@ -255,10 +321,10 @@ function palette(color, dark, flash, visor = VISOR) {
 /** Plating modules show on the torso: which look each one bolts on. */
 const ARMOR_LOOK = {
   md_plating: 'ar_scrap', md_physres: 'ar_kevlar', md_heatres: 'ar_kevlar', md_elecres: 'ar_kevlar',
-  md_heavyplate: 'ar_reactive', md_composite: 'ar_reactive', md_aegis: 'ar_aegis',
+  md_heavyplate: 'ar_reactive', md_composite: 'ar_reactive', md_insulated: 'ar_reactive', md_aegis: 'ar_aegis',
   md_titanplate: 'ar_titanium', md_voidcore: 'ar_void',
 };
-const LOOK_RANK = ['md_plating', 'md_physres', 'md_heatres', 'md_elecres', 'md_heavyplate', 'md_composite', 'md_aegis', 'md_titanplate', 'md_voidcore'];
+const LOOK_RANK = ['md_plating', 'md_physres', 'md_heatres', 'md_elecres', 'md_heavyplate', 'md_insulated', 'md_composite', 'md_aegis', 'md_titanplate', 'md_voidcore'];
 
 /** Armor bolted onto the torso: pads, bands or rivets by plating module. */
 function paintArmor(g, armorId, w, h, flash) {

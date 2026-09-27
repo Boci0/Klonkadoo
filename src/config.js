@@ -156,7 +156,8 @@ export const CONFIG = {
   },
 
   // --- Enemy Tiers (Initial Base Enemy Stats per Floor) ---
-  // Floor scaling (floorScaling) is applied on top. Tuned so a Risk 0 player
+  // Floor scaling (floorScaling) is applied on top, and CONFIG.risk.ease softens
+  // everything at low Risk (half HP and damage at Risk 0). Tuned so a Risk 10 player
   // with no upgrades has to play well: a sloppy fight costs 40-60% HP and
   // runs are won with gear and good positioning. Enemies also tighten
   // their aim after each miss (Game: missStreak). aiDifficulty → measured hit
@@ -179,9 +180,14 @@ export const CONFIG = {
 
   // --- Risk levels: each level adds one rule on top of the ones below ---
   // Unlocked one at a time by winning a run on the highest unlocked level.
-  // Each level also grants +scrapPerLevel% scrap from battles.
+  // Each level also grants +scrapPerLevel% scrap and +keysPerLevel% Keys from battles.
   risk: {
     scrapPerLevel: 15,
+    keysPerLevel: 10, // +10% Keys per level (fractions carry over between fights)
+    // Low Risk is gentle: enemies start soft (HP, gun damage, aim) and harden a step
+    // per level, reaching full strength at Risk 10 (Risk XI and the Abyss stay full).
+    // The level rules below stack on top. Mech.riskEase reads this; tools/balance-sim.mjs tunes it.
+    ease: { hp: 0.5, atk: 0.5, ai: -0.2, fullAt: 10 },
     levels: [
       { name: 'HARDENED', desc: 'Enemies +15% HP.', hpPct: 15 },
       { name: 'RANGEFINDERS', desc: 'Enemy guns reach 1 position further.', enemyReach: 1 },
@@ -252,7 +258,7 @@ export const CONFIG = {
     atkBase: 1,
     defBase: 0,
     maxDefCap: 15, // DEF cap = 60% damage reduction
-    hpRegenPerRest: 35, // HP restored at a Rest node
+    hpRegenRestPct: 0.5, // Safe Zone restores 50% of max HP (winning battles no longer heals)
     hpRegenMaxPct: 0.5, // ... but capped at 50% of max HP
     shopFloorMarkup: 0.12, // shop prices +12% per floor past the first (Abyss included)
   },
@@ -295,18 +301,18 @@ export const CONFIG = {
   nodes: {
     // Appearance weights per floor
     floorWeights: {
-      1: { combat: 6, encounter: 3, shop: 1, rest: 1, elite: 1, treasure: 1, gamble: 1 },
+      1: { combat: 6, encounter: 3, shop: 1, rest: 2, elite: 1, treasure: 1, gamble: 1 },
       2: { combat: 4, encounter: 4, shop: 2, rest: 2, elite: 2, treasure: 1, gamble: 1 },
       3: { combat: 4, encounter: 3, shop: 2, rest: 2, elite: 2, treasure: 1, gamble: 1 },
-      4: { combat: 3, encounter: 3, shop: 2, rest: 1, elite: 3, treasure: 1, gamble: 1 },
+      4: { combat: 3, encounter: 3, shop: 2, rest: 2, elite: 3, treasure: 1, gamble: 1 },
       5: { combat: 3, encounter: 3, shop: 2, rest: 2, elite: 3, treasure: 1, gamble: 1 },
     },
     rewards: {
       // scrap upgrades parts on the Rig screen; Keys come from Mech.tokenReward
-      combat: { gold: 16, scrap: 4, healMax: 20 }, // + a clean-win bonus (main.js)
-      elite: { gold: 25, scrap: 10, healMax: 30 },
-      miniboss: { gold: 50, scrap: 16, healMax: 30 },
-      boss: { gold: 40, scrap: 20, healMax: 50 },
+      combat: { gold: 16, scrap: 4 }, // + a clean-win bonus (main.js)
+      elite: { gold: 25, scrap: 10 },
+      miniboss: { gold: 50, scrap: 16 },
+      boss: { gold: 40, scrap: 20 },
       encounter: { gold: 8, minHpLoss: 5, maxHpLoss: 14 },
       minigame: { gold: 15 },
       shop: {},
@@ -324,7 +330,7 @@ export const CONFIG = {
     { id: 'quest_boss_kill', name: 'Slayer', desc: 'Defeat a boss node', reward: 20 },
     { id: 'quest_perfect', name: 'Flawless Run', desc: 'Reach floor 5 without losing a combat', reward: 25 },
     { id: 'quest_elite', name: 'Elite Killer', desc: 'Defeat an elite combat node', reward: 15 },
-    { id: 'quest_rest', name: 'Recovery', desc: 'Use a Safe Zone node to heal 40+ HP in one run', reward: 5 },
+    { id: 'quest_rest', name: 'Recovery', desc: 'Heal 150+ HP at Safe Zones in one run', reward: 5 },
     { id: 'quest_lowhp', name: 'Survivor', desc: 'Win a combat with 10 HP or less', reward: 15 },
   ],
 
@@ -336,7 +342,7 @@ export const CONFIG = {
     { id: 'boon_greed', name: 'Greed', desc: '+25% gold, but -5 max HP.', color: '#ffcd75' },
     { id: 'boon_swift', name: 'Swift Loader', desc: '+15% ATK, +1 walk.', color: '#c46fd6' },
     { id: 'boon_power', name: 'Long Barrel', desc: '+1 max range on every gun.', color: '#ef7d57' },
-    { id: 'boon_regen', name: 'Regeneration', desc: 'Heal 10 HP after each battle won.', color: '#a7f070' },
+    { id: 'boon_regen', name: 'Regeneration', desc: 'Repair 6% of max HP after each battle won.', color: '#a7f070' },
   ],
 
 

@@ -390,7 +390,7 @@ export class RigScreen {
     const tops = [part('top1'), part('top2')];
     const drone = part('drone');
     const mods = MODS.map(part);
-    const plating = mods.filter(Boolean).find((mp) => ['md_voidcore', 'md_titanplate', 'md_aegis', 'md_composite', 'md_heavyplate', 'md_plating'].includes(mp.id));
+    const plating = mods.filter(Boolean).find((mp) => ['md_voidcore', 'md_titanplate', 'md_aegis', 'md_composite', 'md_insulated', 'md_heavyplate', 'md_plating'].includes(mp.id));
     const armor = plating?.id || null;
     const frame = part('frame');
     const frameCol = frame ? rarityColor(tierOf(bySlot.frame)) : '#566c86';

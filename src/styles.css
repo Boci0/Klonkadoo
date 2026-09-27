@@ -4696,3 +4696,18 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
   .tf-fodder .rig-item img { width: 24px; }
   .tf-part img { width: 28px; }
 }
+
+/* Mastery: totals on the deploy line, every perk in the hover card */
+.deploy-mastery .bm-now { display: inline-flex; align-items: center; gap: 3px; color: var(--p-white, #f4f4f4); }
+.deploy-mastery .bm-next { color: var(--p-yellow); }
+.deploy-mastery { cursor: help; }
+.mastery-card .pcard-head strong { display: flex; align-items: center; gap: 4px; }
+.mastery-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; font-size: 12px; }
+.mastery-list li { display: grid; grid-template-columns: 42px 1fr; gap: 6px; color: #566c86; }
+.mastery-list li.got { color: #f4f4f4; }
+.mastery-list li.got b { color: var(--p-yellow); }
+.mastery-list li strong { color: inherit; }
+
+/* AUTO held down: locked on */
+.ability-auto.locked { box-shadow: 0 0 0 2px var(--p-yellow), 0 0 12px rgba(255, 205, 117, 0.45); }
+.ability-auto.locked .ability-cd { color: var(--p-yellow); }

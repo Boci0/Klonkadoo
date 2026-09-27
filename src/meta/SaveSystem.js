@@ -480,6 +480,11 @@ export class SaveSystem {
     return 1 + (this.getDifficultyLevel() * CONFIG.risk.scrapPerLevel) / 100;
   }
 
+  /** Keys multiplier from the selected Risk level (lower than scrap's). */
+  getKeyMultiplier() {
+    return 1 + (this.getDifficultyLevel() * CONFIG.risk.keysPerLevel) / 100;
+  }
+
   getHealingMultiplier() {
     const risk = this.getRiskData();
     return Math.max(0.2, 1 - (risk.minusHeal || 0) / 100);

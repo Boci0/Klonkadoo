@@ -25,7 +25,7 @@ import { DevTools } from './dev/DevTools.js';
 import { checkMedals } from './meta/Medals.js';
 import './platform/native.js';
 import './platform/desktop.js';
-import { withMech, tokenReward, enemyMech, enemyRig, CLEAN_WIN_KEYS, DTYPES, dtypeOf, droneUpkeep } from './meta/Mech.js';
+import { withMech, tokenReward, riskEase, enemyMech, enemyRig, CLEAN_WIN_KEYS, DTYPES, dtypeOf, droneUpkeep } from './meta/Mech.js';
 import { partIcon, ico } from './rendering/pixelIcons.js';
 import { pickNode, pickChoice, pickBuys, supplyValue } from './rogue/AutoRun.js';
 import { withMastery, masteryLevel, runXp } from './meta/Mastery.js';
@@ -237,11 +237,44 @@ function bindAbilityButtons() {
     if (!game.ventPlayer()) soundEngine.play('error');
   });
 
-  // AUTO: the planner plays your turns (any action you take yourself switches it off)
-  document.getElementById('btn-auto')?.addEventListener('click', () => {
+  // AUTO: the planner plays your turns. Tap: on / off (your own actions switch it off).
+  // Hold: LOCKED on, until you tap it off (your own actions don't stop it).
+  const autoBtn = document.getElementById('btn-auto');
+  let holdTimer = null;
+  let held = false;
+  const holdStart = () => {
+    if (state !== State.BATTLE || battlePaused || autoRun) return;
+    held = false;
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(() => {
+      held = true;
+      lockAutoBattle();
+    }, AUTO_HOLD_MS);
+  };
+  const holdCancel = () => clearTimeout(holdTimer);
+  autoBtn?.addEventListener('pointerdown', holdStart);
+  autoBtn?.addEventListener('pointerup', holdCancel);
+  autoBtn?.addEventListener('pointerleave', holdCancel);
+  autoBtn?.addEventListener('pointercancel', holdCancel);
+  autoBtn?.addEventListener('contextmenu', (e) => e.preventDefault()); // a long press on touch
+  autoBtn?.addEventListener('click', () => {
+    if (held) {
+      held = false; // the hold already locked it
+      return;
+    }
     if (state !== State.BATTLE || battlePaused || autoRun) return;
     setAutoBattle(!autoBattle);
     soundEngine.playUI();
+  });
+  // [A]: tap toggles, hold locks
+  let keyTimer = null;
+  let keyHeld = false;
+  window.addEventListener('keyup', (e) => {
+    if (e.code !== 'KeyA' || !keyTimer) return;
+    clearTimeout(keyTimer);
+    keyTimer = null;
+    if (keyHeld || state !== State.BATTLE || battlePaused || autoRun) return;
+    setAutoBattle(!autoBattle);
   });
 
   // Keyboard hotkeys: [1-6] (or [Q] [E]) guns, [Z] [X] [C] specials, [F] stomp, [V] vent, [Space] end turn, [A] auto
@@ -250,7 +283,13 @@ function bindAbilityButtons() {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
     const digit = /^Digit([1-6])$/.exec(e.code);
     if (e.code === 'KeyA') {
-      if (!autoRun) setAutoBattle(!autoBattle);
+      if (!autoRun && !e.repeat && !keyTimer) {
+        keyHeld = false;
+        keyTimer = setTimeout(() => {
+          keyHeld = true;
+          lockAutoBattle();
+        }, AUTO_HOLD_MS);
+      }
       return;
     }
     if (digit || ['KeyQ', 'KeyE', 'Space', 'KeyV', 'KeyZ', 'KeyX', 'KeyC', 'KeyF'].includes(e.code)) takeControl();
@@ -302,19 +341,49 @@ function fireGun(i) {
 
 // AUTO battle: the planner plays your turns. It stays on between fights until
 // you switch it off (or act yourself); AUTO RUN keeps it on for the whole run.
-let autoBattle = false;
+// Held down, it LOCKS: on in every battle (even after a restart) until you tap
+// it off, and acting yourself doesn't stop it.
+const AUTO_HOLD_MS = 550;
+const AUTO_LOCK_KEY = 'slingshot-auto-lock';
+let autoLocked = false;
+try {
+  autoLocked = localStorage.getItem(AUTO_LOCK_KEY) === '1';
+} catch (_) {}
+let autoBattle = autoLocked;
 let autoRun = false;
 function setAutoBattle(on) {
   autoBattle = !!on;
+  if (!autoBattle && autoLocked) {
+    autoLocked = false; // tapping it off unlocks it too
+    saveAutoLock();
+  }
   game.autoPlayer = autoBattle;
-  document.getElementById('btn-auto')?.classList.toggle('on', autoBattle);
+  const btn = document.getElementById('btn-auto');
+  btn?.classList.toggle('on', autoBattle);
+  btn?.classList.toggle('locked', autoLocked);
   const cd = document.getElementById('cd-auto');
-  if (cd) cd.textContent = autoBattle ? 'ON' : 'OFF';
+  if (cd) cd.textContent = autoLocked ? 'LOCK' : autoBattle ? 'ON' : 'OFF';
 }
-/** A manual action: you take over (AUTO battle and AUTO RUN both stop). */
+function saveAutoLock() {
+  try {
+    if (autoLocked) localStorage.setItem(AUTO_LOCK_KEY, '1');
+    else localStorage.removeItem(AUTO_LOCK_KEY);
+  } catch (_) {}
+}
+/** Hold AUTO (button or [A]): on and locked. */
+function lockAutoBattle() {
+  if (state !== State.BATTLE || battlePaused || autoRun) return;
+  autoLocked = true;
+  saveAutoLock();
+  setAutoBattle(true);
+  soundEngine.play('confirm');
+  haptics.impact('medium');
+  game.renderer?.addCallout(game.player, 'AUTO LOCKED', '#ffcd75');
+}
+/** A manual action: you take over (AUTO battle and AUTO RUN both stop; a locked AUTO keeps going). */
 function takeControl() {
   if (autoRun) stopAutoRun('YOU TOOK OVER');
-  else if (autoBattle) setAutoBattle(false);
+  else if (autoBattle && !autoLocked) setAutoBattle(false);
 }
 
 // ---------- AUTO RUN ----------
@@ -361,7 +430,7 @@ function stopAutoRun(reason = '') {
   autoRun = false;
   autoPending = null;
   clearTimeout(autoRunTimer);
-  setAutoBattle(false);
+  setAutoBattle(autoLocked); // a locked AUTO battle outlives AUTO RUN
   updateAutoRunBtn();
   if (reason) ui.toast(`<span class="feed-boon">${ico('auto')} AUTO RUN STOPPED: ${reason}</span>`);
 }
@@ -1091,8 +1160,10 @@ function startCombat(node) {
   const condHp = cond === 'gold_rush' ? 1.1 : 1;
   const condAtk = (cond === 'glass_war' ? 1.3 : 1) * (cond === 'blood_moon' ? 1.15 : 1);
   // Abyss: +8% HP and +5% ATK per depth, on top of the normal per-floor scaling
-  const hpMult = (1 + (riskData.hpPct + (isEliteTier ? riskData.eliteHpPct : 0)) / 100) * condHp * (1 + ABYSS_HP_PER_DEPTH * abyssDepth);
-  const atkMult = (1 + (riskData.atkPct + (isEliteTier ? riskData.eliteAtkPct : 0)) / 100) * condAtk * (1 + ABYSS_ATK_PER_DEPTH * abyssDepth);
+  // Low Risk softens every enemy; the Abyss is always full strength
+  const ease = abyssDepth ? riskEase(CONFIG.risk.ease.fullAt) : riskEase(riskLevel);
+  const hpMult = (1 + (riskData.hpPct + (isEliteTier ? riskData.eliteHpPct : 0)) / 100) * condHp * (1 + ABYSS_HP_PER_DEPTH * abyssDepth) * ease.hp;
+  const atkMult = (1 + (riskData.atkPct + (isEliteTier ? riskData.eliteAtkPct : 0)) / 100) * condAtk * (1 + ABYSS_ATK_PER_DEPTH * abyssDepth) * ease.atk;
   const defMult = 1 + riskData.defPct / 100;
   // Visible floor scaling: +X% HP / +Y% ATK per floor above the first
   const floorsAbove = Math.min(run.floor, CONFIG.map.floors - 1); // capped at floor 5: the Abyss scales by depth instead
@@ -1128,7 +1199,7 @@ function startCombat(node) {
       displayName: isFinal ? 'KLONKADOO PRIME' : isBoss ? (abyssDepth ? `ABYSS WARDEN ${abyssDepth}` : 'SECTOR COMMANDER') : arch.name,
       rank: node.type === 'boss' || node.type === 'miniboss' ? node.type : null,
       archetype,
-      aiDifficulty: Math.min(0.95, tier.aiDifficulty + arch.aiShift + riskData.aiBonus),
+      aiDifficulty: Math.max(0.1, Math.min(0.95, tier.aiDifficulty + arch.aiShift + riskData.aiBonus + ease.ai)),
       thinkDelay,
       xPct,
       // Risk: RANGEFINDERS
@@ -1294,26 +1365,22 @@ function onBattleEnd(won, node) {
     }
     // Scrap upgrades parts: saved at once, kept even if the run is lost
     if (rewards.scrap) {
-      scrap = Math.max(1, Math.round(rewards.scrap * saveSystem.getScrapMultiplier() * (run.condition === 'blood_moon' ? 1.5 : 1)));
+      scrap = Math.max(1, Math.round(rewards.scrap * scrapMult() * (run.condition === 'blood_moon' ? 1.5 : 1)));
       saveSystem.addScrap(scrap);
       addFeedEntry(`<span class="feed-boon">+${scrap} SCRAP</span>`);
     }
-    if (rewards.healMax) {
-      heal = Math.round(run.maxHp * (rewards.healMax / 100));
-      run.healFlat(heal);
-      addFeedEntry(`<span class="feed-heal">+${heal} HP RECOVERED</span>`);
-    }
+    // Winning doesn't repair you: HP carries into the next fight (Safe Zones, repairs, Nano Repair)
     const medic = run.permanent?.mech?.healAfterWin || 0;
     if (medic > 0) {
       const extra = Math.round(run.maxHp * medic);
-      run.healFlat(extra);
-      heal += extra;
+      heal = run.healFlat(extra);
+      if (heal > 0) addFeedEntry(`<span class="feed-heal">NANO REPAIR: +${heal} HP</span>`);
     }
 
     // Keys (saved as `tokens`) open supply pods on the Rig screen; saved at once, so they're kept even if the run is lost
     // Normal fights won without a scratch: bonus Keys and gold
     const clean = node.type === 'combat' && damageTaken === 0;
-    const tokens = tokenReward(node.type, saveSystem.getDifficultyLevel()) + (clean ? CLEAN_WIN_KEYS : 0);
+    const tokens = riskKeys(tokenReward(node.type) + (clean ? CLEAN_WIN_KEYS : 0)) + (run.permanent?.bonusKeys || 0);
     if (clean) {
       gold += run.gainGold(8);
       addFeedEntry('<span class="feed-gold">CLEAN WIN</span>');
@@ -1349,6 +1416,19 @@ function onBattleEnd(won, node) {
     persistRun('combat');
     setTimeout(() => ui.showCombatResult(false, null, run, battleReport(node, damageTaken)), 900);
   }
+}
+
+/** Keys with the Risk bonus; the fraction left over carries to the next payout so every % counts. */
+function riskKeys(base) {
+  const raw = base * saveSystem.getKeyMultiplier() + (run.keyCarry || 0);
+  const n = Math.floor(raw + 1e-9);
+  run.keyCarry = raw - n;
+  return n;
+}
+
+/** Scrap multiplier: Risk plus mastery SCAVENGER. */
+function scrapMult() {
+  return saveSystem.getScrapMultiplier() + (run.permanent?.scrapPct || 0);
 }
 
 /** Numbers for the end-of-battle report (Game.battleStats). */
@@ -1490,7 +1570,7 @@ function buySupply(i) {
 
 function resolveRest(choice) {
   if (choice === 'heal') {
-    const healed = run.healFlat(CONFIG.run.hpRegenPerRest || 30);
+    const healed = run.healFlat(run.restHeal);
     soundEngine.play('heal');
     // Recovery quest counts every Safe Zone heal across the run
     run.maxRestHealed = (run.maxRestHealed || 0) + healed;
@@ -1596,8 +1676,8 @@ function sectorCleared() {
     run.abyssDepth = depth;
     saveSystem.recordAbyssDepth(run.ballType, depth);
     const final = depth === ABYSS_FINAL_DEPTH;
-    const keys = 3 + depth * 2 + (final ? 15 : 0);
-    const scrap = Math.round((10 + depth * 5 + (final ? 60 : 0)) * saveSystem.getScrapMultiplier());
+    const keys = riskKeys(3 + depth * 2 + (final ? 15 : 0));
+    const scrap = Math.round((10 + depth * 5 + (final ? 60 : 0)) * scrapMult());
     saveSystem.addTokens(keys);
     saveSystem.addScrap(scrap);
     rewards = { keys, scrap, final };

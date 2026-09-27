@@ -107,6 +107,7 @@ function apply(s, a) {
     // Specialist payoffs: hot targets (Thermal Lance, Meltdown), all your energy (Capacitor Dump)
     let shot = g;
     if (g.hotBonus && foe.heat > foe.heatCap * 0.75) shot = { ...shot, dmg: shot.dmg * 2 };
+    if (g.execute && foe.hp < (foe.maxHp || foe.hp) * g.execute) shot = { ...shot, dmg: shot.dmg * 1.8 };
     if (g.meltdown && foe.heat > foe.heatCap) {
       shot = { ...shot, dmg: shot.dmg + (foe.heat - foe.heatCap) * 2 };
       foe.heat = foe.heatCap;
@@ -160,16 +161,19 @@ function apply(s, a) {
     me.actions -= 1;
     s.specialsUsed = (s.specialsUsed || 0) + 1;
     const dir = Math.sign(foe.pos - me.pos) || 1;
-    if (sp.kind === 'hook') foe.pos = me.pos + dir;
-    else if (sp.kind === 'charge') {
+    if (sp.kind === 'hook') {
+      foe.pos = me.pos + dir;
+      if (sp.drain) foe.energy = Math.max(0, foe.energy - sp.drain);
+    } else if (sp.kind === 'charge') {
+      const step = sp.away ? -dir : dir; // Retro Rockets back off
       let to = me.pos;
       for (let i = 0; i < sp.dist; i++) {
-        const next = to + dir;
+        const next = to + step;
         if (next < 1 || next > s.size || next === foe.pos) break;
         to = next;
       }
       me.pos = to;
-      if (Math.abs(me.pos - foe.pos) === 1) {
+      if (!sp.away && Math.abs(me.pos - foe.pos) === 1) {
         const dmg = soak(foe, hitDamage({ dmg: sp.ram, burst: 1, dtype: 'phys' }, foe));
         foe.hp -= dmg;
         s.dealt += dmg;
@@ -220,7 +224,7 @@ function actionsFor(s) {
   (me.specials || []).forEach((sp, i) => {
     if (sp.uses <= 0 || me.energy < sp.en || me.heat > me.heatCap) return;
     if (sp.kind === 'hook' && dist >= 2 && dist <= sp.range) list.push({ type: 'special', i });
-    if (sp.kind === 'charge' && dist >= 2 && !me.legs?.anchored) list.push({ type: 'special', i });
+    if (sp.kind === 'charge' && (dist >= 2 || sp.away) && !me.legs?.anchored) list.push({ type: 'special', i });
     if (sp.kind === 'shield' && !(me.bubble > 0)) list.push({ type: 'special', i });
     if (sp.kind === 'teleport') for (let q = 1; q <= s.size; q++) if (q !== me.pos && q !== s.foe.pos) list.push({ type: 'special', i, pos: q });
   });
@@ -311,3 +315,6 @@ export function planTurn(state, { difficulty = 0.5, aggression = 0, rnd = Math.r
   const pool = lines.slice(1, 4).filter((l) => l.score > lines[0].score - 8 && l.state.dealt >= lines[0].state.dealt * 0.6);
   return (pool.length ? pool[Math.floor(rnd() * pool.length)] : lines[0]).seq;
 }
+
+/** The planner's own rules for one action, for tools (tools/balance-sim.mjs). */
+export { apply as applyAction };

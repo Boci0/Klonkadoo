@@ -88,9 +88,14 @@ export class RunState {
     return { phys: 0, heat: 0, energy: 0, ...(this.permanent?.res || {}) };
   }
 
-  /** Net damage reduction; negative means you take extra damage. */
+  /** Net damage reduction (mastery VETERAN); negative means you take extra damage. */
   get damageReductionPct() {
-    return Math.max(-0.5, Math.min(0.85, -(this.ball?.dmgTakenPct || 0)));
+    return Math.max(-0.5, Math.min(0.85, (this.permanent?.kineticDampenerPct || 0) - (this.ball?.dmgTakenPct || 0)));
+  }
+
+  /** HP a Safe Zone restores before the Risk penalty: a share of max HP (mastery FIELD MEDIC adds to it). */
+  get restHeal() {
+    return Math.round(this.maxHp * ((CONFIG.run.hpRegenRestPct || 0.5) + (this.permanent?.restHealPct || 0)));
   }
 
   /** Multiplier on maximum launch power (boons + gear). */
@@ -245,7 +250,7 @@ export class RunState {
     this.combatsWon += 1;
     const regenCount = this.getBoonCount('boon_regen');
     if (regenCount > 0) {
-      this.healFlat(10 * regenCount);
+      this.healFlat(Math.round(this.maxHp * 0.06 * regenCount));
     }
     if (regenBonus) this.healFlat(regenBonus);
   }

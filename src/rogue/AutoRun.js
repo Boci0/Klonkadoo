@@ -6,7 +6,7 @@
 // AUTO battle (LaneAI). Pure functions: main.js drives the run.
 // ============================================================
 
-import { getSupply } from './Supplies.js';
+import { getSupply, repairAmount } from './Supplies.js';
 
 const hpPct = (run) => (run.maxHp > 0 ? run.hp / run.maxHp : 0);
 
@@ -15,7 +15,7 @@ export function supplyValue(s, run) {
   if (!s) return -Infinity;
   const missing = run.maxHp - run.hp;
   switch (s.kind) {
-    case 'repair': return Math.min(s.amount, missing) * (hpPct(run) < 0.6 ? 1.2 : 0.4);
+    case 'repair': return Math.min(repairAmount(s, run), missing) * (hpPct(run) < 0.6 ? 1.2 : 0.4);
     case 'maxhp': return s.amount * 1.2;
     case 'keys': return s.amount * 9; // pods: the point of farming
     case 'scrap': return s.amount * 0.6;

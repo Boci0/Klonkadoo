@@ -53,6 +53,7 @@ export function vfxOf(w) {
 
 /** A Charge Booster ram as a hit: Physical. */
 const RAM_GUN = { id: 'ram', name: 'RAM', dtype: 'phys', fx: {} };
+const EXECUTE_MULT = 1.8; // Breacher: damage x this against a target under its execute line
 
 /** STOMP as a hit: Physical, from the legs. */
 const STOMP_GUN = { id: 'stomp', name: 'STOMP', dtype: 'phys', fx: {} };
@@ -60,7 +61,7 @@ const stompGun = (legs) => ({ ...STOMP_GUN, dtype: legs?.stompType || 'phys' });
 
 /** On-screen size by frame: heavier frames stand bigger on the lane. */
 const MECH_R = 32;
-const FRAME_SIZE = { fr_scout: 0.9, fr_phantom: 0.95, fr_brawler: 1, fr_titan: 1.1, fr_colossus: 1.2, fr_leviathan: 1.28 };
+const FRAME_SIZE = { fr_scout: 0.9, fr_phantom: 0.95, fr_conduit: 0.95, fr_brawler: 1, fr_furnace: 1.05, fr_titan: 1.1, fr_reclaimer: 1.15, fr_colossus: 1.2, fr_leviathan: 1.28 };
 export const mechRadius = (parts) => Math.round(MECH_R * (FRAME_SIZE[(parts || []).find((id) => FRAME_SIZE[id])] || 1));
 
 /** World x of the centre of lane position `pos` (1..size). */
@@ -807,9 +808,21 @@ export class Game {
   }
 
   _previewDamage(w, target) {
-    let dmg = w.dmg * (w.fx?.burst || 1) * (this.collisionSystem.stats.playerAtk || 1);
+    let dmg = w.dmg * (w.fx?.burst || 1) * (this.collisionSystem.stats.playerAtk || 1) * this._condAtkMult();
+    if (w.fx?.execute && target.hp < target.maxHp * w.fx.execute) dmg *= EXECUTE_MULT;
     if (!w.fx?.pierce) dmg *= 1 - Math.min(CONFIG.run.maxDefCap || 15, resistOf(target, dtypeOf(w))) * CONFIG.damage.defensePerPoint;
     return Math.max(1, Math.round(dmg));
+  }
+
+  /** Overdrive Governor (hot) and Last Stand (low HP): extra damage from the active mech right now. */
+  _condAtkMult() {
+    const m = this.rigStats?.mech || {};
+    const p = this.player;
+    let k = 1;
+    if (!p) return k;
+    if (m.hotAtk && p.heat > p.heatCap * 0.5) k += m.hotAtk;
+    if (m.lowHpAtk && p.hp < p.maxHp * 0.35) k += m.lowHpAtk;
+    return k;
   }
 
   /** Phantom frame: the active mech's first shot this battle is free. */
@@ -843,6 +856,14 @@ export class Game {
     const cooled = Math.min(u.heat, u.cool * G.vent.coolMult);
     u.heat -= cooled;
     u.actionsLeft = 0;
+    const exch = u === this.player ? this.rigStats?.mech?.ventEnergy || 0 : 0;
+    if (exch && cooled > 0) {
+      const got = Math.min(u.energyMax - u.energy, Math.round(cooled * exch));
+      if (got > 0) {
+        u.energy += got;
+        this._callout(u, `EXCHANGER +${got} EN`, DTYPES.energy.color);
+      }
+    }
     for (let i = 0; i < 16; i++) {
       const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.6;
       const sp = 90 + Math.random() * 160;
@@ -940,7 +961,7 @@ export class Game {
     if (sp.special === 'charge') {
       if (!target) return { ok: false, reason: 'NO TARGET' };
       if (u.legs?.anchored) return { ok: false, reason: 'ANCHORED' };
-      if (d < 2) return { ok: false, reason: 'TOO CLOSE' };
+      if (d < 2 && !sp.away) return { ok: false, reason: 'TOO CLOSE' };
     }
     if (sp.special === 'shield' && u.bubble > 0) return { ok: false, reason: 'ACTIVE' };
     return { ok: true, reason: '' };
@@ -960,19 +981,23 @@ export class Game {
       soundEngine.playShot('hook');
       this._callout(target, 'HOOKED', sp.color);
       this._arrive(target);
+      // Mag Tether: the cable drains them too
+      if (sp.drain && target.hp > 0) this._reactorFx(target, { dtype: 'energy', fx: { drain: sp.drain } }, 0, u);
     } else if (sp.special === 'charge') {
+      // Retro Rockets fly the other way and never ram
+      const step = sp.away ? -dir : dir;
       let to = u.pos;
       for (let i = 0; i < sp.dist; i++) {
-        const next = to + dir;
+        const next = to + step;
         if (next < 1 || next > L.size || this._unitAt(next)) break;
         to = next;
       }
       u.anim = { from: u.x, to: posX(to), t: 0, dur: 0.22, jump: false };
       u.pos = to;
       soundEngine.playMove('jump');
-      this._callout(u, 'CHARGE!', sp.color);
+      this._callout(u, sp.away ? 'RETRO!' : 'CHARGE!', sp.color);
       this._arrive(u);
-      if (u.hp > 0 && target.hp > 0 && this.distance(u, target) === 1) {
+      if (!sp.away && u.hp > 0 && target.hp > 0 && this.distance(u, target) === 1) {
         this.renderer.addScreenShake(12);
         soundEngine.playStomp();
         this._weaponHit(u, target, RAM_GUN, sp.ram);
@@ -1027,6 +1052,10 @@ export class Game {
       target.heat = target.heatCap;
       this._callout(target, 'MELTDOWN', '#ff5d73');
       this.renderer.addScreenShake(12);
+    }
+    if (w.fx?.execute && target.hp < target.maxHp * w.fx.execute) {
+      dmg *= EXECUTE_MULT;
+      this._callout(target, 'EXECUTE', '#ff5d73');
     }
     if (w._dumpBonus) {
       dmg += w._dumpBonus;
@@ -1084,10 +1113,15 @@ export class Game {
       const critChance = (w.fx?.crit || 0) + (yours ? 0.05 + (this.rigStats?.critChance || 0) : 0);
       const crit = critChance > 0 && Math.random() < critChance;
       let dmg = rawDmg * (crit ? 1.75 : 1);
-      if (yours) dmg *= this.collisionSystem.stats.playerAtk || 1;
+      if (yours) dmg *= (this.collisionSystem.stats.playerAtk || 1) * this._condAtkMult();
       if (!w.fx?.pierce) dmg *= 1 - Math.min(CONFIG.run.maxDefCap || 15, resistOf(target, type)) * CONFIG.damage.defensePerPoint;
       dmg = Math.max(1, Math.round(dmg)) + this._reactorFx(target, w, w.dmg ?? rawDmg, owner); // heat / drain from the base hit, not specialist bonuses
       const killed = target.takeDamage(dmg);
+      // Siphon Ray: part of the damage comes back as repairs
+      if (w.fx?.lifesteal && yours && this.player.hp > 0) {
+        const got = this._healPlayer(dmg * w.fx.lifesteal);
+        if (got > 0) this._callout(this.player, `SIPHON +${got}`, '#a7f070');
+      }
       if (w.fx?.burn) {
         target.burnTicks = Math.max(target.burnTicks || 0, w.fx.burn);
         target.burnDmg = Math.max(target.burnDmg || 0, 6);
@@ -1190,6 +1224,7 @@ export class Game {
       const { en, heat } = droneUpkeep(d);
       if (d.forcefieldEvery && (owner.forcefield || this.battleStats.turns % d.forcefieldEvery !== 0)) continue;
       if (d.heal && owner.hp >= owner.maxHp) continue;
+      if (d.chill && owner.heat <= 0) continue;
       if (d.dmg && !foe) continue;
       if (owner.energy < en) {
         this._callout(owner, 'DRONE: NO POWER', '#94b0c2');
@@ -1209,6 +1244,11 @@ export class Game {
       shooter.hp = Math.min(shooter.maxHp, shooter.hp + Math.round(d.heal));
       if (shooter.hp > before) this._callout(shooter, `REPAIR +${shooter.hp - before}`, d.color);
       this._spawnHealSparkles(shooter);
+    } else if (d.chill) {
+      d.firedAt = performance.now();
+      const cooled = Math.min(shooter.heat, Math.round(d.chill));
+      shooter.heat -= cooled;
+      if (cooled > 0) this._callout(shooter, `COOLANT -${cooled} HEAT`, d.color);
     } else if (d.forcefieldEvery) {
       d.firedAt = performance.now();
       shooter.forcefield = true;
@@ -1247,6 +1287,7 @@ export class Game {
       team: u.team,
       pos: u.pos,
       hp: u.hp,
+      maxHp: u.maxHp,
       heat: u.heat,
       heatCap: u.heatCap,
       cool: u.cool,
@@ -1260,7 +1301,7 @@ export class Game {
       jammed: !!u.jammed,
       jamNext: !!u.jamNext,
       bubble: u.bubble || 0,
-      specials: (u === this.player ? this.playerSpecials || [] : u.specials || []).map((sp) => ({ kind: sp.special, uses: sp.usesLeft, en: sp.en || 0, heat: sp.heat || 0, range: sp.range || 0, dist: sp.dist || 0, ram: sp.ram || 0, absorb: sp.absorb || 0 })),
+      specials: (u === this.player ? this.playerSpecials || [] : u.specials || []).map((sp) => ({ kind: sp.special, uses: sp.usesLeft, en: sp.en || 0, heat: sp.heat || 0, range: sp.range || 0, dist: sp.dist || 0, ram: sp.ram || 0, absorb: sp.absorb || 0, away: !!sp.away, drain: sp.drain || 0 })),
       shield: !!u.forcefield,
       legs: u.legs || DEFAULT_LEGS,
       def: u.def || 0,
@@ -1286,6 +1327,7 @@ export class Game {
         freeze: !!w.fx?.freeze,
         mine: !!w.fx?.mine,
         hotBonus: !!w.fx?.hotBonus,
+        execute: w.fx?.execute || 0,
         meltdown: !!w.fx?.meltdown,
         steal: !!w.fx?.steal,
         jam: !!w.fx?.jam,
@@ -1459,6 +1501,15 @@ export class Game {
       else {
         this.battleStats.playerDamageTaken += damage;
         this.events.emit('enemy-dealt-damage', { attacker, damage });
+      }
+      // Reclaimer frame / Salvage Claw: a kill patches you up
+      if (killed && victim.team === 'enemy' && this.player?.hp > 0) {
+        const kh = this.rigStats?.mech?.killHeal || 0;
+        const got = kh ? this._healPlayer(this.player.maxHp * kh) : 0;
+        if (got > 0) {
+          this._callout(this.player, `SALVAGED +${got}`, '#a7f070');
+          this._spawnHealSparkles(this.player);
+        }
       }
       if (killed) this._checkBattleEnd();
     });

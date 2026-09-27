@@ -21,7 +21,7 @@ import { canSelfUpdate, checkForUpdate, isSkipped, skipVersion } from '../platfo
 import { OPERATOR, skinsFor, isSkinUnlocked, skinProgress, skinColors } from '../meta/Balls.js';
 import { mechDataUrl } from '../rendering/mechSprite.js';
 import { MEDALS, medalProgress, checkMedals } from '../meta/Medals.js';
-import { masteryLevel, MILESTONES, MAX_MASTERY } from '../meta/Mastery.js';
+import { masteryLevel, masteryStats, MILESTONES, MAX_MASTERY, PER_LEVEL } from '../meta/Mastery.js';
 import { getPart, loadoutTotals, SLOTS, PARTS, rarityColor, rarityName, describePart, CLEAN_WIN_KEYS, DTYPES, DTYPE_KEYS, tierOf, partChips, partNote } from '../meta/Mech.js';
 import { partCardHtml, bindHoverTips, chipHtml, tierDots, hideTip, iconKeyHtml } from './partCard.js';
 import { getSupply } from '../rogue/Supplies.js';
@@ -253,6 +253,8 @@ export class UIManager {
       </div>`);
 
     const hint = document.getElementById('deploy-hint');
+    // Hover (or press and hold) the mastery line for every perk, reached ones lit
+    bindHoverTips(this.modalBody, '#ball-mastery', () => masteryCardHtml(masteryLevel(saveSystem.getMasteryXp(b.id)).level));
     // Hover (or press and hold) a part for its card
     bindHoverTips(this.modalBody, '[data-tip-uid]', (el) => {
       const o = saveSystem.getOwnedPart(el.dataset.tipUid);
@@ -278,10 +280,11 @@ export class UIManager {
       else {
         const rule = saveSystem.riskLevels(b.id)[val - 1];
         const more = val > 1 ? ` <span class="dim-text">+${val - 1}</span>` : '';
-        summary.innerHTML = `<span class="risk-tp-inline">+${val * CONFIG.risk.scrapPerLevel}% SCRAP</span> <b class="${rule.allElite ? 'abyss-text' : ''}" title="${rule.desc}">${rule.name}</b>${more}`;
+        summary.innerHTML = `<span class="risk-tp-inline">+${val * CONFIG.risk.scrapPerLevel}% SCRAP · +${val * CONFIG.risk.keysPerLevel}% KEYS</span> <b class="${rule.allElite ? 'abyss-text' : ''}" title="${rule.desc}">${rule.name}</b>${more}`;
       }
       const bar = m.need ? `<i class="bm-bar" title="${m.into}/${m.need} XP"><i style="width:${Math.round((m.into / m.need) * 100)}%"></i></i>` : '<em>MAX</em>';
-      document.getElementById('ball-mastery').innerHTML = `<b>${ico('star')}MASTERY ${m.level}</b>${bar}${next ? `<span title="Next at level ${next.level}">${next.label}</span>` : ''}`;
+      const ms = masteryStats(m.level);
+      document.getElementById('ball-mastery').innerHTML = `<b>${ico('star')}MASTERY ${m.level}</b>${bar}${m.level > 1 ? `<span class="bm-now">${ico('hp')}+${ms.hpBonus} ${ico('dmg')}+${Math.round(ms.atkBonus * 100)}%</span>` : ''}${next ? `<span class="bm-next">LV${next.level} ${next.name}</span>` : ''}`;
       riskRow.querySelectorAll('[data-risk]').forEach((btn) => btn.addEventListener('click', () => {
         const step = Number(btn.dataset.risk);
         if (step > 0 && sealed) {
@@ -1356,7 +1359,7 @@ export class UIManager {
   }
 
   showRest(run) {
-    const healVal = CONFIG.run.hpRegenPerRest || 30;
+    const healVal = run.restHeal;
     const notes = [];
 
     // Same multiplier the heal will use (Risk), capped at max HP
@@ -1502,7 +1505,7 @@ export class UIManager {
     el.innerHTML = `
       <div class="rm-head">${ico('star')}<b style="color:${ball.color}">${ball.name}</b> LV ${after}${after > before ? ' <em class="rm-up">LEVEL UP!</em>' : ''}<span class="rm-xp">+${xp} XP</span></div>
       <i class="rm-bar"><i style="width:${m.need ? Math.round((m.into / m.need) * 100) : 100}%"></i></i>
-      ${hit.map((x) => `<span class="rm-milestone">LV ${x.level}: ${x.label}</span>`).join('')}`;
+      ${hit.map((x) => `<span class="rm-milestone">LV ${x.level} ${x.name}: ${x.label}</span>`).join('')}`;
     if (after > before) soundEngine.play('confirm');
   }
 
@@ -1583,7 +1586,7 @@ export class UIManager {
       const clue = maxUnlocked >= n - 1 ? secret.hint : '&#9618;&#9618;&#9618; &#9618;&#9618; &#9618;&#9618;&#9618;&#9618; &#9618;&#9618; &#9618;&#9618;&#9618;&#9618;&#9618;';
       rows += `<div class="risk-rule-row sealed"><b>??</b><span><strong class="glitch-text" data-text="&#9618;&#9618;&#9618;&#9618;&#9618;">&#9618;&#9618;&#9618;&#9618;&#9618;</strong> ${clue}</span></div>`;
     }
-    this.openModal('RISK RULES', `<p class="dim-text">Rules stack: Risk ${level || 'N'} applies rules 1 to ${level || 'N'}. Each level: +${CONFIG.risk.scrapPerLevel}% scrap from battles.</p><div class="risk-rule-list">${rows}</div>`,
+    this.openModal('RISK RULES', `<p class="dim-text">Rules stack: Risk ${level || 'N'} applies rules 1 to ${level || 'N'}. Each level: +${CONFIG.risk.scrapPerLevel}% scrap and +${CONFIG.risk.keysPerLevel}% Keys from battles.</p><div class="risk-rule-list">${rows}</div>`,
       `<div class="btn-row"><button class="btn btn-accent" data-act="close">${onClose ? 'BACK' : 'CLOSE'}</button></div>`);
     this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => (onClose ? onClose() : this.closeModal()));
   }
@@ -1683,3 +1686,14 @@ export class UIManager {
 // Battle report: gun names back to their parts (icons / colours)
 const PARTS_BY_NAME = Object.fromEntries(PARTS.map((p) => [p.name, p]));
 
+/** Hover card for mastery: what every level gives, and each milestone perk (reached ones lit). */
+function masteryCardHtml(level) {
+  const s = masteryStats(level);
+  const rows = MILESTONES.map((m) => `<li class="${level >= m.level ? 'got' : ''}"><b>LV ${m.level}</b><span><strong>${m.name}</strong> ${m.label}</span></li>`).join('');
+  return `<div class="pcard mastery-card" style="--rar:#ffcd75">
+      <div class="pcard-head"><div><strong>${ico('star')}PILOT MASTERY ${level}/${MAX_MASTERY}</strong>
+        <span><em>Every level: +${PER_LEVEL.hp} HP, +${Math.round(PER_LEVEL.dmgPct * 100)}% damage</em></span></div></div>
+      <p class="rig-note">Now: +${s.hpBonus} HP, +${Math.round(s.atkBonus * 100)}% damage on every mech. XP comes from every run, win or lose (more on higher Risk).</p>
+      <ul class="mastery-list">${rows}</ul>
+    </div>`;
+}
