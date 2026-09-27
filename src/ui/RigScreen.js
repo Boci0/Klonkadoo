@@ -1,9 +1,9 @@
 // ============================================================
 // RigScreen — full-screen loadout + supply pods.
 //
-// Left: the "bay", a live pixel scene of your ball wearing its
-// parts (guns on the flanks, armor ring, orbiting drone, frame as
-// the pedestal) with the seven slot tiles around it. Right: the
+// Left: the "bay", a live pixel scene of your mech as it will
+// fight (frame torso with its armor, legs, guns on the flanks,
+// orbiting drone) with the eight slot tiles around it. Right: the
 // parts that fit the selected slot as icon tiles, plus a detail
 // card for the focused part. The PODS tab opens supply pods.
 // ============================================================
@@ -12,11 +12,11 @@ import { saveSystem } from '../meta/SaveSystem.js';
 import { soundEngine } from '../utils/SoundEngine.js';
 import { haptics } from '../platform/haptics.js';
 import { OPERATOR, skinColors } from '../meta/Balls.js';
-import { paintBall, CLASS_PATTERN } from '../rendering/ballSprite.js';
+import { torsoCanvas, legsCanvas } from '../rendering/mechSprite.js';
 import { partIcon, partCanvas, ico, uiIcon } from '../rendering/pixelIcons.js';
 import {
   SLOTS, PARTS, CRATES, getPart, partChips, partNote, TYPE_LABEL, rarityColor, rarityName,
-  upgradeCost, salvageValue, loadoutTotals, MAX_LEVEL, INVENTORY_CAP,
+  upgradeCost, salvageValue, loadoutTotals, MAX_LEVEL, INVENTORY_CAP, DTYPES, DTYPE_KEYS,
 } from '../meta/Mech.js';
 
 const RANK = { common: 0, rare: 1, epic: 2, legendary: 3, mythic: 4 };
@@ -103,7 +103,7 @@ export class RigScreen {
           ${ico('load')}<div class="rig-meter">${meter}</div><b>${t.weight}/${t.capacity}</b>
         </div>
         <div class="rig-totals">
-          <span>${ico('hp')}+${Math.round(t.hp)}</span><span>${ico('def')}+${t.def.toFixed(1)}</span><span>${ico('gun')}${t.weapons.length}</span>${t.drones.length ? `<span>${ico('star')}${t.drones.length}</span>` : ''}
+          <span>${ico('hp')}+${Math.round(t.hp)}</span>${DTYPE_KEYS.map((k) => `<span title="${DTYPES[k].name} resist" style="color:${DTYPES[k].color}">${ico('def', DTYPES[k].color)}${Math.round((t.def + t.res[k]) * 10) / 10}</span>`).join('')}<span>${ico('gun')}${t.weapons.length}</span>${t.drones.length ? `<span>${ico('star')}${t.drones.length}</span>` : ''}
           ${t.overweight ? '<em class="rig-warn">OVERLOADED</em>' : ''}
         </div>
       </div>
@@ -220,9 +220,6 @@ export class RigScreen {
       skin = localStorage.getItem(`slingshot-skin-${ball.id}`) || 'default';
     } catch (_) {}
     const look = skinColors(ball, skin);
-    const sprite = document.createElement('canvas');
-    sprite.width = sprite.height = 16;
-    paintBall(sprite.getContext('2d'), { ...look, pattern: look.pattern || CLASS_PATTERN[ball.id] });
 
     const part = (id) => bySlot[id] && getPart(bySlot[id].id);
     const guns = [part('weapon1'), part('weapon2')];
@@ -231,9 +228,15 @@ export class RigScreen {
     const mods = [part('module1'), part('module2')];
     const frame = part('frame');
     const frameCol = frame ? rarityColor(frame.rarity) : '#566c86';
+    const legs = part('legs');
+    // The mech itself: legs on the pedestal, torso (frame + armor) on the legs
+    const legsSprite = legsCanvas(legs?.id || 'lg_strider', look.color, look.darkColor);
+    const torso = torsoCanvas(frame?.id || 'fr_scout', armor?.id || null, look.color, look.darkColor);
+    const legsTop = 40 - (legsSprite.height - 2);
+    const torsoTop = legsTop + 2 - torso.height;
+    const gunX = Math.ceil(torso.width / 2) + 1;
 
     const cx = W / 2;
-    const cy = 26;
     const start = performance.now();
     const px = (x, y, w, h, c) => {
       g.fillStyle = c;
@@ -272,33 +275,25 @@ export class RigScreen {
         px(cx + (i ? 8 : -10), 42, 2, 2, on ? rarityColor(mp.rarity) : '#1a1c2c');
       });
 
-      const bob = Math.round(Math.sin(s * 2) * 1.2);
-      // Armor: rotating dashed ring
-      if (armor) {
-        const col = rarityColor(armor.rarity);
-        for (let a = 0; a < 24; a++) {
-          if ((a + Math.floor(s * 6)) % 3 === 0) continue;
-          const ang = (a / 24) * Math.PI * 2;
-          px(cx + Math.cos(ang) * 11 - 0.5, cy + bob + Math.sin(ang) * 11 - 0.5, 1, 1, col);
-        }
-      }
+      const bob = Math.round(Math.sin(s * 2) * 0.6);
+      g.drawImage(legsSprite, Math.round(cx - legsSprite.width / 2), legsTop);
+      g.drawImage(torso, Math.round(cx - torso.width / 2), torsoTop + bob);
+      const gy = torsoTop + Math.round(torso.height * 0.45) + bob;
       // Guns on the flanks (left one mirrored)
       guns.forEach((gp, i) => {
         if (!gp) return;
         const ic = partCanvas(gp.id);
-        const y = cy + bob - ic.height / 2 + (i ? 1 : -1);
+        const y = gy - ic.height / 2 + (i ? 1 : -1);
         g.save();
         if (i === 0) {
-          g.translate(cx - 9, 0);
+          g.translate(cx - gunX, 0);
           g.scale(-1, 1);
           g.drawImage(ic, 0, Math.round(y));
-        } else g.drawImage(ic, Math.round(cx + 9), Math.round(y));
+        } else g.drawImage(ic, Math.round(cx + gunX), Math.round(y));
         g.restore();
         // Muzzle blink every few seconds
-        if (((s + i * 1.3) % 3) < 0.08) px(i ? cx + 9 + ic.width : cx - 10 - ic.width, cy + bob, 2, 2, '#ffcd75');
+        if (((s + i * 1.3) % 3) < 0.08) px(i ? cx + gunX + ic.width : cx - gunX - 1 - ic.width, gy, 2, 2, '#ffcd75');
       });
-      // Ball
-      g.drawImage(sprite, Math.round(cx - 8), Math.round(cy - 8 + bob));
       // Drone orbiting above
       if (drone) {
         const ic = partCanvas(drone.id);

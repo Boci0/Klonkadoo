@@ -1,0 +1,374 @@
+// ============================================================
+// mechSprite — the fighters on the field are drawn from their parts:
+// the Frame sets the torso (bigger frames, bigger mechs), Armor bolts
+// plating onto it, and the Legs set what walks underneath. Guns and
+// drones are mounted by Renderer._drawGear; the physics body stays the
+// ball's circle hitbox.
+//
+// Grids use one character per pixel:
+//   k ink outline   b paint   h paint highlight   d paint shadow
+//   v visor         m metal   l light metal       . empty
+// Sprites face right; the renderer mirrors them.
+// ============================================================
+
+import { getPart, rarityColor } from '../meta/Mech.js';
+
+const INK = '#1a1c2c';
+const METAL = '#566c86';
+const METAL_LIGHT = '#94b0c2';
+const VISOR = '#73eff7';
+
+// ---------- Torsos (one per frame) ----------
+
+const TORSOS = {
+  fr_scout: [
+    '.....kkkkkkkkk......',
+    '....khhhhhhhhhk.....',
+    '...khbbbbbbbbbdk....',
+    '...khbbbkkkkkkbdk...',
+    '...khbbkvvvvvvkdk...',
+    '...khbbkvvvvvvkdk...',
+    '...khbbbkkkkkkbdk...',
+    '...khbbbbbbbbbbdk...',
+    '....kbbbbbbbbbddk...',
+    '.....kddddddddkk....',
+    '......kkkkkkkk......',
+  ],
+  fr_brawler: [
+    '....kkkkkkkkkkkk....',
+    '..kkhhhhhhhhhhhhkk..',
+    '.khhbbbbbbbbbbbbddk.',
+    '.khbbbbbkkkkkkkbbdk.',
+    '.khbbbbkvvvvvvvkbdk.',
+    '.khbbbbkvvvvvvvkbdk.',
+    '.khbbbbbkkkkkkkbbdk.',
+    '.khbbbbbbbbbbbbbbdk.',
+    '.kkbbbbbbbbbbbbbbkk.',
+    '...kbbbbbbbbbbbbdk..',
+    '...kddddddddddddkk..',
+    '....kkkkkkkkkkkk....',
+  ],
+  fr_phantom: [
+    '........kkkkk.......',
+    '......kkhhhhhkk.....',
+    '....kkhbbbbbbbbkk...',
+    '..kkhbbbbkkkkkkkbkk.',
+    '.khbbbbbkvvvvvvvvvk.',
+    '..khbbbbbkkkkkkkkkk.',
+    '...khbbbbbbbbbbbdk..',
+    '....kbbbbbbbbbbddk..',
+    '.....kbbbbbbbbddk...',
+    '......kddddddddk....',
+    '.......kkkkkkkk.....',
+  ],
+  fr_titan: [
+    '...kkkkkkkkkkkkkkkk...',
+    '..khhhhhhhhhhhhhhhhk..',
+    '.khbbbbbbbbbbbbbbbbdk.',
+    'khbbbbbbbbbbbbbbbbbbdk',
+    'khbbbbbbkkkkkkkkbbbbdk',
+    'khbbbbbkvvvvvvvvkbbbdk',
+    'khbbbbbkvvvvvvvvkbbbdk',
+    'khbbbbbbkkkkkkkkbbbbdk',
+    'khbbbbbbbbbbbbbbbbbbdk',
+    'khbbmmbbbbbbbbbbmmbbdk',
+    '.kbbbbbbbbbbbbbbbbbddk',
+    '..kddddddddddddddddkk.',
+    '...kkkkkkkkkkkkkkkkk..',
+  ],
+  fr_colossus: [
+    '.....kkkkkkkkkkkkkk.....',
+    '...kkhhhhhhhhhhhhhhkk...',
+    '..khhbbbbbbbbbbbbbbbdk..',
+    '.khbbbbbbbbbbbbbbbbbbdk.',
+    'khbbbbbbbkkkkkkkkbbbbbdk',
+    'khbbbbbbkvvvvvvvvkbbbbdk',
+    'khbbbbbbkvvvvvvvvkbbbbdk',
+    'khbbbbbbbkkkkkkkkbbbbbdk',
+    'khbbmmmbbbbbbbbbbbmmmbdk',
+    'khbbbbbbbbbbbbbbbbbbbbdk',
+    'khbbmmmbbbbbbbbbbbmmmbdk',
+    '.kbbbbbbbbbbbbbbbbbbbddk',
+    '..kdddddddddddddddddddk.',
+    '...kkkkkkkkkkkkkkkkkkk..',
+  ],
+  fr_leviathan: [
+    '..k....kkkkkkkkkkk....k..',
+    '.khk.kkhhhhhhhhhhhkk.khk.',
+    '.khkkhbbbbbbbbbbbbbdkkdk.',
+    '.khhbbbbbbbbbbbbbbbbbddk.',
+    'khbbbbbbbkkkkkkkkkbbbbbdk',
+    'khbbbbbbkvvvvvvvvvkbbbbdk',
+    'khbbbbbbkvvvvvvvvvkbbbbdk',
+    'khbbbbbbbkkkkkkkkkbbbbbdk',
+    'khbbmmmmbbbbbbbbbbbmmmbdk',
+    'khbbbbbbbbbbbbbbbbbbbbbdk',
+    'khbbmmmmbbbbbbbbbbbmmmbdk',
+    '.kbbbbbbbbbbbbbbbbbbbbddk',
+    '..kddddddddddddddddddddk.',
+    '...kkkkkkkkkkkkkkkkkkkk..',
+  ],
+};
+
+// ---------- Battle legs (one per legs part) ----------
+
+const LEGS = {
+  lg_strider: [
+    '....kkkkkkkkkkkk....',
+    '....kmmmmmmmmmmk....',
+    '....kkkmk..kmkkk....',
+    '.....kllk..kllk.....',
+    '.....kmmk..kmmk.....',
+    '....kbbbk..kbbbk....',
+    '.....kmmk..kmmk.....',
+    '.....kllk..kllk.....',
+    '....kmmmmk.kmmmmk...',
+    '...kkkkkkk.kkkkkkk..',
+  ],
+  lg_hopper: [
+    '.....kkkkkkkkkk.....',
+    '.....kmmmmmmmmk.....',
+    '......kmk..kmk......',
+    '.....kmk....kmk.....',
+    '....kbk......kbk....',
+    '.....kmk....kmk.....',
+    '......kmk..kmk......',
+    '.......kk..kk.......',
+    '......kmk..kmk......',
+    '.....kkkk..kkkk.....',
+  ],
+  lg_treads: [
+    '...kkkkkkkkkkkkkk...',
+    '...kmmmmmmmmmmmmk...',
+    '..kkkkkkkkkkkkkkkk..',
+    '.kbbbbbbbbbbbbbbbbk.',
+    'kbkkkkkkkkkkkkkkkkbk',
+    'kkllkkllkkllkkllkkkk',
+    'kkllkkllkkllkkllkkkk',
+    'kbkkkkkkkkkkkkkkkkbk',
+    '.kddddddddddddddddk.',
+    '..kkkkkkkkkkkkkkkk..',
+  ],
+  lg_catapult: [
+    '...kkkkkkkkkkkkkk...',
+    '...kmmmmmmmmmmmmk...',
+    '...kkmmk....kmmkk...',
+    '....kllk....kllk....',
+    '....kmmk....kmmk....',
+    '...kbbbbk..kbbbbk...',
+    '...kbkkbk..kbkkbk...',
+    '...kbbbbk..kbbbbk...',
+    '...kmmmmk..kmmmmk...',
+    '..kkkkkkkkkkkkkkkk..',
+  ],
+  lg_jumpjets: [
+    '....kkkkkkkkkkkk....',
+    '..kkkmmmmmmmmmmkkk..',
+    '.kbk..kmk..kmk..kbk.',
+    '.kbk.kllk..kllk.kbk.',
+    '.kmk.kbbk..kbbk.kmk.',
+    '.kkk..kmk..kmk..kkk.',
+    '......kmk..kmk......',
+    '......kllk.kllk.....',
+    '.....kmmmk.kmmmk....',
+    '.....kkkkk.kkkkk....',
+  ],
+  lg_coil: [
+    '....kkkkkkkkkkkk....',
+    '....kmmmmmmmmmmk....',
+    '.....kmk....kmk.....',
+    '....kbbbk..kbbbk....',
+    '.....kmk....kmk.....',
+    '....kbbbk..kbbbk....',
+    '.....kmk....kmk.....',
+    '....kbbbk..kbbbk....',
+    '....kmmmk..kmmmk....',
+    '...kkkkkkkkkkkkkk...',
+  ],
+  lg_anchor: [
+    '...kkkkkkkkkkkkkk...',
+    '...kmmmmmmmmmmmmk...',
+    '..kkmmk......kmmkk..',
+    '..kllk........kllk..',
+    '.kmmk..........kmmk.',
+    '.kbbk..........kbbk.',
+    'kmmk............kmmk',
+    'kllk............kllk',
+    'kmmmk..........kmmmk',
+    'kkkkkk........kkkkkk',
+  ],
+  lg_thrusters: [
+    '...kkkkkkkkkkkkkk...',
+    '..kmmmmmmmmmmmmmmk..',
+    '.kbbbbbbbbbbbbbbbbk.',
+    '.kddddddddddddddddk.',
+    '..kkmmkkkmmkkkmmkk..',
+    '...kllk.kllk.kllk...',
+    '...kmmk.kmmk.kmmk...',
+    '...kkkk.kkkk.kkkk...',
+    '....................',
+    '....................',
+  ],
+  lg_phase: [
+    '.....kkkkkkkkkk.....',
+    '.....kmmmmmmmmk.....',
+    '......kbk..kbk......',
+    '......kbk..kbk......',
+    '.....kvk....kvk.....',
+    '.....kbk....kbk.....',
+    '......kbk..kbk......',
+    '......kvk..kvk......',
+    '.....kbbk..kbbk.....',
+    '....kkkkk..kkkkk....',
+  ],
+};
+
+// Nozzle rows (0-based) that flame while airborne
+const FLAMES = { lg_jumpjets: { row: 5, cols: [2, 17] }, lg_thrusters: { row: 7, cols: [4, 5, 9, 10, 14, 15] } };
+
+// ---------- Painting ----------
+
+function mix(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  const t = amt > 0 ? 255 : 0;
+  const k = Math.abs(amt);
+  const ch = (s) => Math.round(((n >> s) & 255) + (t - ((n >> s) & 255)) * k);
+  return `#${[16, 8, 0].map((s) => ch(s).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function paintGrid(g, grid, pal, ox = 0, oy = 0) {
+  grid.forEach((row, y) => {
+    for (let x = 0; x < row.length; x++) {
+      const c = pal[row[x]];
+      if (!c) continue;
+      g.fillStyle = c;
+      g.fillRect(ox + x, oy + y, 1, 1);
+    }
+  });
+}
+
+function palette(color, dark, flash, visor = VISOR) {
+  if (flash) return { k: INK, b: '#f4f4f4', h: '#ffffff', d: '#c2c3c7', v: '#ffffff', m: '#e0e0e0', l: '#ffffff' };
+  return { k: INK, b: color, h: mix(color, 0.3), d: dark || mix(color, -0.4), v: visor, m: METAL, l: METAL_LIGHT };
+}
+
+/** Armor bolted onto the torso: pads, bands or rivets by armor part. */
+function paintArmor(g, armorId, w, h, flash) {
+  const part = armorId && getPart(armorId);
+  if (!part) return;
+  const c = flash ? '#f4f4f4' : part.color || rarityColor(part.rarity);
+  const hi = flash ? '#ffffff' : mix(c, 0.35);
+  const lo = flash ? '#c2c3c7' : mix(c, -0.35);
+  const box = (x, y, bw, bh) => {
+    g.fillStyle = INK;
+    g.fillRect(x, y, bw, bh);
+    g.fillStyle = c;
+    g.fillRect(x + 1, y + 1, bw - 2, bh - 2);
+    g.fillStyle = hi;
+    g.fillRect(x + 1, y + 1, bw - 2, 1);
+    g.fillStyle = lo;
+    g.fillRect(x + 1, y + bh - 2, bw - 2, 1);
+  };
+  switch (armorId) {
+    case 'ar_scrap':
+      g.fillStyle = METAL_LIGHT;
+      for (const [x, y] of [[4, 3], [w - 6, 4], [5, h - 4], [w - 7, h - 5]]) g.fillRect(x, y, 2, 2);
+      break;
+    case 'ar_kevlar':
+      g.fillStyle = flash ? '#c2c3c7' : '#333c57';
+      g.fillRect(3, h - 5, w - 6, 1);
+      g.fillRect(3, h - 7, w - 6, 1);
+      break;
+    case 'ar_reactive':
+      box(0, 2, 5, 5);
+      box(w - 5, 2, 5, 5);
+      break;
+    case 'ar_aegis':
+      box(0, 1, 5, 6);
+      box(w - 5, 1, 5, 6);
+      g.fillStyle = flash ? '#ffffff' : '#a7f070';
+      g.fillRect(1, 0, 3, 1);
+      g.fillRect(w - 4, 0, 3, 1);
+      break;
+    case 'ar_titanium':
+      box(0, 1, 6, 7);
+      box(w - 6, 1, 6, 7);
+      box(Math.floor(w / 2) - 3, h - 5, 6, 4);
+      break;
+    case 'ar_void':
+      box(0, 0, 6, 8);
+      box(w - 6, 0, 6, 8);
+      g.fillStyle = flash ? '#ffffff' : '#ff5d73';
+      g.fillRect(2, 3, 2, 2);
+      g.fillRect(w - 4, 3, 2, 2);
+      break;
+    default:
+      break;
+  }
+}
+
+const cache = new Map();
+
+/** The frame / armor a ball carries (parts list from Mech.withMech / enemyMech). */
+export function mechLook(ball) {
+  const parts = ball.parts || [];
+  const frame = parts.find((id) => getPart(id)?.type === 'frame') || 'fr_scout';
+  const armor = parts.find((id) => getPart(id)?.type === 'armor') || null;
+  return { frame: TORSOS[frame] ? frame : 'fr_scout', armor };
+}
+
+/** Torso canvas for a frame + armor in a paint job (cached). Enemies get a red visor. */
+export function torsoCanvas(frame, armor, color, dark, flash = false, visor = null) {
+  const key = `t|${frame}|${armor}|${color}|${dark}|${flash ? 1 : 0}|${visor}`;
+  let c = cache.get(key);
+  if (c) return c;
+  const grid = TORSOS[frame] || TORSOS.fr_scout;
+  c = document.createElement('canvas');
+  c.width = grid[0].length;
+  c.height = grid.length;
+  const g = c.getContext('2d');
+  paintGrid(g, grid, palette(color, dark, flash, visor || VISOR));
+  paintArmor(g, armor, c.width, c.height, flash);
+  cache.set(key, c);
+  return c;
+}
+
+/** Legs canvas for a legs part in a paint job (cached). `flame` lights the jets. */
+export function legsCanvas(legsId, color, dark, flame = false) {
+  const id = LEGS[legsId] ? legsId : 'lg_strider';
+  const key = `l|${id}|${color}|${dark}|${flame ? 1 : 0}`;
+  let c = cache.get(key);
+  if (c) return c;
+  const grid = LEGS[id];
+  c = document.createElement('canvas');
+  c.width = grid[0].length;
+  c.height = grid.length + 2;
+  const g = c.getContext('2d');
+  paintGrid(g, grid, palette(color, dark, false));
+  const f = FLAMES[id];
+  if (flame && f) {
+    for (const x of f.cols) {
+      g.fillStyle = '#ffcd75';
+      g.fillRect(x, f.row + 1, 1, 2);
+      g.fillStyle = '#ef7d57';
+      g.fillRect(x, f.row + 3, 1, 1);
+    }
+  }
+  cache.set(key, c);
+  return c;
+}
+
+/** Whole mech (legs + torso) as a data URL, for the Rig screen. */
+export function mechDataUrl(partIds, color, dark) {
+  const { frame, armor } = mechLook({ parts: partIds });
+  const legsId = partIds.find((id) => getPart(id)?.type === 'legs') || 'lg_strider';
+  const t = torsoCanvas(frame, armor, color, dark);
+  const l = legsCanvas(legsId, color, dark);
+  const c = document.createElement('canvas');
+  c.width = Math.max(t.width, l.width);
+  c.height = t.height + l.height - 3;
+  const g = c.getContext('2d');
+  g.drawImage(l, Math.round((c.width - l.width) / 2), t.height - 3);
+  g.drawImage(t, Math.round((c.width - t.width) / 2), 0);
+  return c.toDataURL();
+}

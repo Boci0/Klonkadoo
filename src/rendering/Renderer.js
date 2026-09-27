@@ -14,9 +14,9 @@
 import { CONFIG } from '../config.js';
 import { getTerrain, groundAt } from '../core/Physics.js';
 import { fitCanvas, clientToWorld } from './viewport.js';
-import { paintBall, CLASS_PATTERN } from './ballSprite.js';
 import { partCanvas, iconCanvas } from './pixelIcons.js';
 import { DTYPES, DTYPE_KEYS, dtypeOf, resistOf } from '../meta/Mech.js';
+import { mechLook, torsoCanvas, legsCanvas } from './mechSprite.js';
 
 const C = CONFIG.colors;
 const W = CONFIG.world;
@@ -174,10 +174,12 @@ export class Renderer {
       if (ball && ball.hp > 0) this._drawBallShadow(ctx, ball);
     }
     // Legs first, so the ball sits on top of them
-    for (const ball of [player, ...livingEnemies]) if (ball?.hp > 0 && ball.legs) this._drawLegs(ctx, world, ball, now);
-    if (player && player.hp > 0) this._drawBall(ctx, player);
-    for (const enemy of livingEnemies) this._drawBall(ctx, enemy);
-    this._drawGear(ctx, world, player, livingEnemies);
+    for (const ball of [player, ...livingEnemies]) if (ball?.hp > 0) this._drawLegs(ctx, world, ball, now);
+    // The gun on the far shoulder goes behind the torso, the near one in front
+    this._drawGear(ctx, world, player, livingEnemies, 'back');
+    if (player && player.hp > 0) this._drawBall(ctx, player, world, now);
+    for (const enemy of livingEnemies) this._drawBall(ctx, enemy, world, now);
+    this._drawGear(ctx, world, player, livingEnemies, 'front');
     this._drawProjectiles(ctx, world, now);
     this._drawMineMarkers(ctx, world.hazards || [], now);
     this._drawMechRanges(ctx, world);
@@ -678,7 +680,8 @@ export class Renderer {
    * above. Stowed (faded out) while the ball is flying. Each part's muzzle
    * position is stored so Game can start the shot there.
    */
-  _drawGear(ctx, world, player, enemies) {
+  /** `layer`: 'back' draws guns on the shoulder facing away, 'front' the rest plus drones. */
+  _drawGear(ctx, world, player, enemies, layer = 'front') {
     const now = performance.now();
     const S = 4;
     const turn = (a, b, k) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * k;
@@ -695,10 +698,17 @@ export class Renderer {
       const r = ball.radius;
       if (!guns.length && !drones.length) return;
       const nearest = foes.filter((f) => f && f.hp > 0).sort((a, b) => Math.hypot(a.x - ball.x, a.y - ball.y) - Math.hypot(b.x - ball.x, b.y - ball.y))[0];
+      // Guns sit on the torso's shoulders (bigger frames, wider stance)
+      const pose = this._mechPose(ball, world, now);
+      const { frame, armor } = mechLook(ball);
+      const t = torsoCanvas(frame, armor, ball.color, ball.darkColor);
+      const half = (t.width * pose.P) / 2;
+      const shoulder = pose.torsoBottom - t.height * pose.P * 0.6;
       guns.forEach((g, i) => {
         const side = guns.length === 1 ? (nearest && nearest.x < ball.x ? -1 : 1) : i % 2 === 0 ? -1 : 1;
-        const mx = ball.x + side * (r + 2);
-        const my = ball.y - r * 0.45 - Math.floor(i / 2) * 22;
+        if ((side === pose.face) !== (layer === 'front')) return;
+        const mx = ball.x + side * (half - 2);
+        const my = shoulder - Math.floor(i / 2) * 22;
         const since = now - (g.firedAt || -1e9);
         const tgt = since < 700 && g.aimAt?.hp > 0 ? g.aimAt : nearest;
         const want = tgt ? Math.atan2(tgt.y - my, tgt.x - mx) : side < 0 ? Math.PI : 0;
@@ -725,6 +735,7 @@ export class Renderer {
         ctx.restore();
         g._muzzle = { x: mx + Math.cos(g._ang) * (w - 6), y: my + Math.sin(g._ang) * (w - 6) };
       });
+      if (layer !== 'front') drones = [];
       drones.forEach((d, i) => {
         // Switched OFF: docked inside the ball (drawn only while it flies back in)
         const toggled = now - (d.deployedAt || -1e9);
@@ -734,7 +745,7 @@ export class Renderer {
         const t = now / 1000 + i * Math.PI;
         const since = now - (d.firedAt || -1e9);
         const ox = Math.cos(t * 1.3) * r * 1.5;
-        const oy = -r * 1.9 + Math.sin(t * 2.6) * 5 - (since < 150 ? 4 : 0);
+        const oy = -r * 2.4 + Math.sin(t * 2.6) * 5 - (since < 150 ? 4 : 0);
         const dx = ball.x + ox * ease;
         const dy = ball.y + oy * ease;
         const ic = partCanvas(d.id);
@@ -753,36 +764,53 @@ export class Renderer {
   }
 
   /**
-   * Legs under a ball: they crouch while you pull back to aim, spring out
-   * on launch, tuck in mid-air, and anchor clamps bite into the ground.
+   * Where a mech's parts sit this frame. The ball is the hitbox; the mech is
+   * drawn on it: legs stand on the ball's bottom line (the ground) and the
+   * torso sits on the legs. `P` is one sprite pixel in world px, so bigger
+   * frames draw bigger mechs. Legs crouch while you pull back to aim, spring
+   * out on launch and tuck in mid-air.
    */
-  _drawLegs(ctx, world, ball, now) {
-    const legs = ball.legs;
-    const ic = partCanvas(legs.id);
+  _mechPose(ball, world, now) {
     const r = ball.radius;
+    const P = r / 8;
     const onGround = ball.y + r >= groundAt(ball.x) - 6;
-    let squash = onGround ? 1 : 0.7;
+    let squash = onGround ? 1 : 0.75;
     const inp = world.slingshotInput;
     if (ball === world.player && inp?.dragging && inp.launchVelocity) {
       const pull = Math.min(1, Math.hypot(inp.launchVelocity.x, inp.launchVelocity.y) / 1400);
-      squash = 1 - 0.4 * pull; // crouch deeper the harder you pull
+      squash = 1 - 0.35 * pull; // crouch deeper the harder you pull
     }
     const since = now - (ball.launchedAt || -1e9);
-    if (since < 260) squash = 1.35 - (since / 260) * 0.35; // spring
-    // Feet on the ball's bottom line (the ground), struts reaching up its sides
-    const w = r * 2.5;
-    const h = r * 1.15 * squash;
-    const top = ball.y + r + 3 - h;
+    if (since < 260) squash = 1.3 - (since / 260) * 0.3; // spring
+    const legsTop = ball.y + r - 10 * P * squash;
+    return { P, onGround, squash, legsTop, torsoBottom: legsTop + 2 * P, face: this._faceOf(ball, world) };
+  }
+
+  /** Which way a mech looks: where it's moving, else at its foe. */
+  _faceOf(ball, world) {
+    if (Math.abs(ball.vx || 0) > 60) return Math.sign(ball.vx);
+    const foe = ball === world.player ? world.fireTarget || world.enemies?.find((e) => e.hp > 0) : world.player;
+    return foe && foe.x < ball.x ? -1 : 1;
+  }
+
+  _drawLegs(ctx, world, ball, now) {
+    const legs = ball.legs || { id: 'lg_strider' };
+    const pose = this._mechPose(ball, world, now);
+    const flame = !pose.onGround && (legs.id === 'lg_jumpjets' || legs.id === 'lg_thrusters');
+    const ic = legsCanvas(legs.id, ball.color, ball.darkColor, flame);
+    const w = ic.width * pose.P;
+    const h = ic.height * pose.P * pose.squash;
     ctx.save();
-    ctx.globalAlpha = 0.95;
-    ctx.drawImage(ic, Math.round(ball.x - w / 2), Math.round(top), Math.round(w), Math.round(h));
-    if (legs.anchored && onGround) {
+    ctx.translate(Math.round(ball.x), 0);
+    ctx.scale(pose.face, 1);
+    ctx.drawImage(ic, Math.round(-w / 2), Math.round(pose.legsTop), Math.round(w), Math.round(h));
+    ctx.restore();
+    if (legs.anchored && pose.onGround) {
       // Clamps dug into the floor
       ctx.fillStyle = '#566c86';
-      ctx.fillRect(Math.round(ball.x - w / 2 - 4), Math.round(ball.y + r - 2), 8, 8);
-      ctx.fillRect(Math.round(ball.x + w / 2 - 4), Math.round(ball.y + r - 2), 8, 8);
+      ctx.fillRect(Math.round(ball.x - w / 2 - 4), Math.round(ball.y + ball.radius - 2), 8, 8);
+      ctx.fillRect(Math.round(ball.x + w / 2 - 4), Math.round(ball.y + ball.radius - 2), 8, 8);
     }
-    ctx.restore();
   }
 
   _drawMechRanges(ctx, world) {
@@ -958,99 +986,26 @@ export class Renderer {
     ctx.textBaseline = 'alphabetic';
   }
 
-  /** 16×16 pixel sprite for a ball, cached per look. */
-  _ballSprite(ball, flash) {
-    const emblem = ball.team === 'player' ? 'player' : ball.archetype || 'standard';
-    const pattern = ball.pattern || CLASS_PATTERN[ball.ballType] || 'chevron';
-    const key = `${ball.color}|${ball.darkColor}|${emblem}|${pattern}|${ball.accent}|${flash ? 1 : 0}`;
-    let sprite = this._sprites.get(key);
-    if (sprite) return sprite;
-
-    if (emblem === 'player') {
-      sprite = document.createElement('canvas');
-      sprite.width = 16;
-      sprite.height = 16;
-      paintBall(sprite.getContext('2d'), { color: ball.color, darkColor: ball.darkColor, accent: ball.accent, pattern, flash });
-      this._sprites.set(key, sprite);
-      return sprite;
-    }
-
-    const N = 16;
-    sprite = document.createElement('canvas');
-    sprite.width = N;
-    sprite.height = N;
-    const g = sprite.getContext('2d');
-    const base = flash ? '#f4f4f4' : ball.color;
-    const light = flash ? '#ffffff' : lighten(ball.color, 0.28);
-    const dark = flash ? '#c2c3c7' : ball.darkColor;
-    const c = (N - 1) / 2;
-    for (let y = 0; y < N; y++) {
-      for (let x = 0; x < N; x++) {
-        const dx = x - c;
-        const dy = y - c;
-        const d = Math.hypot(dx, dy);
-        if (d > 7.6) continue;
-        let col = base;
-        if (d > 6.6) col = INK; // outline
-        else {
-          const shade = (dx + dy) / 7; // light from top-left
-          if (shade < -0.55) col = light;
-          else if (shade > 0.45) col = dark;
-        }
-        g.fillStyle = col;
-        g.fillRect(x, y, 1, 1);
-      }
-    }
-    // Specular highlight
-    g.fillStyle = '#ffffff';
-    g.fillRect(4, 4, 2, 1);
-    g.fillRect(4, 5, 1, 1);
-
-    // Emblems
-    g.fillStyle = 'rgba(26, 28, 44, 0.75)';
-    const px = (xx, yy) => g.fillRect(xx, yy, 1, 1);
-    if (emblem === 'player') {
-      [[7, 5], [8, 5], [6, 6], [9, 6], [5, 7], [10, 7], [5, 8], [10, 8]].forEach(([a, b]) => px(a, b));
-      [[7, 8], [8, 8], [6, 9], [9, 9]].forEach(([a, b]) => px(a, b));
-    } else if (emblem === 'tank') {
-      g.fillRect(5, 5, 6, 1); g.fillRect(5, 10, 6, 1); g.fillRect(5, 5, 1, 6); g.fillRect(10, 5, 1, 6);
-    } else if (emblem === 'striker') {
-      g.fillRect(6, 5, 1, 6); g.fillRect(9, 5, 1, 6);
-    } else if (emblem === 'medic') {
-      g.fillStyle = '#b13e53';
-      g.fillRect(7, 4, 2, 8); g.fillRect(4, 7, 8, 2);
-    } else if (emblem === 'splitter') {
-      g.fillRect(5, 6, 2, 2); g.fillRect(9, 8, 2, 2); g.fillRect(7, 7, 2, 1);
-    } else if (emblem === 'shielder') {
-      g.fillRect(7, 4, 2, 1); g.fillRect(5, 5, 6, 1); g.fillRect(5, 6, 1, 3); g.fillRect(10, 6, 1, 3); g.fillRect(6, 9, 4, 1); g.fillRect(7, 10, 2, 1);
-    } else if (emblem === 'minelayer') {
-      g.fillRect(5, 5, 1, 1); g.fillRect(6, 6, 1, 1); g.fillRect(7, 7, 2, 2); g.fillRect(9, 9, 1, 1); g.fillRect(10, 10, 1, 1);
-      g.fillRect(10, 5, 1, 1); g.fillRect(9, 6, 1, 1); g.fillRect(6, 9, 1, 1); g.fillRect(5, 10, 1, 1);
-    } else {
-      // Down-pointing triangle
-      g.fillRect(5, 6, 6, 1); g.fillRect(6, 7, 4, 1); g.fillRect(7, 8, 2, 1);
-      if (emblem !== 'standard') px(7, 10), px(8, 10);
-    }
-
-    this._sprites.set(key, sprite);
-    return sprite;
-  }
-
-  _drawBall(ctx, ball) {
+  /** The mech's torso (frame + armor, in its paint) standing on its legs. */
+  _drawBall(ctx, ball, world, now) {
     const r = ball.radius;
     const isFlashing = ball.flashTimer > 0;
-    const size = r * 2;
+    const pose = this._mechPose(ball, world, now);
+    const { frame, armor } = mechLook(ball);
+    const visor = ball.team === 'enemy' ? '#ff5d73' : null;
+    const torso = (flash) => torsoCanvas(frame, armor, ball.color, ball.darkColor, flash, visor);
+    const tw = torso(false).width * pose.P;
+    const th = torso(false).height * pose.P;
 
-    // Motion trail: fading copies of the sprite
+    // Motion trail: fading copies of the torso
     const speed = Math.hypot(ball.vx || 0, ball.vy || 0);
     if (speed > 150) {
-      const sprite = this._ballSprite(ball, false);
       const trail = Math.min(4, Math.floor(speed / 250));
       for (let i = trail; i >= 1; i--) {
         ctx.globalAlpha = 0.18 * (1 - i / (trail + 1)) + 0.05;
         const tx = ball.x - ball.vx * 0.012 * i;
-        const ty = ball.y - ball.vy * 0.012 * i;
-        ctx.drawImage(sprite, Math.round(tx - r), Math.round(ty - r), size, size);
+        const ty = pose.torsoBottom - ball.vy * 0.012 * i;
+        ctx.drawImage(torso(false), Math.round(tx - tw / 2), Math.round(ty - th), Math.round(tw), Math.round(th));
       }
       ctx.globalAlpha = 1;
     }
@@ -1071,8 +1026,7 @@ export class Renderer {
     });
     ctx.setLineDash([]);
 
-    // Alive: resting balls breathe, and landings / hits squash the sprite (anchored at its base)
-    const now = performance.now();
+    // Alive: resting mechs breathe, and landings / hits squash the torso (anchored at its base)
     if ((ball._pvy || 0) > 260 && (ball.vy || 0) <= 0) ball._squashAt = now; // just bounced off something below
     ball._pvy = ball.vy || 0;
     let sx = 1;
@@ -1087,13 +1041,18 @@ export class Renderer {
       sx += b;
       sy -= b;
     }
-    const dw = Math.round(size * sx);
-    const dh = Math.round(size * sy);
-    ctx.drawImage(this._ballSprite(ball, isFlashing), Math.round(ball.x - dw / 2), Math.round(ball.y + r - dh), dw, dh);
+    const dw = Math.round(tw * sx);
+    const dh = Math.round(th * sy);
+    const top = Math.round(pose.torsoBottom - dh);
+    ctx.save();
+    ctx.translate(Math.round(ball.x), 0);
+    ctx.scale(pose.face, 1);
+    ctx.drawImage(torso(isFlashing), Math.round(-dw / 2), top, dw, dh);
+    ctx.restore();
     if (ball.rank) {
       // Pixel crown marks mini-bosses and bosses (red once enraged)
       const cx = Math.round(ball.x);
-      const cy = Math.round(ball.y - r - 18);
+      const cy = Math.round(top - 20);
       ctx.fillStyle = '#000';
       ctx.fillRect(cx - 17, cy - 1, 34, 16);
       ctx.fillStyle = ball.phase2 ? '#ff5d73' : '#ffcd75';
@@ -1103,13 +1062,13 @@ export class Renderer {
       ctx.fillRect(cx + 9, cy - 3, 6, 8);
     }
     if (ball.isFrozen) {
-      // Icy tint: checkerboard of pale-blue pixels over the ball
+      // Icy tint: checkerboard of pale-blue pixels over the torso
       ctx.fillStyle = 'rgba(115, 239, 247, 0.55)';
-      const px = size / 16;
-      for (let yy = 0; yy < 16; yy++) {
-        for (let xx = (yy % 2); xx < 16; xx += 2) {
-          if (Math.hypot(xx - 7.5, yy - 7.5) < 6.5) ctx.fillRect(ball.x - r + xx * px, ball.y - r + yy * px, px, px);
-        }
+      const px = pose.P;
+      const cols = Math.floor(dw / px);
+      const rows = Math.floor(dh / px);
+      for (let yy = 1; yy < rows - 1; yy++) {
+        for (let xx = 1 + (yy % 2); xx < cols - 1; xx += 2) ctx.fillRect(ball.x - dw / 2 + xx * px, top + yy * px, px, px);
       }
     }
   }
@@ -1702,14 +1661,6 @@ export class Renderer {
 }
 
 // ---------- helpers ----------
-
-function lighten(hex, amount) {
-  const num = parseInt(hex.slice(1), 16);
-  const r = Math.min(255, (num >> 16) + Math.round(255 * amount));
-  const g = Math.min(255, ((num >> 8) & 0xff) + Math.round(255 * amount));
-  const b = Math.min(255, (num & 0xff) + Math.round(255 * amount));
-  return `rgb(${r}, ${g}, ${b})`;
-}
 
 function fitText(ctx, text, maxW) {
   if (ctx.measureText(text).width <= maxW) return text;
