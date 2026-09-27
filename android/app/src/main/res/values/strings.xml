@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Slingshot Ops</string>
-    <string name="title_activity_main">Slingshot Ops</string>
+    <string name="app_name">KLONKADOO</string>
+    <string name="title_activity_main">KLONKADOO</string>
     <string name="package_name">com.slingshotops.game</string>
     <string name="custom_url_scheme">com.slingshotops.game</string>
 </resources>

@@ -83,7 +83,7 @@ async function checkAndroid() {
       const { allowed } = await ApkInstaller.canInstall();
       if (!allowed) {
         await ApkInstaller.openInstallSettings();
-        const err = new Error('Allow installs from Slingshot Ops, then tap UPDATE again.');
+        const err = new Error('Allow installs from KLONKADOO, then tap UPDATE again.');
         err.needsPermission = true;
         throw err;
       }

@@ -1,5 +1,5 @@
 // ============================================================
-// SLINGSHOT OPS — entry point + App state machine.
+// KLONKADOO: Mech Roguelike — entry point + App state machine.
 // Orchestrates: main menu → rig → roguelike run map →
 // node events → slingshot battles → run results → meta progression.
 // ============================================================
@@ -432,6 +432,7 @@ function startNewRun(skin = 'default') {
   const [lead, ...rest] = saveSystem.getTeamLoadouts();
   const perm = withMastery(withMech({}, lead), mastery);
   run = new RunState(perm, ballType);
+  run.v2 = true; // 2.0 rules (see resumeSavedRun)
   // Garage mechs 2 and 3 join the team, each with its own HP for the run
   run.team = rest.map((parts) => ({ perm: withMastery(withMech({}, parts), mastery), hp: 0 }));
   run.team.forEach((m, i) => (m.hp = run.member(i + 1).maxHp));
@@ -490,6 +491,18 @@ function resumeSavedRun() {
     return;
   }
   run = s.run;
+  // Runs started before 2.0 carry the old gun numbers: rebuild the rig from
+  // the garage and today's catalog (HP keeps its share of the new max)
+  if (!run.v2) {
+    const mastery = masteryLevel(saveSystem.getMasteryXp(run.ballType)).level;
+    const oldBonus = run.permanent?.hpBonus || 0;
+    const pct = run.maxHp > 0 ? run.hp / run.maxHp : 1;
+    run.permanent = withMastery(withMech({}, saveSystem.getLoadoutParts(0)), mastery);
+    run.maxHp += (run.permanent.hpBonus || 0) - oldBonus + (CONFIG.run.maxHpBase - 100);
+    run.hp = Math.max(1, Math.round(run.maxHp * pct));
+    run.team = [];
+    run.v2 = true;
+  }
   map = s.map;
   runSeed = s.runSeed;
   currentFloorView = s.currentFloorView;

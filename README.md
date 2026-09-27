@@ -1,6 +1,6 @@
-# SLINGSHOT OPS
+# KLONKADOO: Mech Roguelike
 
-> A tactical ballistic-combat roguelike built with HTML5 Canvas & JavaScript.
+> A turn-based mech roguelike in the spirit of Super Mechs, built with HTML5 Canvas & JavaScript. (Formerly *Slingshot Ops*.)
 
 [![Live Demo](https://img.shields.io/badge/Play_Now-Live_Demo-brightgreen?style=for-the-badge&logo=github)](https://boci0.github.io/Slingshot-OPS/)
 [![Download](https://img.shields.io/github/v/release/Boci0/Slingshot-OPS?style=for-the-badge&label=Download&logo=github)](https://github.com/Boci0/Slingshot-OPS/releases/latest)
@@ -13,19 +13,21 @@
 
 ## Overview
 
-**Slingshot OPS** is a turn-based mech roguelike. Build a pixel mech from parts, slingshot it across the arena into position, and fight enemy mechs that play by exactly the same rules, across a branching 5-floor campaign.
+**KLONKADOO** is a turn-based mech roguelike. Build pixel mechs from parts, bring a team of up to three, and fight enemy mechs that play by exactly the same rules on a 12-position battle lane, across a branching 5-floor campaign and the Abyss below it.
 
 ---
 
 ## Key Features
 
 - **Mechs Built From Parts**: Frame, Legs, Armor, two Guns, a Drone and two Mods. What you equip is what you see on the field, and what the enemy sees.
-- **Grounded Slingshot Movement**: Drag to launch low and land heavy. Your legs decide how far you can go; only Jump Jets can clear tall cover.
-- **Gear-Only Combat**: Two actions a turn: move, fire a gun or vent. Every shot costs energy and heat, and the big guns carry limited ammo.
-- **Physical / Heat / Energy Damage**: Heat hits cook the target's reactor, Energy hits drain it, and armor resists each type separately.
-- **Enemy Mechs**: No special abilities. Every hostile is a loadout of real parts, from Scattergun Wall Units to the bolted-down Sector Commander.
-- **Branching Tactical Node Map**: Procedurally generated 5-floor campaign with Combat, Elite, Boss, Encounter, Shop, Rest, Cache and Minigame nodes.
-- **Progression Through Gear**: Win Keys to open supply pods (51 parts, odds shown) and scrap to upgrade parts to level 10. Never real money.
+- **Lane Combat**: Two actions a turn on a 12-position lane: walk or jump (your legs decide how far), fire each gun once, STOMP an adjacent mech, raise a BARRIER, or VENT to cool down.
+- **Heat & Energy, Super Mechs style**: Every shot costs energy and heat. Start a turn over your heat cap and you lose it; drain a mech's energy past zero and it bleeds HP.
+- **Cover**: Walls block walking and direct fire; lobs arc over, beams burn through. Arenas bring spikes and mines too.
+- **Teams**: A garage of up to three mechs. SWAP takes your turn; a knocked-out mech's replacement drops in, and every mech keeps its own HP through the run.
+- **Physical / Explosive / Electric Damage**: Explosive hits pile on heat, Electric hits drain energy, and armor resists each type separately.
+- **Enemy Mechs**: No special abilities. Every hostile is a loadout of real parts, from Scattergun Wall Units to the bolted-down Sector Commander, and at the bottom of the Abyss, KLONKADOO PRIME.
+- **Branching Tactical Node Map**: Procedurally generated 5-floor campaign with Combat, Elite, Boss, Encounter, Shop, Rest and Cache nodes, then 5 Abyss floors and an endless descent.
+- **Progression Through Gear**: Win Keys to open supply pods (61 parts, odds shown) and scrap to upgrade parts to level 10. Never real money.
 
 ---
 
@@ -33,7 +35,7 @@
 
 Grab the latest build from **[Releases](https://github.com/Boci0/Slingshot-OPS/releases/latest)**:
 
-- **Android**: `SlingshotOps-x.y.z.apk`. Allow installs from your browser / file manager when asked.
+- **Android**: `Klonkadoo-x.y.z.apk`. Allow installs from your browser / file manager when asked.
 - **Windows**: `Slingshot Ops_x.y.z_x64-setup.exe`. If SmartScreen appears, choose *More info → Run anyway*.
 - **Browser**: play instantly at https://boci0.github.io/Slingshot-OPS/
 
@@ -83,9 +85,12 @@ cd android && ./gradlew assembleDebug
 
 | Action | Input |
 | --- | --- |
-| **Aim & Launch** | Click + Drag backward + Release |
-| **Select Node** | Click node on campaign map |
-| **Activate Abilities** | Click ability HUD buttons during turn |
+| **Move** | Tap a lit plate (green = walk, blue = jump) |
+| **Fire** | Tap a gun chip, or [Q] / [E] |
+| **Stomp / Barrier / Vent** | Tap the button, or [F] / [B] / [V] |
+| **Swap mech** | Tap a mech in the team bar (takes the whole turn) |
+| **End turn** | END TURN, or [Space] |
+| **Select Node** | Click a node on the campaign map |
 
 ---
 
@@ -117,10 +122,10 @@ npm run dev
 
 ## Project Architecture
 
-- `src/core/` — Game loop, physics engine, event bus
-- `src/entities/` — Ball units, barriers, and combat entities
-- `src/systems/` — Turn system, collision system & damage calculation
-- `src/ai/` — Enemy AI with trajectory simulation & difficulty scaling
+- `src/core/` — Lane battle engine, arenas, event bus
+- `src/entities/` — Mech units
+- `src/systems/` — Turn system & damage calculation
+- `src/ai/` — Enemy turn planner (LaneAI): tries every action sequence and looks one turn ahead
 - `src/rogue/` — Run state management & procedural map generator
 - `src/meta/` — Rig parts and enemy loadouts, quests, medals, mastery, save state
 - `src/rendering/` — Canvas arena renderer & tactical map renderer

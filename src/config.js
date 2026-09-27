@@ -1,5 +1,5 @@
 // ============================================================
-// Slingshot — Central Game Configuration
+// KLONKADOO — Central Game Configuration
 // All tunable constants and content data (quests, enemies,
 // boons, roguelike map rules) live here.
 // ============================================================

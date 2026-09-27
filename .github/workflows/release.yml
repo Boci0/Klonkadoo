@@ -38,7 +38,7 @@ jobs:
         run: |
           id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
             -f tag_name="$GITHUB_REF_NAME" \
-            -f name="Slingshot Ops $GITHUB_REF_NAME" \
+            -f name="KLONKADOO $GITHUB_REF_NAME" \
             -F draft=true -F generate_release_notes=true --jq .id)
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
@@ -74,7 +74,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          apk="SlingshotOps-${GITHUB_REF_NAME#v}.apk"
+          apk="Klonkadoo-${GITHUB_REF_NAME#v}.apk"
           cp android/app/build/outputs/apk/release/app-release.apk "$apk"
           gh release upload "$GITHUB_REF_NAME" "$apk" --repo "$GITHUB_REPOSITORY"
 

@@ -523,7 +523,7 @@ export class UIManager {
     if (S.donateUrl && !(onPlay && native)) rows.push({ act: 'donate', ico: '&#9829;', title: 'BUY ME A COFFEE', text: 'Optional. Keeps updates coming.' });
 
     this.openModal('SUPPORT THE GAME', `
-      <p class="dim-text">Slingshot Ops is made by one person, with no ads and no purchases.</p>
+      <p class="dim-text">KLONKADOO is made by one person, with no ads and no purchases.</p>
       <div class="support-list">${rows.map((r) => `
         <button class="btn btn-outline support-row" data-support="${r.act}">
           <i class="support-ico">${r.ico}</i><div><strong>${r.title}</strong><span>${r.text}</span></div>
@@ -543,11 +543,11 @@ export class UIManager {
       rate: () => open(S.playUrl),
       github: () => open(S.releasesUrl),
       donate: () => open(S.donateUrl),
-      mail: () => open(`mailto:${S.feedbackEmail}?subject=${encodeURIComponent(`Slingshot Ops v${pkg.version} feedback`)}`),
+      mail: () => open(`mailto:${S.feedbackEmail}?subject=${encodeURIComponent(`KLONKADOO v${pkg.version} feedback`)}`),
       share: async () => {
         const link = onPlay && native ? S.playUrl : S.webUrl;
         try {
-          await navigator.clipboard.writeText(`Slingshot Ops, a pixel slingshot roguelike: ${link}`);
+          await navigator.clipboard.writeText(`KLONKADOO, a pixel mech roguelike: ${link}`);
           status.textContent = 'LINK COPIED';
           status.className = 'save-status ok';
         } catch {
@@ -636,7 +636,7 @@ export class UIManager {
 
   showCredits() {
     this.openModal('CREDITS', `
-      <p><strong>SLINGSHOT OPS</strong> <span class="dim-text">v${pkg.version}</span><br>
+      <p><strong>KLONKADOO</strong> <span class="dim-text">v${pkg.version}</span><br>
       Design &amp; code by Boci.</p>
       <p class="dim-text">Fonts: Pixelify Sans &amp; Press Start 2P (SIL Open Font License 1.1).<br>
       Built with Capacitor (MIT License). Sound effects are synthesized in-game.</p>
