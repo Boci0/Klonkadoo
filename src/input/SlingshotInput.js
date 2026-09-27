@@ -25,7 +25,7 @@ export class SlingshotInput {
     this.ballX = 0;
     this.ballY = 0;
 
-    this.powerMult = 1; // launch power bonus from boons / relics
+    this.powerMult = 1; // launch power bonus from boons / gear
     // Your legs: the launch speed band you can use, optional elevation limits (degrees)
     this.move = { min: S.minPower, max: S.maxPower };
     this.placementMode = null; // null | 'barrier'

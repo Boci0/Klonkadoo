@@ -1,10 +1,9 @@
 // ============================================================
 // Slingshot — Central Game Configuration
-// All tunable constants and content data (quests, tech tree,
-// perks, roguelike map rules) live here.
+// All tunable constants and content data (quests, enemies,
+// boons, roguelike map rules) live here.
 // ============================================================
 
-import { RELICS } from './meta/Relics.js';
 
 export const CONFIG = {
   // --- Distribution ---
@@ -74,6 +73,10 @@ export const CONFIG = {
     dmgScale: 2.2, // gun/drone damage vs the classic numbers (bodies no longer hit)
     enemyDmgScale: 0.6, // enemy guns hit this much of a same-level player gun
     exposedMult: 1.25, // rammed targets take +25% gun damage until their next turn
+    // Damage types (Mech.DTYPES): Heat hits add heat and Energy hits drain energy,
+    // dtypeLoad x the hit; whatever the reactor can't absorb spills into HP at dtypeSpill x
+    dtypeLoad: 0.5,
+    dtypeSpill: 0.5,
     ramSpeed: 380, // impact speed (px/s) that counts as a ram
     shotGap: 0.45, // seconds between an enemy's actions, so you can follow them
     actions: 2, // actions per turn: MOVE (slingshot), FIRE one gun, or VENT
@@ -90,89 +93,53 @@ export const CONFIG = {
     },
   },
 
-  // --- Enemy archetypes (unique abilities) ---
+  // --- Enemy archetypes: a paint job and a loadout (Mech.ENEMY_LOADOUTS) ---
+  // No special abilities: everything an enemy does comes from its parts.
+  // defBonus is DEF against every damage type, on top of its armor's resists.
   enemyArchetypes: {
     standard: {
-      name: 'HOSTILE UNIT',
+      name: 'HOSTILE UNIT', desc: 'Light gun, light armor.',
       hpMult: 1, atkMult: 1, defBonus: 0, aiShift: 0,
-      ability: null, abilityDesc: 'Standard combatant unit',
       color: '#e0655c', darkColor: '#a83b35',
     },
     tank: {
-      name: 'WALL UNIT',
-      hpMult: 1.6, atkMult: 0.85, defBonus: 4, aiShift: -0.025,
-      ability: 'thorns',
-      abilityDesc: 'Reflects 20% impact damage & deploys cover barriers',
+      name: 'WALL UNIT', desc: 'Titanium hull on treads or clamps. Scattergun and Repulsor: keep your distance.',
+      hpMult: 1.5, atkMult: 0.9, defBonus: 1, aiShift: -0.025,
       color: '#4a6572', darkColor: '#263238',
     },
     striker: {
-      name: 'SNIPER UNIT',
-      hpMult: 1.1, atkMult: 1.3, defBonus: 0, aiShift: 0.075,
-      ability: 'aggressive',
-      abilityDesc: 'Fires faster & charges Overdrive pulse shots (+50% velocity & ATK)',
+      name: 'SNIPER UNIT', desc: 'Long Rifle (Sniper Cannon on elites). Get close.',
+      hpMult: 1.05, atkMult: 1.2, defBonus: 0, aiShift: 0.075,
       color: '#f57c00', darkColor: '#e65100',
     },
     vampire: {
-      name: 'SIPHON DRONE',
-      hpMult: 1.25, atkMult: 1.1, defBonus: 2, aiShift: 0.025,
-      ability: 'vampire',
-      abilityDesc: 'Heals 40% of damage dealt to player and heals nearby allies',
+      name: 'SIPHON UNIT', desc: 'Plasma Scythe: heals on every hit, up close.',
+      hpMult: 1.2, atkMult: 1.05, defBonus: 0, aiShift: 0.025,
       color: '#d32f2f', darkColor: '#8b0000',
     },
     pyromancer: {
-      name: 'BLAZE MORTAR',
-      hpMult: 1.2, atkMult: 1.25, defBonus: 1, aiShift: 0.05,
-      ability: 'pyro',
-      abilityDesc: 'Ignites target with 2 turns of Thermal Burn (8 DMG/turn) and melts player barriers',
+      name: 'BLAZE UNIT', desc: 'Flamer and Mortar: Heat damage that cooks your reactor.',
+      hpMult: 1.15, atkMult: 1.15, defBonus: 0, aiShift: 0.05,
       color: '#ff5722', darkColor: '#bf360c',
     },
     disruptor: {
-      name: 'GRAVITON WEAVER',
-      hpMult: 1.3, atkMult: 1.0, defBonus: 3, aiShift: 0.04,
-      ability: 'disrupt',
-      abilityDesc: 'Emits a gravitic pulse pulling player ball toward obstacles on turn start',
+      name: 'GRAVITON UNIT', desc: 'Grapple Hook drags you in, Cryo slows your launches.',
+      hpMult: 1.2, atkMult: 1.0, defBonus: 1, aiShift: 0.04,
       color: '#7b1fa2', darkColor: '#4a148c',
     },
     tactician: {
-      name: 'FIELD COMMANDER',
-      hpMult: 1.4, atkMult: 1.15, defBonus: 3, aiShift: 0.06,
-      ability: 'command',
-      abilityDesc: 'Rallies all hostiles on turn start granting +20% ATK and +3 DEF',
+      name: 'COMMAND UNIT', desc: 'Tesla Coil and a Missile Pod: hits from anywhere.',
+      hpMult: 1.3, atkMult: 1.05, defBonus: 1, aiShift: 0.06,
       color: '#ffb300', darkColor: '#ff8f00',
     },
     corroder: {
-      name: 'ACID DRONE',
-      hpMult: 1.2, atkMult: 1.05, defBonus: 1, aiShift: 0.04,
-      ability: 'corrode',
-      abilityDesc: 'Emits a corrosive acid splash reducing player DEF by -4 for the battle',
+      name: 'ACID UNIT', desc: 'Acid strips your Physical resist, EMP drains your energy.',
+      hpMult: 1.15, atkMult: 1.0, defBonus: 0, aiShift: 0.04,
       color: '#aeea00', darkColor: '#33691e',
     },
-    splitter: {
-      name: 'SPLIT CELL',
-      hpMult: 1.1, atkMult: 0.9, defBonus: 0, aiShift: 0,
-      ability: 'split',
-      abilityDesc: 'Bursts into 2 smaller cells when destroyed',
-      color: '#a7f070', darkColor: '#38b764',
-    },
-    medic: {
-      name: 'FIELD MEDIC',
-      hpMult: 1.0, atkMult: 0.8, defBonus: 1, aiShift: -0.03,
-      ability: 'heal',
-      abilityDesc: 'Heals the most injured ally for 12% of its max HP each turn (4 heals per battle)',
-      color: '#f4f4f4', darkColor: '#94b0c2',
-    },
-    shielder: {
-      name: 'AEGIS DRONE',
-      hpMult: 1.2, atkMult: 0.85, defBonus: 2, aiShift: 0,
-      ability: 'shield',
-      abilityDesc: 'Shields another enemy each turn: the shield blocks the next hit',
-      color: '#41a6f6', darkColor: '#29366f',
-    },
     minelayer: {
-      name: 'MINE LAYER',
-      hpMult: 1.1, atkMult: 0.9, defBonus: 1, aiShift: 0.02,
-      ability: 'mines',
-      abilityDesc: 'Carries a Mine Launcher: lobs mines beside you (3 per battle) that blast if you land on them',
+      name: 'MINE LAYER', desc: 'Mine Launcher: lobs mines beside you (3 per battle) that blast if you land on them.',
+      hpMult: 1.1, atkMult: 0.9, defBonus: 0, aiShift: 0.02,
       color: '#ef7d57', darkColor: '#5d275d',
     },
   },
@@ -180,7 +147,7 @@ export const CONFIG = {
   // --- Enemy Tiers (Initial Base Enemy Stats per Floor) ---
   // Floor scaling (floorScaling) is applied on top. Tuned so a Risk 0 player
   // with no upgrades has to play well: a sloppy fight costs 40-60% HP and
-  // runs are won with relics + skills, not by default. Enemies also tighten
+  // runs are won with gear and good positioning. Enemies also tighten
   // their aim after each miss (Game: missStreak). aiDifficulty → measured hit
   // rate with the physics planner (EnemyAI): 0.4 ≈ 50%, 0.55 ≈ 67%, 0.7 ≈ 71%, 0.85 ≈ 96%.
   // HP +10% across the board to make room for gear (starter gear restores the old feel)
@@ -201,9 +168,9 @@ export const CONFIG = {
 
   // --- Risk levels: each level adds one rule on top of the ones below ---
   // Unlocked one at a time by winning a run on the highest unlocked level.
-  // Each level also grants +tpPerLevel% Tech Points from battles.
+  // Each level also grants +scrapPerLevel% scrap from battles.
   risk: {
-    tpPerLevel: 15,
+    scrapPerLevel: 15,
     levels: [
       { name: 'HARDENED', desc: 'Enemies +15% HP.', hpPct: 15 },
       { name: 'SHARPSHOOTERS', desc: 'Enemies aim better.', aiBonus: 0.08 },
@@ -239,13 +206,13 @@ export const CONFIG = {
   },
   // Archetype pick weights per floor (proportion of each type)
   archetypeWeights: {
-    1: { standard: 0.5, tank: 0.15, striker: 0.15, splitter: 0.2 },
-    2: { standard: 0.25, tank: 0.15, striker: 0.15, vampire: 0.1, pyromancer: 0.1, splitter: 0.15, minelayer: 0.1 },
-    3: { standard: 0.1, tank: 0.1, striker: 0.1, disruptor: 0.1, tactician: 0.1, corroder: 0.1, splitter: 0.1, medic: 0.1, shielder: 0.1, minelayer: 0.1 },
-    4: { standard: 0.05, tank: 0.1, striker: 0.1, vampire: 0.1, pyromancer: 0.1, disruptor: 0.1, tactician: 0.1, corroder: 0.05, medic: 0.1, shielder: 0.1, minelayer: 0.1 },
-    5: { standard: 0.05, tank: 0.1, striker: 0.1, vampire: 0.1, pyromancer: 0.1, disruptor: 0.1, tactician: 0.1, corroder: 0.05, medic: 0.1, shielder: 0.1, minelayer: 0.1 },
-    elite: { tank: 0.12, striker: 0.12, vampire: 0.1, pyromancer: 0.1, disruptor: 0.1, tactician: 0.1, corroder: 0.1, splitter: 0.12, minelayer: 0.14 },
-    miniboss: { tank: 0.15, vampire: 0.15, pyromancer: 0.15, disruptor: 0.1, splitter: 0.2, minelayer: 0.15, shielder: 0.1 },
+    1: { standard: 0.6, tank: 0.2, striker: 0.2 },
+    2: { standard: 0.3, tank: 0.15, striker: 0.15, vampire: 0.1, pyromancer: 0.1, corroder: 0.1, minelayer: 0.1 },
+    3: { standard: 0.1, tank: 0.12, striker: 0.12, vampire: 0.1, pyromancer: 0.1, disruptor: 0.12, tactician: 0.1, corroder: 0.12, minelayer: 0.12 },
+    4: { standard: 0.05, tank: 0.12, striker: 0.12, vampire: 0.12, pyromancer: 0.12, disruptor: 0.12, tactician: 0.12, corroder: 0.1, minelayer: 0.12 },
+    5: { standard: 0.05, tank: 0.12, striker: 0.12, vampire: 0.12, pyromancer: 0.12, disruptor: 0.12, tactician: 0.12, corroder: 0.1, minelayer: 0.12 },
+    elite: { tank: 0.14, striker: 0.14, vampire: 0.12, pyromancer: 0.12, disruptor: 0.12, tactician: 0.12, corroder: 0.1, minelayer: 0.14 },
+    miniboss: { tank: 0.2, vampire: 0.2, pyromancer: 0.2, disruptor: 0.15, minelayer: 0.15, tactician: 0.1 },
     boss: { tank: 0.2, striker: 0.15, disruptor: 0.2, tactician: 0.15, pyromancer: 0.1, minelayer: 0.2 },
   },
 
@@ -296,7 +263,7 @@ export const CONFIG = {
     maxDefCap: 15, // DEF cap = 60% damage reduction
     hpRegenPerRest: 35, // HP restored at a Rest node
     hpRegenMaxPct: 0.5, // ... but capped at 50% of max HP
-    shopDiscountPerVisit: 0.9, // ×0.9 gold cost per shop visit (stacks)
+    shopFloorMarkup: 0.12, // shop prices +12% per floor past the first (Abyss included)
   },
 
   // --- Roguelike map generation ---
@@ -316,111 +283,60 @@ export const CONFIG = {
 
   // --- Currency ---
   currency: {
-    techPointName: 'Tech Points',
     goldName: 'Gold',
     startGold: 30,
   },
 
-
-  // --- Curses (taken at Curse Shrines in exchange for an epic relic) ---
-  curses: [
-    { id: 'curse_frail', name: 'FRAIL', desc: '-15 max HP.' },
-    { id: 'curse_hunted', name: 'HUNTED', desc: 'Enemies +10% ATK.' },
-    { id: 'curse_wounds', name: 'OPEN WOUNDS', desc: 'Healing -20%.' },
-    { id: 'curse_lost', name: 'LOST', desc: '-1 move on each new floor.' },
-  ],
 
   // --- Operation conditions: one random twist per run ---
   runConditions: [
     { id: 'gold_rush', name: 'GOLD RUSH', desc: '+30% gold, but enemies +10% HP.' },
     { id: 'heavy_gravity', name: 'HEAVY GRAVITY', desc: 'Gravity +20%: shots drop faster.' },
     { id: 'low_gravity', name: 'LOW GRAVITY', desc: 'Gravity -20%: shots fly further.' },
-    { id: 'supplied', name: 'WELL SUPPLIED', desc: 'Start with a random relic.' },
+    { id: 'supplied', name: 'WELL SUPPLIED', desc: 'Start with a random boon.' },
     { id: 'glass_war', name: 'GLASS WAR', desc: 'Everyone deals +30% damage.' },
     { id: 'scouted', name: 'SCOUTED', desc: '+1 move on every floor.' },
-    { id: 'blood_moon', name: 'BLOOD MOON', desc: 'Enemies +15% ATK, but +50% Tech Points from battles.' },
+    { id: 'blood_moon', name: 'BLOOD MOON', desc: 'Enemies +15% ATK, but +50% scrap from battles.' },
     { id: 'calm', name: 'CALM SKIES', desc: 'No wind in any arena.' },
   ],
-
-  // --- Relics (run-scoped collectibles): defined in meta/Relics.js ---
-  relics: RELICS,
 
   // --- Roguelike node definitions ---
   nodes: {
     // Appearance weights per floor
     floorWeights: {
       1: { combat: 6, encounter: 3, shop: 1, rest: 1, minigame: 1, elite: 1, treasure: 1, gamble: 1 },
-      2: { combat: 4, encounter: 3, shop: 2, rest: 2, minigame: 1, elite: 2, treasure: 1, gamble: 1, shrine: 1 },
-      3: { combat: 4, encounter: 2, shop: 2, rest: 2, minigame: 1, elite: 2, treasure: 1, gamble: 1, shrine: 1 },
-      4: { combat: 3, encounter: 2, shop: 2, rest: 1, minigame: 1, elite: 3, treasure: 1, gamble: 1, shrine: 1 },
-      5: { combat: 3, encounter: 2, shop: 2, rest: 2, minigame: 1, elite: 3, treasure: 1, gamble: 1, shrine: 1 },
+      2: { combat: 4, encounter: 4, shop: 2, rest: 2, minigame: 1, elite: 2, treasure: 1, gamble: 1 },
+      3: { combat: 4, encounter: 3, shop: 2, rest: 2, minigame: 1, elite: 2, treasure: 1, gamble: 1 },
+      4: { combat: 3, encounter: 3, shop: 2, rest: 1, minigame: 1, elite: 3, treasure: 1, gamble: 1 },
+      5: { combat: 3, encounter: 3, shop: 2, rest: 2, minigame: 1, elite: 3, treasure: 1, gamble: 1 },
     },
     rewards: {
-      combat: { gold: 16, tech: 1, healMax: 20 }, // + most Keys and a clean-win bonus (main.js)
-      elite: { gold: 25, tech: 2, healMax: 30 },
-      miniboss: { gold: 50, tech: 4, healMax: 30, relics: 2 },
-      boss: { gold: 40, tech: 4, healMax: 50 },
-      encounter: { gold: 8, tech: 1, minHpLoss: 5, maxHpLoss: 14 },
-      minigame: { gold: 15, tech: 1 },
+      // scrap upgrades parts on the Rig screen; Keys come from Mech.tokenReward
+      combat: { gold: 16, scrap: 4, healMax: 20 }, // + a clean-win bonus (main.js)
+      elite: { gold: 25, scrap: 10, healMax: 30 },
+      miniboss: { gold: 50, scrap: 16, healMax: 30 },
+      boss: { gold: 40, scrap: 20, healMax: 50 },
+      encounter: { gold: 8, minHpLoss: 5, maxHpLoss: 14 },
+      minigame: { gold: 15 },
       shop: {},
       rest: {},
     },
   },
 
-  // --- AI-generated quests (complete during roguelike runs) ---
+  // --- Quests (complete during roguelike runs; reward = scrap) ---
   quests: [
-    { id: 'quest_first_blood', name: 'First Blood', desc: 'Deal damage to an enemy in a combat node', reward: 1 },
-    { id: 'quest_one_turn_win', name: 'One Shot', desc: 'End a combat in a single turn without taking damage', reward: 2 },
-    { id: 'quest_no_damage', name: 'Untouchable', desc: 'Win a combat node without taking damage', reward: 3 },
-    { id: 'quest_speed_win', name: 'Blitz', desc: 'Win a combat in 3 turns or fewer', reward: 2 },
-    { id: 'quest_shopping', name: 'All In', desc: 'Spend 40+ Gold at shops across one run', reward: 2 },
-    { id: 'quest_boss_kill', name: 'Slayer', desc: 'Defeat a boss node', reward: 4 },
-    { id: 'quest_minigame', name: 'Precision', desc: 'Win a minigame node with perfect timing', reward: 2 },
-    { id: 'quest_perfect', name: 'Flawless Run', desc: 'Reach floor 5 without losing a combat', reward: 5 },
-    { id: 'quest_elite', name: 'Elite Killer', desc: 'Defeat an elite combat node', reward: 3 },
-    { id: 'quest_rest', name: 'Recovery', desc: 'Use a Safe Zone node to heal 40+ HP in one run', reward: 1 },
-    { id: 'quest_bounce', name: 'Pinball', desc: 'Bounce off a wall, then land a gun hit that turn', reward: 1 },
-    { id: 'quest_lowhp', name: 'Survivor', desc: 'Win a combat with 10 HP or less', reward: 3 },
+    { id: 'quest_first_blood', name: 'First Blood', desc: 'Deal damage to an enemy in a combat node', reward: 5 },
+    { id: 'quest_one_turn_win', name: 'One Shot', desc: 'End a combat in a single turn without taking damage', reward: 10 },
+    { id: 'quest_no_damage', name: 'Untouchable', desc: 'Win a combat node without taking damage', reward: 15 },
+    { id: 'quest_speed_win', name: 'Blitz', desc: 'Win a combat in 3 turns or fewer', reward: 10 },
+    { id: 'quest_shopping', name: 'All In', desc: 'Spend 40+ Gold at shops across one run', reward: 10 },
+    { id: 'quest_boss_kill', name: 'Slayer', desc: 'Defeat a boss node', reward: 20 },
+    { id: 'quest_minigame', name: 'Precision', desc: 'Win a minigame node with perfect timing', reward: 10 },
+    { id: 'quest_perfect', name: 'Flawless Run', desc: 'Reach floor 5 without losing a combat', reward: 25 },
+    { id: 'quest_elite', name: 'Elite Killer', desc: 'Defeat an elite combat node', reward: 15 },
+    { id: 'quest_rest', name: 'Recovery', desc: 'Use a Safe Zone node to heal 40+ HP in one run', reward: 5 },
+    { id: 'quest_lowhp', name: 'Survivor', desc: 'Win a combat with 10 HP or less', reward: 15 },
   ],
-
-  // --- Permanent Tech Tree (bought with Tech Points) ---
-  // Skills and mechanics only: raw stats (HP, ATK, DEF, crit) come from
-  // Rig gear and ball mastery levels. Each branch: a root, two paths that
-  // split off it, and a capstone that needs both. `col`/`row` place the
-  // node on the branch graph; `requires` needs at least one rank first.
-  techTree: {
-    // REACTOR branch: energy and heat, the budget every gun shot comes out of
-    rct_capacitor: { id: 'rct_capacitor', label: 'Capacitor', desc: '+4 energy pool per rank', maxLevel: 5, costs: [8, 12, 16, 22, 30], branch: 'rct', icon: 'CAP', col: 0, row: 1, requires: [] },
-    rct_dynamo: { id: 'rct_dynamo', label: 'Dynamo', desc: '+2 energy refilled each turn per rank', maxLevel: 2, costs: [30, 60], branch: 'rct', icon: 'DYN', col: 1, row: 0, requires: ['rct_capacitor'] },
-    rct_coolant: { id: 'rct_coolant', label: 'Coolant Lines', desc: 'Cool 3 more heat each turn per rank', maxLevel: 3, costs: [14, 22, 32], branch: 'rct', icon: 'COL', col: 1, row: 2, requires: ['rct_capacitor'] },
-    rct_opener: { id: 'rct_opener', label: 'Opening Salvo', desc: 'Your first shot each battle costs no energy or heat', maxLevel: 1, costs: [40], branch: 'rct', icon: 'OPN', col: 2, row: 0, requires: ['rct_dynamo'] },
-    rct_scavenge: { id: 'rct_scavenge', label: 'Scavenger', desc: 'Each enemy you defeat refunds 10 energy', maxLevel: 1, costs: [40], branch: 'rct', icon: 'SCV', col: 2, row: 2, requires: ['rct_coolant'] },
-    rct_overclock: { id: 'rct_overclock', label: 'Overclock', desc: 'CAPSTONE: +1 action on every 3rd turn', maxLevel: 1, costs: [120], branch: 'rct', icon: 'OVC', col: 3, row: 1, requires: ['rct_opener', 'rct_scavenge'], capstone: true },
-
-    // BARRIER branch: the wall you place with button 2
-    bar_reinforce: { id: 'bar_reinforce', label: 'Reinforced Wall', desc: 'Your barriers have +25% HP per rank', maxLevel: 4, costs: [6, 10, 16, 24], branch: 'bar', icon: 'WAL', col: 0, row: 1, requires: [] },
-    bar_quick: { id: 'bar_quick', label: 'Rapid Deploy', desc: 'Barrier cooldown -1 turn per rank', maxLevel: 2, costs: [24, 48], branch: 'bar', icon: 'CD', col: 1, row: 0, requires: ['bar_reinforce'] },
-    bar_spikes: { id: 'bar_spikes', label: 'Spiked Wall', desc: 'Enemies that hit your barrier take 6 damage per rank', maxLevel: 3, costs: [12, 20, 30], branch: 'bar', icon: 'SPK', col: 1, row: 2, requires: ['bar_reinforce'] },
-    bar_twin: { id: 'bar_twin', label: 'Twin Walls', desc: 'Keep one more barrier on the field', maxLevel: 1, costs: [45], branch: 'bar', icon: 'x2', col: 2, row: 0, requires: ['bar_quick'] },
-    bar_bulwark: { id: 'bar_bulwark', label: 'Bulwark', desc: 'While one of your barriers stands, take 6% less damage per rank', maxLevel: 3, costs: [16, 26, 38], branch: 'bar', icon: 'BLW', col: 2, row: 2, requires: ['bar_spikes'] },
-    bar_aegis: { id: 'bar_aegis', label: 'Aegis Wall', desc: 'CAPSTONE: placing a barrier also gives you a Forcefield', maxLevel: 1, costs: [110], branch: 'bar', icon: 'AEG', col: 3, row: 1, requires: ['bar_twin', 'bar_bulwark'], capstone: true },
-
-    // SURVIVAL branch: effects that save you, not bigger numbers
-    vit_emergency_medkit: { id: 'vit_emergency_medkit', label: 'Emergency Medkit', desc: 'Once per battle, heal when you drop below 25% HP (+10 HP per rank)', maxLevel: 5, costs: [6, 10, 14, 20, 28], branch: 'sur', icon: 'MED', col: 0, row: 1, requires: [] },
-    vit_overflow_shield: { id: 'vit_overflow_shield', label: 'Overflow Shielding', desc: 'Healing past max HP becomes a shield (cap +10% max HP per rank)', maxLevel: 5, costs: [8, 12, 18, 26, 36], branch: 'sur', icon: 'SHD', col: 1, row: 0, requires: ['vit_emergency_medkit'] },
-    def_forcefield: { id: 'def_forcefield', label: 'Forcefield', desc: 'Start battles with a bubble that blocks 1 hit; recharges every 11 turns (-1 per rank)', maxLevel: 5, costs: [12, 18, 26, 36, 48], branch: 'sur', icon: 'FLD', col: 1, row: 2, requires: ['vit_emergency_medkit'] },
-    vit_vampiric_vitality: { id: 'vit_vampiric_vitality', label: 'Vampiric', desc: 'Heal for 2% of the damage you deal per rank', maxLevel: 5, costs: [14, 20, 28, 38, 50], branch: 'sur', icon: 'VMP', col: 2, row: 0, requires: ['vit_overflow_shield'] },
-    def_counter: { id: 'def_counter', label: 'Counter Plating', desc: 'Enemies that hit you take 10% of the damage back per rank', maxLevel: 3, costs: [30, 50, 80], branch: 'sur', icon: 'CTR', col: 2, row: 2, requires: ['def_forcefield'] },
-    vit_second_wind: { id: 'vit_second_wind', label: 'Second Wind', desc: 'CAPSTONE: once per run, a lethal blow leaves you at 20% HP with a Forcefield (+15% HP per extra rank)', maxLevel: 2, costs: [50, 90], branch: 'sur', icon: 'SWD', col: 3, row: 1, requires: ['vit_vampiric_vitality', 'def_counter'], capstone: true },
-
-    // TACTICS branch: the run around the fights
-    tac_war_chest: { id: 'tac_war_chest', label: 'War Chest', desc: 'Start runs with +10 gold per rank', maxLevel: 5, costs: [6, 10, 14, 20, 28], branch: 'tac', icon: 'GLD', col: 0, row: 1, requires: [] },
-    tac_merchant: { id: 'tac_merchant', label: 'Merchant Network', desc: 'Shop prices -3% and rerolls -8% per rank', maxLevel: 5, costs: [8, 12, 18, 26, 36], branch: 'tac', icon: 'SHP', col: 1, row: 0, requires: ['tac_war_chest'] },
-    tac_scout: { id: 'tac_scout', label: 'Scout', desc: '+1 move on every floor', maxLevel: 1, costs: [60], branch: 'tac', icon: 'MOV', col: 1, row: 2, requires: ['tac_war_chest'] },
-    tac_intellect: { id: 'tac_intellect', label: 'Tactical Intellect', desc: '+5% Tech Points from battles per rank', maxLevel: 5, costs: [10, 16, 24, 34, 46], branch: 'tac', icon: 'INT', col: 2, row: 0, requires: ['tac_merchant'] },
-    tac_keymaster: { id: 'tac_keymaster', label: 'Keymaster', desc: '+1 Key per fight won, per rank', maxLevel: 2, costs: [30, 60], branch: 'tac', icon: 'KEY', col: 2, row: 2, requires: ['tac_scout'] },
-    tac_supply_drop: { id: 'tac_supply_drop', label: 'Supply Drop', desc: 'CAPSTONE: start every run with 1 random relic per rank', maxLevel: 2, costs: [55, 100], branch: 'tac', icon: 'SUP', col: 3, row: 1, requires: ['tac_intellect', 'tac_keymaster'], capstone: true },
-  },
 
   // --- Roguelike boons (collected as map rewards) ---
   boons: [

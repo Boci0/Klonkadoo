@@ -321,11 +321,9 @@ const TYPE_GRIDS = {
 
 const UI_GRIDS = {
   gold: ['..kkkk..', '.kyyyyk.', 'kyywyyok', 'kywyyyok', 'kyyyyyok', 'kyyyyook', '.kooook.', '..kkkk..'],
-  tp: ['...kk...', '..kcck..', '.kcwcsk.', 'kcccsssk', 'kncsssnk', '.knsnnk.', '..knnk..', '...kk...'],
   hp: ['.kk..kk.', 'kRRkkRRk', 'kRwRRRRk', 'kRRRRRRk', '.kRRRrk.', '..kRrk..', '...kk...'],
   key: ['.kkk......', 'kyyyk.....', 'kywykkkkkk', 'kyyyyyyyyk', 'kyyykkykyk', '.kkk..k.k.'],
   scrap: ['..k..k..', '.kkkkkk.', 'kklllldk', '.klkkdk.', '.klkkdk.', 'kkldddkk', '.kkkkkk.', '..k..k..'],
-  relic: ['..kkkk..', '.kwppqk.', 'kppppqqk', '.kppqqk.', '..kpqk..', '...kk...'],
   skull: ['.kkkkkk.', 'kwwwwwwk', 'kwkwwkwk', 'kwkwwkwk', 'kwwwwwwk', '.kwkkwk.', '.kwwwwk.', '..kkkk..'],
   dmg: ['......kk', '.....kwk', '....kwk.', '.k.kwk..', '.kkwk...', '..kk....', '.kokk...', 'kok.....'],
   def: ['kkkkkkkk', 'kssssssk', 'ksswssnk', 'ksswssnk', '.ksssnk.', '..ksnk..', '...kk...'],

@@ -2,8 +2,8 @@
 // Mastery — per-ball levels (1-20) earned by playing that ball.
 //
 // Every run gives XP (floors reached, fights won, a win bonus, more
-// on higher Risk), win or lose. Levels carry the raw stats the tech
-// tree no longer gives: HP and damage every level, plus milestones.
+// on higher Risk), win or lose. Levels carry raw stats on top of
+// gear: HP and damage every level, plus milestones.
 // ============================================================
 
 export const MAX_MASTERY = 20;

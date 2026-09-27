@@ -1,6 +1,6 @@
 // ============================================================
 // UIManager — DOM-based interface layer.
-// Owns the main menu, tech tree view, run map screen, node
+// Owns the main menu, run map screen, node
 // modals (encounter/shop/rest/combat), battle HUD, and results.
 // No game logic here — it renders state and forwards actions
 // through callbacks.
@@ -18,12 +18,12 @@ import pkg from '../../package.json';
 import { haptics } from '../platform/haptics.js';
 import { isDesktop, openExternal } from '../platform/desktop.js';
 import { canSelfUpdate, checkForUpdate, isSkipped, skipVersion } from '../platform/updater.js';
-import { RARITY } from '../meta/Relics.js';
 import { OPERATOR, skinsFor, isSkinUnlocked, skinProgress, skinColors } from '../meta/Balls.js';
 import { ballDataUrl, CLASS_PATTERN } from '../rendering/ballSprite.js';
 import { MEDALS, medalProgress, checkMedals } from '../meta/Medals.js';
 import { masteryLevel, MILESTONES, MAX_MASTERY } from '../meta/Mastery.js';
-import { getPart, loadoutTotals, SLOTS, PARTS, rarityColor, CLEAN_WIN_KEYS } from '../meta/Mech.js';
+import { getPart, loadoutTotals, SLOTS, PARTS, rarityColor, CLEAN_WIN_KEYS, DTYPES, DTYPE_KEYS } from '../meta/Mech.js';
+import { getSupply } from '../rogue/Supplies.js';
 import { RigScreen } from './RigScreen.js';
 import { ico, partIcon } from '../rendering/pixelIcons.js';
 
@@ -35,7 +35,6 @@ export class UIManager {
     this.cb = callbacks;
     this.screens = {
       menu: document.getElementById('screen-menu'),
-      tech: document.getElementById('screen-tech'),
       run: document.getElementById('screen-run'),
       battleHud: document.getElementById('battle-hud'),
       result: document.getElementById('screen-result'),
@@ -53,7 +52,6 @@ export class UIManager {
   bindGlobalEvents() {
     // Menu buttons
     const btnPlay = document.getElementById('btn-play');
-    const btnTech = document.getElementById('btn-tech');
     if (btnPlay) btnPlay.addEventListener('click', () => {
       soundEngine.playUI();
       // A suspended run resumes with the rig it started with
@@ -72,7 +70,6 @@ export class UIManager {
       }
       this.cb.onPlay();
     });
-    if (btnTech) btnTech.addEventListener('click', () => this.cb.onOpenTech());
     document.getElementById('btn-medals')?.addEventListener('click', () => {
       soundEngine.playUI();
       this.showMedals();
@@ -100,10 +97,6 @@ export class UIManager {
     });
     this.updateAudioButtons();
 
-    // Tech screen
-    const btnTechBack = document.getElementById('btn-tech-back');
-    if (btnTechBack) btnTechBack.addEventListener('click', () => this.cb.onBackToMenu());
-
     // Run map screen
     const btnRetreat = document.getElementById('btn-retreat');
     if (btnRetreat) {
@@ -112,7 +105,7 @@ export class UIManager {
         this.closeDrawers();
         this.showConfirm({
           title: 'ABANDON RUN?',
-          text: 'The run ends now. Quest TP is kept.',
+          text: 'The run ends now. Keys and scrap you earned are kept.',
           confirmLabel: 'ABANDON RUN',
           danger: true,
           onConfirm: () => this.cb.onRetreat(),
@@ -144,22 +137,26 @@ export class UIManager {
 
   // ---------- New node types ----------
 
-  /** Treasure: pick one of the offered relics for free. */
-  showTreasure(relics, onPick) {
-    const cards = relics.map((r) => `
-      <button class="shop-item treasure-pick" data-relic="${r.id}">
+  /** One supply card (Supplies.js) for the shop / treasure grids. */
+  _supplyCard(s, button) {
+    return `<div class="shop-item">
         <div class="shop-item-head">
-          <span class="shop-item-icon">${r.icon}</span>
-          <strong class="relic-name" style="color:${RARITY[r.rarity].color}">${r.name}</strong>
-          <span class="shop-item-cat" style="color:${RARITY[r.rarity].color}">${RARITY[r.rarity].label}</span>
+          <span class="shop-item-icon">${ico(s.icon, s.color)}</span>
+          <strong class="supply-name" style="color:${s.color}">${s.name}</strong>
         </div>
-        <div class="shop-desc">${r.desc}</div>
-      </button>`).join('');
-    this.openModal('TREASURE CACHE', `<p>Pick one.</p><div class="shop-grid">${cards}</div>`,
+        <div class="shop-desc">${s.desc}</div>
+        ${button}
+      </div>`;
+  }
+
+  /** Treasure: pick one of the offered supplies for free. */
+  showTreasure(supplies, onPick) {
+    const cards = supplies.map((s) => this._supplyCard(s, `<button class="btn btn-accent" data-pick="${s.id}">TAKE</button>`)).join('');
+    this.openModal('SUPPLY CACHE', `<p>Pick one.</p><div class="shop-grid">${cards}</div>`,
       `<div class="btn-row"><button class="btn btn-outline" data-act="skip">LEAVE IT</button></div>`);
-    this.modalBody.querySelectorAll('[data-relic]').forEach((b) => b.addEventListener('click', () => {
+    this.modalBody.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => {
       this.closeModal();
-      onPick(b.dataset.relic);
+      onPick(b.dataset.pick);
     }));
     this.modalActions.querySelector('[data-act="skip"]').addEventListener('click', () => {
       this.closeModal();
@@ -171,7 +168,7 @@ export class UIManager {
   showGamble(run, cost, onBet, onLeave) {
     const can = run.gold >= cost;
     this.openModal('BACK-ALLEY GAMBLE', `<p>"Double or nothing, friend. Well... triple."</p>
-      <div class="encounter-tags"><span class="tag-pill tag-loss">-${cost} G</span><span class="tag-pill tag-gold">50%: +45 GOLD OR A RELIC</span></div>`,
+      <div class="encounter-tags"><span class="tag-pill tag-loss">-${cost} G</span><span class="tag-pill tag-gold">50%: +45 GOLD OR 3 KEYS</span></div>`,
       `<div class="btn-row">
         <button class="btn btn-outline" data-act="leave">WALK AWAY</button>
         <button class="btn btn-accent" data-act="bet" ${can ? '' : 'disabled'}>${can ? `BET ${cost}G` : 'NOT ENOUGH GOLD'}</button>
@@ -188,27 +185,6 @@ export class UIManager {
         this.closeModal();
         onLeave();
       });
-    });
-  }
-
-  /** Curse Shrine: show the curse + the epic relic on offer. */
-  showShrine(curse, relic, onAccept, onLeave) {
-    this.openModal('CURSE SHRINE', `<p>The shrine offers power, for a price.</p>
-      <div class="shrine-deal">
-        <div class="shrine-side curse"><span>CURSE</span><strong>${curse.name}</strong><em>${curse.desc}</em></div>
-        <div class="shrine-side gift"><span>EPIC RELIC</span><strong>${relic.name}</strong><em>${relic.desc}</em></div>
-      </div>`,
-      `<div class="btn-row">
-        <button class="btn btn-outline" data-act="leave">REFUSE</button>
-        <button class="btn btn-danger" data-act="accept">ACCEPT THE DEAL</button>
-      </div>`);
-    this.modalActions.querySelector('[data-act="leave"]').addEventListener('click', () => {
-      this.closeModal();
-      onLeave();
-    });
-    this.modalActions.querySelector('[data-act="accept"]').addEventListener('click', () => {
-      this.closeModal();
-      onAccept();
     });
   }
 
@@ -680,7 +656,7 @@ export class UIManager {
     this.screens.run.classList.remove('drawer-open');
   }
 
-  /** Short-lived notification on the map screen (floor advanced, retreated, relic found...). */
+  /** Short-lived notification on the map screen (floor advanced, retreated, reward found...). */
   toast(html) {
     const stack = document.getElementById('toast-stack');
     if (!stack) return;
@@ -707,10 +683,17 @@ export class UIManager {
       el.innerHTML = `
         <div class="menu-stat"><span>Runs</span><strong>${meta.totalRuns}</strong></div>
         <div class="menu-stat"><span>Wins</span><strong>${meta.totalWins}</strong></div>
-        <div class="menu-stat"><span>Tech Pts</span><strong class="accent">${this._tp()}</strong></div>
+        <div class="menu-stat"><span>Keys</span><strong class="accent">${saveSystem.getMech().tokens}</strong></div>
       `;
     }
     this._renderDaily();
+    // One-time notice: the retired tech tree was paid out in Keys and scrap
+    const conv = saveSystem.data.techConverted;
+    if (conv) {
+      this.toast(`<span class="feed-boon">TECH TREE RETIRED: ${conv.tp} TP → +${conv.keys} KEYS, +${conv.scrap} SCRAP</span>`);
+      delete saveSystem.data.techConverted;
+      saveSystem.save();
+    }
     // A run left open (app closed mid-run) resumes from the big button
     const saved = this.cb.savedRun?.();
     const play = document.getElementById('btn-play');
@@ -723,12 +706,11 @@ export class UIManager {
       }
       play.classList.toggle('resume', !!saved);
     }
-    // Icon tiles: tech chip, your first gun, medal star (with counts)
+    // Icon tiles: your first gun, medal star (with counts)
     const owned = MEDALS.filter((m) => saveSystem.hasMedal(m.id)).length;
     const gun = saveSystem.getLoadoutParts().find((o) => o && getPart(o.id).type === 'weapon');
     const rig = loadoutTotals(saveSystem.getLoadoutParts());
     const tiles = {
-      'btn-tech': { img: ico('tp'), label: 'TECH', count: '' },
       'btn-gear': { img: gun ? `<img class="pxi" src="${partIcon(gun.id)}" alt="">` : ico('gun'), label: 'RIG', count: rig.overweight ? '!' : '', warn: rig.overweight },
       'btn-medals': { img: ico('star'), label: 'MEDALS', count: `${owned}/${MEDALS.length}` },
     };
@@ -744,7 +726,7 @@ export class UIManager {
     const d = saveSystem.getDailyStatus();
     el.classList.toggle('ready', d.canClaim);
     el.innerHTML = d.canClaim
-      ? `${ico('pod', '#ffcd75')}<strong>DAILY SUPPLY</strong><span>${ico('tp')}+${d.reward} · DAY ${d.streak}</span>`
+      ? `${ico('pod', '#ffcd75')}<strong>DAILY SUPPLY</strong><span>${ico('key')}+${d.reward} · DAY ${d.streak}</span>`
       : `${ico('pod', '#566c86')}<strong>CLAIMED</strong><span>DAY ${d.streak} · BACK TOMORROW</span>`;
   }
 
@@ -756,7 +738,7 @@ export class UIManager {
     }
     soundEngine.play('confirm');
     haptics.impact('medium');
-    this.toast(`<span class="feed-boon">DAILY SUPPLY: +${got.reward} TP (DAY ${got.streak})</span>`);
+    this.toast(`<span class="feed-boon">DAILY SUPPLY: +${got.reward} KEY${got.reward > 1 ? 'S' : ''} (DAY ${got.streak})</span>`);
     this.celebrateMedals(checkMedals(saveSystem));
     this.showMenu(saveSystem.getProfile(), saveSystem.getMeta());
   }
@@ -764,7 +746,7 @@ export class UIManager {
   /** Toast for each newly earned medal. */
   celebrateMedals(list) {
     for (const m of list || []) {
-      this.toast(`<span class="feed-relic">MEDAL: ${m.name}</span> <span class="feed-boon">+${m.tp} TP</span>`);
+      this.toast(`<span class="feed-boon">MEDAL: ${m.name}</span> <span class="feed-gold">+${m.keys} KEYS</span>`);
     }
     if (list?.length) soundEngine.play('confirm');
   }
@@ -788,269 +770,12 @@ export class UIManager {
           <strong>${m.name}</strong><span>${m.desc}</span>
           ${done ? '' : `<div class="medal-bar"><i style="width:${pct}%"></i></div>`}
         </div>
-        <em class="medal-tp">${done ? 'EARNED' : `${Math.min(cur, max)}/${max}`}<br>+${m.tp} TP</em>
+        <em class="medal-tp">${done ? 'EARNED' : `${Math.min(cur, max)}/${max}`}<br>+${m.keys} KEYS</em>
       </div>`;
     }).join('');
     this.openModal(`MEDALS ${owned}/${MEDALS.length}`, `<div class="medal-list">${rows}</div>`,
       `<div class="btn-row"><button class="btn btn-accent" data-act="close">CLOSE</button></div>`);
     this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => this.closeModal());
-  }
-
-  showTech(techTree) {
-    this._setVisible('tech');
-    // One-time notice after the skill-tree rebuild refunded the old tree
-    if (saveSystem.data.techRefund) {
-      this.toast(`<span class="feed-boon">TECH TREE REBUILT: +${saveSystem.data.techRefund} TP REFUNDED</span>`);
-      saveSystem.data.techRefund = 0;
-      saveSystem.save();
-    }
-    document.getElementById('tech-points').textContent = this._tp();
-    this._renderTechTree(document.getElementById('tech-tree'), techTree);
-
-    // Bonus line (tap for the full list)
-    const bonuses = techBonusList(techTree.getPermanentStats());
-    const apply = document.getElementById('tech-apply');
-    apply.innerHTML = bonuses.length
-      ? `<b>ACTIVE BONUSES</b> ${bonuses.map((b) => `${b.value} ${b.label}`).join('  ·  ')}`
-      : '<b>ACTIVE BONUSES</b> none yet: unlock a node to start';
-    apply.onclick = () => {
-      soundEngine.playUI();
-      const rows = bonuses.map((b) => `<div class="bonus-row"><span>${b.label}</span><strong>${b.value}</strong></div>`).join('');
-      this.openModal('ACTIVE BONUSES', rows ? `<div class="bonus-list">${rows}</div>` : '<p>No perks unlocked yet.</p>',
-        '<div class="btn-row"><button class="btn btn-accent" data-act="close">CLOSE</button></div>');
-      this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => this.closeModal());
-    };
-  }
-
-  /**
-   * The whole tree on one pannable, zoomable canvas: a CORE in the middle and
-   * four branches growing out of it, each forking and ending in a capstone.
-   * Drag to pan, pinch / wheel / buttons to zoom, tap a node to inspect it.
-   */
-  _renderTechTree(container, techTree) {
-    const nodes = techTree.getAllNodes();
-    const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
-    const pos = (n) => techNodePos(n);
-    const branchOf = (key) => TECH_BRANCHES.find((b) => b.key === key);
-
-    const stateOf = (n) => {
-      const lvl = techTree.getNodeLevel(n.id);
-      if (techTree.isMaxed(n.id)) return 'maxed';
-      if (!techTree.isUnlocked(n.id)) return 'locked';
-      if (techTree.canPurchase(n.id)) return lvl > 0 ? 'owned affordable' : 'affordable';
-      return lvl > 0 ? 'owned' : 'open';
-    };
-
-    if (!byId[this._techSelected]) {
-      this._techSelected = (nodes.find((n) => techTree.canPurchase(n.id)) || nodes[0]).id;
-    }
-
-    // Branch-like connectors: S-curves that follow each branch's direction
-    const curve = (a, b, dir, cls, color) => {
-      const len = Math.hypot(b.x - a.x, b.y - a.y) * 0.45;
-      return `<path class="tlink ${cls}" style="--branch:${color}" d="M${a.x} ${a.y} C${a.x + dir.x * len} ${a.y + dir.y * len} ${b.x - dir.x * len} ${b.y - dir.y * len} ${b.x} ${b.y}" />`;
-    };
-    const links = [];
-    for (const branch of TECH_BRANCHES) {
-      const dir = { x: Math.cos(branch.angle), y: Math.sin(branch.angle) };
-      const root = nodes.find((n) => n.branch === branch.key && !techTree.getRequirements(n.id).length);
-      if (root) links.push(curve(TECH_CORE, pos(root), dir, `trunk ${techTree.isPurchased(root.id) ? 'lit' : 'open'}`, branch.color));
-      for (const n of nodes.filter((x) => x.branch === branch.key)) {
-        for (const reqId of techTree.getRequirements(n.id)) {
-          const r = byId[reqId];
-          if (!r) continue;
-          const lit = techTree.isPurchased(reqId) ? (techTree.isPurchased(n.id) ? 'lit' : 'open') : '';
-          links.push(curve(pos(r), pos(n), dir, lit, branch.color));
-        }
-      }
-    }
-
-    // Branch name + ranks beside the core, clear of the branch's first node
-    const labels = TECH_BRANCHES.map((b) => {
-      const own = nodes.filter((n) => n.branch === b.key);
-      const ranks = own.reduce((sum, n) => sum + techTree.getNodeLevel(n.id), 0);
-      const max = own.reduce((sum, n) => sum + (n.maxLevel || 1), 0);
-      const x = TECH_CORE.x + Math.sign(Math.cos(b.angle)) * 112;
-      const y = TECH_CORE.y + Math.sign(Math.sin(b.angle)) * 16;
-      return `<span class="tbranch-label" style="left:${x}px;top:${y}px;--branch:${b.color}">${b.title} <em>${ranks}/${max}</em></span>`;
-    }).join('');
-
-    const totalRanks = nodes.reduce((sum, n) => sum + techTree.getNodeLevel(n.id), 0);
-    const nodeHtml = nodes.map((n) => {
-      const p = pos(n);
-      const lvl = techTree.getNodeLevel(n.id);
-      return `<button class="tnode ${stateOf(n)} ${n.capstone ? 'cap' : ''} ${n.id === this._techSelected ? 'sel' : ''}" data-node="${n.id}" style="left:${p.x}px;top:${p.y}px;--branch:${branchOf(n.branch).color}" aria-label="${n.label}">
-        <span class="tnode-icon">${n.icon || '*'}</span>
-        <span class="tnode-rank">${lvl}/${n.maxLevel || 1}</span>
-        <span class="tnode-label">${n.label}</span>
-      </button>`;
-    }).join('');
-
-    const sel = byId[this._techSelected];
-    const selColor = branchOf(sel.branch).color;
-    const lvl = techTree.getNodeLevel(sel.id);
-    const max = sel.maxLevel || 1;
-    const reqs = techTree.getRequirements(sel.id).map((id) => {
-      const ok = techTree.isPurchased(id);
-      return `<li class="${ok ? 'ok' : ''}">${ok ? '&#10003;' : '&#10007;'} ${techTree.nodes[id]?.label || id}</li>`;
-    }).join('');
-    const pips = Array.from({ length: max }, (_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('');
-    const cost = techTree.getNodeNextCost(sel.id);
-    let buy;
-    if (techTree.isMaxed(sel.id)) buy = '<button class="btn btn-outline tech-buy" disabled>MAXED</button>';
-    else if (!techTree.isUnlocked(sel.id)) buy = '<button class="btn btn-outline tech-buy" disabled>LOCKED</button>';
-    else {
-      const ok = techTree.canPurchase(sel.id);
-      buy = `<button class="btn tech-buy ${ok ? 'btn-accent' : 'btn-outline'}" data-buy="${sel.id}" ${ok ? '' : 'disabled'}>${lvl > 0 ? 'UPGRADE' : 'UNLOCK'} <span class="tech-price">${cost} TP</span></button>`;
-    }
-
-    container.innerHTML = `
-      <div class="tech-view" id="tech-view">
-        <div class="tech-world" id="tech-world" style="width:${TECH_WORLD.w}px;height:${TECH_WORLD.h}px">
-          <svg class="tech-links" width="${TECH_WORLD.w}" height="${TECH_WORLD.h}" viewBox="0 0 ${TECH_WORLD.w} ${TECH_WORLD.h}" aria-hidden="true">${links.join('')}</svg>
-          ${labels}
-          <div class="tcore" style="left:${TECH_CORE.x}px;top:${TECH_CORE.y}px"><span>RANKS</span><b>${totalRanks}</b></div>
-          ${nodeHtml}
-        </div>
-        <div class="tech-zoom">
-          <button class="btn btn-outline" data-zoom="out" aria-label="Zoom out">&minus;</button>
-          <button class="btn btn-outline" data-zoom="in" aria-label="Zoom in">+</button>
-          <button class="btn btn-outline" data-zoom="fit">FIT</button>
-        </div>
-      </div>
-      <aside class="tech-detail ${sel.capstone ? 'cap' : ''}" style="--branch:${selColor}">
-        <div class="tech-detail-head">
-          <span class="tech-icon">${sel.icon || '*'}</span>
-          <div><strong class="tech-name">${sel.label}</strong><span class="tech-rank-text">RANK ${lvl}/${max}${sel.capstone ? ' · CAPSTONE' : ''}</span></div>
-        </div>
-        <div class="tech-pips">${pips}</div>
-        <p class="tech-desc">${sel.desc.replace(/^CAPSTONE: /, '')}</p>
-        ${reqs ? `<ul class="tech-reqs"><li class="tech-reqs-title">REQUIRES</li>${reqs}</ul>` : ''}
-        ${buy}
-      </aside>`;
-
-    this._bindTechCamera(container);
-
-    container.querySelectorAll('[data-node]').forEach((el) => el.addEventListener('click', () => {
-      if (this._techDragged || this._techSelected === el.dataset.node) return;
-      soundEngine.playUI();
-      this._techSelected = el.dataset.node;
-      this.showTech(techTree);
-    }));
-    container.querySelector('[data-buy]')?.addEventListener('click', (e) => {
-      soundEngine.play('confirm');
-      haptics.impact('medium');
-      this.cb.onTechPurchase(e.currentTarget.dataset.buy);
-    });
-  }
-
-  // ---------- Tech tree camera (pan / zoom) ----------
-
-  _techApplyCam() {
-    const world = document.getElementById('tech-world');
-    const cam = this._techCam;
-    if (world && cam) world.style.transform = `translate(${cam.x}px, ${cam.y}px) scale(${cam.k})`;
-  }
-
-  _techZoomLimits() {
-    const view = document.getElementById('tech-view');
-    const w = view?.clientWidth || 600;
-    const h = view?.clientHeight || 300;
-    const fit = Math.min(w / (TECH_BOUNDS.w + 60), h / (TECH_BOUNDS.h + 60));
-    return { fit, min: Math.min(fit, 1) * 0.9, max: 1.6, w, h };
-  }
-
-  /** Centre the camera on a world point at zoom k. */
-  _techLookAt(x, y, k) {
-    const { min, max, w, h } = this._techZoomLimits();
-    const kk = Math.max(min, Math.min(max, k));
-    this._techCam = { x: w / 2 - x * kk, y: h / 2 - y * kk, k: kk };
-    this._techApplyCam();
-  }
-
-  _techFit() {
-    const { fit } = this._techZoomLimits();
-    this._techLookAt(TECH_BOUNDS.cx, TECH_BOUNDS.cy, fit);
-  }
-
-  _techZoomAt(factor, sx, sy) {
-    const cam = this._techCam;
-    const { min, max } = this._techZoomLimits();
-    const k = Math.max(min, Math.min(max, cam.k * factor));
-    // Keep the world point under (sx, sy) fixed
-    cam.x = sx - ((sx - cam.x) / cam.k) * k;
-    cam.y = sy - ((sy - cam.y) / cam.k) * k;
-    cam.k = k;
-    this._techApplyCam();
-  }
-
-  _bindTechCamera(container) {
-    const view = container.querySelector('#tech-view');
-    if (!this._techCam) {
-      // First visit: whole tree on big screens, the core and inner branches on phones
-      const { fit } = this._techZoomLimits();
-      if (fit >= 0.75) this._techFit();
-      else this._techLookAt(TECH_CORE.x, TECH_CORE.y, 0.8);
-    } else {
-      this._techApplyCam();
-    }
-
-    container.querySelectorAll('[data-zoom]').forEach((btn) => btn.addEventListener('click', () => {
-      soundEngine.playUI();
-      const { w, h } = this._techZoomLimits();
-      if (btn.dataset.zoom === 'fit') this._techFit();
-      else this._techZoomAt(btn.dataset.zoom === 'in' ? 1.25 : 0.8, w / 2, h / 2);
-    }));
-
-    const pointers = new Map();
-    let last = null; // { x, y, dist }
-    const local = (e) => {
-      const r = view.getBoundingClientRect();
-      return { x: e.clientX - r.left, y: e.clientY - r.top };
-    };
-    const snapshot = () => {
-      const pts = [...pointers.values()];
-      if (pts.length >= 2) {
-        return { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2, dist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) };
-      }
-      return pts[0] ? { ...pts[0], dist: 0 } : null;
-    };
-
-    view.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.tech-zoom')) return;
-      pointers.set(e.pointerId, local(e));
-      last = snapshot();
-      this._techDragged = false;
-      this._techDragStart = local(e);
-    });
-    view.addEventListener('pointermove', (e) => {
-      if (!pointers.has(e.pointerId)) return;
-      pointers.set(e.pointerId, local(e));
-      const now = snapshot();
-      if (!now || !last) return;
-      const start = this._techDragStart;
-      if (start && Math.hypot(now.x - start.x, now.y - start.y) > 8) this._techDragged = true;
-      if (!this._techDragged) return;
-      this._techCam.x += now.x - last.x;
-      this._techCam.y += now.y - last.y;
-      if (now.dist && last.dist) this._techZoomAt(now.dist / last.dist, now.x, now.y);
-      else this._techApplyCam();
-      last = now;
-    });
-    const end = (e) => {
-      pointers.delete(e.pointerId);
-      last = snapshot();
-      // A drag must not also count as a tap on the node under the finger
-      if (this._techDragged) setTimeout(() => { this._techDragged = false; }, 0);
-    };
-    view.addEventListener('pointerup', end);
-    view.addEventListener('pointercancel', end);
-    view.addEventListener('pointerleave', end);
-    view.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      const p = local(e);
-      this._techZoomAt(e.deltaY < 0 ? 1.12 : 0.9, p.x, p.y);
-    }, { passive: false });
   }
 
   // ---------- Run map screen ----------
@@ -1066,7 +791,6 @@ export class UIManager {
     this.updateRunHud(run);
     this.renderMap(run, mapInstance, floor);
     this.renderQuests(run);
-    this.renderRelics(run);
   }
 
   updateRunHud(run) {
@@ -1118,23 +842,12 @@ export class UIManager {
       chip.innerHTML = `<b style="color:#73eff7">${cond.name}</b> ${cond.desc}`;
       container.prepend(chip);
     }
-    for (const id of run.curses || []) {
-      const curse = CONFIG.curses.find((c) => c.id === id);
-      if (!curse) continue;
-      const chip = document.createElement('span');
-      chip.className = 'boon-chip';
-      chip.style.borderColor = '#ff5d73';
-      chip.innerHTML = `<b style="color:#ff5d73">CURSE: ${curse.name}</b> ${curse.desc}`;
-      container.appendChild(chip);
-    }
-
-    this.renderRelics(run);
     this.renderQuests(run);
   }
 
   /**
    * Effective numbers for the Status drawer: everything folded together
-   * (class, relics, boons, tech perks, Risk, run condition), shown as what
+   * (gear, mastery, boons, Risk, run condition), shown as what
    * it means in a fight rather than raw multipliers.
    */
   _runStatRows(run) {
@@ -1147,27 +860,25 @@ export class UIManager {
     const dmg = Math.round((run.atk * (run.condition === 'glass_war' ? 1.3 : 1) - 1) * 100);
     const crit = Math.round((0.05 + (perm.critChance || 0)) * 100);
     const rig = perm.mech?.rig || CONFIG.gear.baseRig;
-    const energy = rig.energy + (perm.rigEnergy || 0) + (run.hasRelic('rel_energy_well') ? 12 : 0);
-    const regen = rig.regen + (perm.rigRegen || 0) + (run.hasRelic('rel_energy_well') ? 3 : 0) + (run.hasRelic('rel_overcharge') ? 4 : 0);
     const def = run.totalDef;
-    const red = Math.max(-0.5, Math.min(0.85, (run.damageReductionPct || 0) + (perm.kineticDampenerPct || 0)));
+    const res = run.res;
+    const red = Math.max(-0.5, Math.min(0.85, run.damageReductionPct || 0));
     const taken = Math.round(((1 - red) * (1 + (risk.plusDmgTaken || 0) / 100) - 1) * 100);
     const power = Math.round((run.launchPowerMult - 1) * 100);
 
     const rows = [
       { label: 'HP', value: `${Math.ceil(run.hp)}/${run.maxHp}${run.shieldHp > 0 ? ` +${Math.ceil(run.shieldHp)}` : ''}`, hint: run.shieldHp > 0 ? 'includes shield' : ball.name },
-      { label: 'GUN DAMAGE', value: signed(dmg), tone: tone(dmg), hint: 'ATK from gear, relics, mastery' },
+      { label: 'GUN DAMAGE', value: signed(dmg), tone: tone(dmg), hint: 'ATK from gear, boons, mastery' },
       { label: 'CRIT CHANCE', value: `${crit}%`, hint: 'crits hit 1.75x' },
-      { label: 'DEF', value: `${def}`, hint: def > 0 ? `about -${Math.round(def * 0.75)} per enemy hit` : 'no flat reduction' },
-      { label: 'DAMAGE TAKEN', value: signed(taken), tone: tone(taken, false), hint: 'relics, perks, Risk' },
-      { label: 'ENERGY', value: `${energy} +${regen}/T`, hint: 'per shot, refills each turn' },
-      { label: 'HEAT', value: `${rig.heatCap + 0} -${rig.cool + (perm.rigCool || 0)}/T`, hint: 'cap, cools each turn' },
+      ...DTYPE_KEYS.map((t) => {
+        const v = Math.round((def + (res[t] || 0)) * 10) / 10;
+        return { label: `${DTYPES[t].name} RES`, value: `${v}`, tone: res[t] > 0 ? 'good' : '', hint: v > 0 ? `about -${Math.round(Math.min(12, v) * 0.75)} per ${DTYPES[t].short} hit` : 'no reduction' };
+      }),
+      { label: 'DAMAGE TAKEN', value: signed(taken), tone: tone(taken, false), hint: 'Risk' },
+      { label: 'ENERGY', value: `${rig.energy} +${rig.regen}/T`, hint: 'per shot, refills each turn' },
+      { label: 'HEAT', value: `${rig.heatCap} -${rig.cool}/T`, hint: 'cap, cools each turn' },
       { label: 'MOVE POWER', value: signed(power), tone: tone(power), hint: 'max launch speed / range' },
     ];
-    if (perm.vampiricVitalityPct) rows.push({ label: 'LIFESTEAL', value: `${Math.round(perm.vampiricVitalityPct * 1000) / 10}%`, tone: 'good', hint: 'of damage dealt' });
-    if (perm.forcefieldTurnInterval) rows.push({ label: 'FORCEFIELD', value: `EVERY ${perm.forcefieldTurnInterval}T`, tone: 'good', hint: 'blocks one hit' });
-    if (perm.counterPct) rows.push({ label: 'COUNTER', value: `${Math.round(perm.counterPct * 100)}%`, tone: 'good', hint: 'damage sent back' });
-    if (perm.secondWindPct) rows.push({ label: 'SECOND WIND', value: run.secondWindUsed ? 'USED' : 'READY', tone: run.secondWindUsed ? 'bad' : 'good', hint: `revive at ${Math.round(perm.secondWindPct * 100)}% HP` });
     rows.push({ label: 'FLOOR', value: run.floorProgress });
     return rows;
   }
@@ -1210,7 +921,7 @@ export class UIManager {
             ${q.completed ? '[x]' : '[-]'} ${q.name}
           </span>
           <span style="font-family:var(--mono);font-size:11px;color:${q.completed ? 'var(--green)' : 'var(--accent)'};font-weight:700;">
-            +${q.reward} TP
+            +${q.reward} SCRAP
           </span>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text-dim);">
@@ -1255,9 +966,8 @@ export class UIManager {
       shop: 'SUPPLY DEPOT',
       rest: 'SAFE ZONE',
       minigame: 'PRECISION DRILL',
-      treasure: 'TREASURE CACHE',
+      treasure: 'SUPPLY CACHE',
       gamble: 'BACK-ALLEY GAMBLE',
-      shrine: 'CURSE SHRINE',
       entry: 'START',
     };
     const title = labels[node.type] || node.type.toUpperCase();
@@ -1305,17 +1015,16 @@ export class UIManager {
   _nodeDescription(node) {
     const chip = (icon, text, cls = '') => `<span class="node-chip ${cls}">${ico(icon)}${text}</span>`;
     const R = {
-      combat: ['Win clean for a bonus.', [chip('key', 'KEYS x3'), chip('gold', 'GOLD'), chip('tp', 'TP')]],
-      elite: ['Tough. Worth it.', [chip('relic', 'RELIC'), chip('gold', 'GOLD'), chip('tp', 'TP x2'), chip('key', 'KEYS')]],
-      miniboss: ['Sector guardian.', [chip('gold', '+50'), chip('relic', 'RELIC x2'), chip('key', 'KEYS')]],
+      combat: ['Win clean for a bonus.', [chip('key', 'KEYS x3'), chip('gold', 'GOLD'), chip('scrap', 'SCRAP')]],
+      elite: ['Tough. Worth it.', [chip('key', 'KEYS x5'), chip('gold', 'GOLD'), chip('scrap', 'SCRAP x10')]],
+      miniboss: ['Sector guardian.', [chip('gold', '+50'), chip('key', 'KEYS x5'), chip('scrap', 'SCRAP x16')]],
       boss: ['Win the operation.', [chip('skull', 'BOSS', 'bad'), chip('key', 'KEYS')]],
       encounter: ['Unknown signal.', [chip('star', 'REWARD?'), chip('hp', 'RISK?', 'bad')]],
-      shop: ['Spend gold on relics.', [chip('relic', 'RELICS')]],
+      shop: ['Repairs, Keys, scrap, boons.', [chip('gold', 'SPEND GOLD')]],
       rest: ['Catch your breath.', [chip('heal', 'HEAL')]],
       minigame: ['Timing test.', [chip('gold', 'GOLD'), chip('heal', 'HEAL')]],
-      treasure: ['Unguarded.', [chip('relic', '1 OF 2 FREE')]],
+      treasure: ['Unguarded.', [chip('star', '1 OF 2 FREE')]],
       gamble: ['Coin flip.', [chip('gold', '-15', 'bad'), chip('gold', '50%: +45')]],
-      shrine: ['Power, for a price.', [chip('skull', 'CURSE', 'bad'), chip('relic', 'EPIC RELIC')]],
     }[node.type];
     if (!R) return '';
     return `<p class="node-line">${R[0]}</p><div class="node-chips">${R[1].join('')}</div>`;
@@ -1363,11 +1072,9 @@ export class UIManager {
     const tile = (icon, value, label, color) => tiles.push(`<div class="reward-tile br-pop" style="--c:${color}">${icon}<strong data-count="${value}" data-prefix="+">+0</strong><span>${label}</span></div>`);
     if (rewards) {
       if (rewards.gold) tile(ico('gold'), rewards.gold, 'GOLD', '#ffcd75');
-      if (rewards.tech) tile(ico('tp'), rewards.tech, 'TP', '#73eff7');
+      if (rewards.scrap) tile(ico('scrap'), rewards.scrap, 'SCRAP', '#94b0c2');
       if (rewards.tokens) tile(ico('key'), rewards.tokens, 'KEYS', '#ffcd75');
       if (rewards.heal) tile(ico('hp'), rewards.heal, 'HP', '#ff5d73');
-      const relics = rewards.relics?.length ? rewards.relics : rewards.relic ? [rewards.relic] : [];
-      for (const rel of relics) tiles.push(`<div class="reward-tile br-pop" style="--c:${RARITY[rel.rarity]?.color || '#c46fd6'}">${ico('relic')}<strong>+1</strong><span>${rel.name}</span></div>`);
     }
     const hpPct = run ? Math.max(0, Math.min(100, Math.round((run.hp / run.maxHp) * 100))) : 0;
     const right = win
@@ -1434,8 +1141,8 @@ export class UIManager {
       if (c.heal) parts.push(`<span class="tag-pill tag-gain">+${c.heal} HP</span>`);
       if (c.gainMaxHp) parts.push(`<span class="tag-pill tag-gain">+${c.gainMaxHp} MAX HP</span>`);
       if (c.gainGold) parts.push(`<span class="tag-pill tag-gold">+${c.gainGold} GOLD</span>`);
-      if (c.gainTech) parts.push(`<span class="tag-pill tag-tech">+${c.gainTech} TECH PTS</span>`);
-      if (c.gainRelic) parts.push(`<span class="tag-pill tag-gold">+ RANDOM RELIC</span>`);
+      if (c.gainScrap) parts.push(`<span class="tag-pill tag-tech">+${c.gainScrap} SCRAP</span>`);
+      if (c.gainKeys) parts.push(`<span class="tag-pill tag-gold">+${c.gainKeys} KEYS</span>`);
       if (c.gainBoon) {
         const boon = CONFIG.boons.find((b) => b.id === c.gainBoon);
         if (boon) parts.push(`<span class="tag-pill tag-boon">+ ${boon.name.toUpperCase()}: ${boon.desc}</span>`);
@@ -1472,37 +1179,22 @@ export class UIManager {
     let body = `<div class="shop-header-info">${ico('gold')}<span class="accent">${run.gold}G</span></div>`;
     body += '<div class="shop-grid">';
 
-    for (const relic of shopItems) {
-      const cost = run.relicPrice(relic);
-      const alreadyOwned = run.relics.includes(relic.id);
+    shopItems.forEach((item, i) => {
+      const sup = getSupply(item.id);
+      if (!sup) return;
+      const cost = run.price(sup.cost);
       const affordable = run.gold >= cost;
-
-      body += `
-        <div class="shop-item">
-          <div class="shop-item-head">
-            <span class="shop-item-icon">${relic.icon || '[*]'}</span>
-            <strong class="relic-name">${relic.name}</strong>
-            <span class="shop-item-cat" style="color:${RARITY[relic.rarity]?.color || 'inherit'}">${relic.category || ''}</span>
-          </div>
-          <div class="shop-desc">${relic.desc}</div>
-          <button class="btn ${alreadyOwned ? 'btn-outline' : affordable ? 'btn-accent' : 'btn-outline'}"
-            data-relic="${relic.id}" ${alreadyOwned || !affordable ? 'disabled' : ''}>${alreadyOwned ? 'OWNED' : cost + ' G'}</button>
-        </div>
-      `;
-    }
+      const label = item.sold ? 'SOLD' : `${cost} G`;
+      body += this._supplyCard(sup, `<button class="btn ${!item.sold && affordable ? 'btn-accent' : 'btn-outline'}" data-buy="${i}" ${item.sold || !affordable ? 'disabled' : ''}>${label}</button>`);
+    });
 
     body += '</div>';
 
     this.openModal('SUPPLY DEPOT', body, '');
 
-    // Bind relic purchase buttons
-    this.modalBody.querySelectorAll('button[data-relic]').forEach((btn) => {
+    this.modalBody.querySelectorAll('button[data-buy]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const id = btn.dataset.relic;
-        const relic = CONFIG.relics.find((r) => r.id === id);
-        if (relic && this.cb.onRelicBuy(relic)) {
-          this.cb.onShopRefresh();
-        }
+        if (this.cb.onSupplyBuy(Number(btn.dataset.buy))) this.cb.onShopRefresh();
       });
     });
 
@@ -1535,57 +1227,14 @@ export class UIManager {
     }
   }
 
-  /** Render the relic detail panel on the run sidebar. */
-  renderRelics(run) {
-    const container = document.getElementById('run-relics');
-    if (!container) return;
-    container.innerHTML = '';
-    if (run.relics.length === 0) {
-      container.innerHTML = '<span class="dim-text">No relics</span>';
-      return;
-    }
-    for (const id of run.relics) {
-      const relic = CONFIG.relics.find((r) => r.id === id);
-      if (!relic) continue;
-      const item = document.createElement('div');
-      item.className = 'relic-item';
-      item.innerHTML = `
-        <div class="relic-name" style="color:${RARITY[relic.rarity]?.color || 'inherit'}">${relic.name} <span class="relic-rarity">${RARITY[relic.rarity]?.label || ''}</span></div>
-        <div class="relic-desc">${relic.desc}</div>
-      `;
-      container.appendChild(item);
-    }
-  }
-
   showRest(run) {
-    let healVal = CONFIG.run.hpRegenPerRest || 30;
-    let maxHpVal = 0;
+    const healVal = CONFIG.run.hpRegenPerRest || 30;
     const notes = [];
 
-    if (run.permanent?.titanCoreHealBonusPct > 0) {
-      healVal = Math.round(healVal * (1 + run.permanent.titanCoreHealBonusPct));
-      maxHpVal += (run.permanent.titanCoreMaxHpBonus || 0);
-      notes.push('Titan Core');
-    }
-
-    if (run.hasRelic?.('rel_family_feast')) {
-      maxHpVal += 10;
-      notes.push('Family Feast');
-    }
-    if (run.hasRelic?.('rel_golden_apple')) {
-      healVal = run.maxHp + maxHpVal;
-      notes.push('Golden Apple');
-    }
-
-    // Same multiplier the heal will use (Risk + Festering Wounds curse), capped at max HP
+    // Same multiplier the heal will use (Risk), capped at max HP
     const healMultiplier = run.healMult ?? saveSystem.getHealingMultiplier();
-    const rawHeal = Math.round(healVal * healMultiplier);
-    const effectiveHealVal = run.permanent?.overflowShieldCapPct > 0 ? rawHeal : Math.max(0, Math.min(rawHeal, run.maxHp + maxHpVal - run.hp));
-
-    let buttonText = run.hasRelic?.('rel_golden_apple') ? 'HEAL TO FULL' : `HEAL ${effectiveHealVal} HP`;
-    if (maxHpVal > 0) {
-      buttonText += ` & +${maxHpVal} MAX HP`;
-    }
+    const effectiveHealVal = Math.max(0, Math.min(Math.round(healVal * healMultiplier), run.maxHp - run.hp));
+    const buttonText = `HEAL ${effectiveHealVal} HP`;
 
     if (healMultiplier < 1) {
       notes.push(`Heal penalty (-${Math.round((1 - healMultiplier) * 100)}%)`);
@@ -1655,11 +1304,7 @@ export class UIManager {
       const parts = [];
       if (rewards.gold) parts.push(`+${rewards.gold} Gold`);
       if (rewards.healText || rewards.heal) parts.push(`<span style="color:#5fd3a8">${rewards.healText || ('+' + rewards.heal + ' HP Healed')}</span>`);
-      if (rewards.relics && rewards.relics.length) {
-        for (const r of rewards.relics) {
-          parts.push(`<span style="color:var(--accent)">+ RELIC: ${r.name}</span>`);
-        }
-      }
+      if (rewards.keys) parts.push(`<span style="color:var(--accent)">+${rewards.keys} KEY${rewards.keys > 1 ? 'S' : ''}</span>`);
       if (parts.length) {
         body += `<div style="padding:10px 14px;background:var(--bg-panel-2);border:1px solid var(--border);border-radius:4px;text-align:left;">
           <div style="font-size:10px;color:var(--text-dim);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px;">REWARDS EARNED</div>
@@ -1692,7 +1337,7 @@ export class UIManager {
       depth ? tile('ABYSS', depth) : tile('FLOOR', `${Math.min(run.floor + 1, CONFIG.map.floors)}/${CONFIG.map.floors}`),
       tile('BATTLES WON', run.combatsWon),
       tile('BALL', run.ball?.name || 'VANGUARD'),
-      tile('RELICS', run.relics.length),
+      tile('KEYS EARNED', run.tokensEarned || 0),
       tile('RISK', saveSystem.getDifficultyLevel()),
       tile('CONDITION', cond ? cond.name : '-'),
     ].join('');
@@ -1704,13 +1349,13 @@ export class UIManager {
       item.className = `quest-item ${q.completed ? 'done' : ''}`;
       item.innerHTML = `
         <span>${q.completed ? '✓' : '•'} ${q.name}</span>
-        <span class="quest-reward">${q.completed ? `+${q.reward} TP` : '—'}</span>
+        <span class="quest-reward">${q.completed ? `+${q.reward} SCRAP` : '—'}</span>
       `;
       questList.appendChild(item);
     }
     if (!quests.length) questList.innerHTML = '<span class="dim-text">No quests this run.</span>';
-    const tp = meta?.techPoints ?? (this.cb.getTechPoints ? this.cb.getTechPoints() : 0);
-    document.getElementById('result-tp').textContent = `TECH POINTS: ${tp}`;
+    const m = saveSystem.getMech();
+    document.getElementById('result-tp').textContent = `KEYS: ${m.tokens} · SCRAP: ${m.scrap}`;
   }
 
   /** Mastery XP line on the result screen: +XP, level bar, level-ups and milestones reached. */
@@ -1738,7 +1383,7 @@ export class UIManager {
     const first = depth === 0;
     const reward = rewards ? `<div class="reward-tiles">
         <div class="reward-tile" style="--c:#ffcd75">${ico('key')}<strong>+${rewards.keys}</strong><span>KEYS</span></div>
-        <div class="reward-tile" style="--c:#73eff7">${ico('tp')}<strong>+${rewards.tp}</strong><span>TP</span></div>
+        <div class="reward-tile" style="--c:#94b0c2">${ico('scrap')}<strong>+${rewards.scrap}</strong><span>SCRAP</span></div>
       </div>` : '';
     this.openModal(first ? 'SECTOR CLEAR' : `ABYSS ${depth} CLEARED`, `
       ${first ? '<p class="node-line">The run counts as a win. Something waits below.</p>' : reward}
@@ -1901,86 +1546,8 @@ export class UIManager {
       }
     }
   }
-
-  _tp() {
-    // Tech points are read from the save via a callback.
-    return this.cb.getTechPoints ? this.cb.getTechPoints() : 0;
-  }
 }
 
 // Battle report: gun names back to their parts (icons / colours)
 const PARTS_BY_NAME = Object.fromEntries(PARTS.map((p) => [p.name, p]));
 
-// ---------- Tech tree layout ----------
-// Four branches grow out of the CORE like an X; `col` is how far along the
-// branch a node sits, `row` (0-2) which side of the branch it forks to.
-const TECH_BRANCHES = [
-  { key: 'rct', title: 'REACTOR', color: '#73eff7', angle: (-150 * Math.PI) / 180 },
-  { key: 'sur', title: 'SURVIVAL', color: '#a7f070', angle: (-30 * Math.PI) / 180 },
-  { key: 'bar', title: 'BARRIER', color: '#41a6f6', angle: (30 * Math.PI) / 180 },
-  { key: 'tac', title: 'TACTICS', color: '#c46fd6', angle: (150 * Math.PI) / 180 },
-];
-const TECH_WORLD = { w: 1500, h: 1000 };
-const TECH_CORE = { x: TECH_WORLD.w / 2, y: TECH_WORLD.h / 2 };
-
-function techNodePos(n) {
-  const branch = TECH_BRANCHES.find((b) => b.key === n.branch) || TECH_BRANCHES[0];
-  const col = n.col || 0;
-  const along = 160 + col * 145;
-  // Forks spread wider the further out they grow; the ATK/TAC side mirrors
-  // so "row 0" always points away from the horizontal centre line
-  const flip = Math.sin(branch.angle) < 0 ? -1 : 1;
-  const side = ((n.row ?? 1) - 1) * (84 + col * 10) * flip;
-  const dx = Math.cos(branch.angle);
-  const dy = Math.sin(branch.angle);
-  return { x: Math.round(TECH_CORE.x + dx * along - dy * side), y: Math.round(TECH_CORE.y + dy * along + dx * side) };
-}
-
-// Bounding box of every node, for "FIT"
-const TECH_BOUNDS = (() => {
-  const pts = Object.values(CONFIG.techTree).map(techNodePos);
-  pts.push(TECH_CORE);
-  const xs = pts.map((p) => p.x);
-  const ys = pts.map((p) => p.y);
-  const pad = 70;
-  const minX = Math.min(...xs) - pad;
-  const maxX = Math.max(...xs) + pad;
-  const minY = Math.min(...ys) - pad;
-  const maxY = Math.max(...ys) + pad;
-  return { w: maxX - minX, h: maxY - minY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 };
-})();
-
-/**
- * Every active tech perk as { label, value }, with values combined the way
- * battles apply them (e.g. Sharpshooter and Base ATK Core multiply).
- */
-function techBonusList(st) {
-  const out = [];
-  const add = (cond, label, value) => { if (cond) out.push({ label, value }); };
-  const pct = (v) => Math.round(v * 1000) / 10;
-  add(st.rigEnergy, 'Energy pool', `+${st.rigEnergy}`);
-  add(st.rigRegen, 'Energy per turn', `+${st.rigRegen}`);
-  add(st.rigCool, 'Cooling per turn', `+${st.rigCool}`);
-  add(st.freeFirstShot, 'First shot', 'free');
-  add(st.killEnergy, 'Kills refund', `${st.killEnergy} energy`);
-  add(st.overclock, 'Every 3rd turn', '+1 action');
-  add(st.barrierHpPct, 'Barrier HP', `+${pct(st.barrierHpPct)}%`);
-  add(st.barrierCdCut, 'Barrier cooldown', `-${st.barrierCdCut}T`);
-  add(st.barrierSpikeDmg, 'Barrier spikes', `${st.barrierSpikeDmg} dmg`);
-  add(st.barrierExtra, 'Barriers on field', `+${st.barrierExtra}`);
-  add(st.bulwarkPct, 'Behind a barrier', `-${pct(st.bulwarkPct)}% dmg`);
-  add(st.barrierForcefield, 'Barrier', 'grants Forcefield');
-  add(st.emergencyMedkitHeal, 'Emergency heal', `${st.emergencyMedkitHeal} HP`);
-  add(st.overflowShieldCapPct, 'Overflow shield cap', `${pct(st.overflowShieldCapPct)}% HP`);
-  add(st.forcefieldTurnInterval, 'Forcefield', `every ${st.forcefieldTurnInterval} turns`);
-  add(st.vampiricVitalityPct, 'Lifesteal', `${pct(st.vampiricVitalityPct)}%`);
-  add(st.counterPct, 'Counter damage', `${pct(st.counterPct)}%`);
-  add(st.secondWindPct, 'Second Wind', `revive at ${pct(st.secondWindPct)}%`);
-  add(st.startGoldBonus, 'Start gold', `+${st.startGoldBonus}`);
-  add(st.shopDiscountBonus, 'Shop prices', `-${pct(st.shopDiscountBonus)}%`);
-  add(st.extraMoves, 'Moves per floor', `+${st.extraMoves}`);
-  add(st.tpBonusPct, 'Battle TP', `+${pct(st.tpBonusPct)}%`);
-  add(st.keyBonus, 'Keys per win', `+${st.keyBonus}`);
-  add(st.supplyDropRelics, 'Starting relics', `${st.supplyDropRelics}`);
-  return out;
-}

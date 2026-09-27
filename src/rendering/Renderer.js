@@ -16,6 +16,7 @@ import { getTerrain, groundAt } from '../core/Physics.js';
 import { fitCanvas, clientToWorld } from './viewport.js';
 import { paintBall, CLASS_PATTERN } from './ballSprite.js';
 import { partCanvas, iconCanvas } from './pixelIcons.js';
+import { DTYPES, DTYPE_KEYS, dtypeOf, resistOf } from '../meta/Mech.js';
 
 const C = CONFIG.colors;
 const W = CONFIG.world;
@@ -49,7 +50,7 @@ export class Renderer {
     this._bgCache = null;
     this._sprites = new Map();
     this._floaters = []; // floating damage / heal numbers
-    this._callouts = []; // ability / relic labels above balls
+    this._callouts = []; // short labels above balls (hits, status)
     this._ambient = []; // status-effect particles (flames, frost, acid)
     this._hpSeen = new Map(); // ball → last seen hp
     this._banner = null; // { text, color, t }
@@ -99,7 +100,7 @@ export class Renderer {
     this._floaters.push({ x, y, text, color, big, t: 0, life: big ? 1.2 : 1.0, stack });
   }
 
-  /** Label that follows a ball for a moment: ability names, relic triggers. */
+  /** Label that follows a ball for a moment: hits, status changes. */
   addCallout(ball, text, color = '#f4f4f4') {
     const stack = this._callouts.filter((c) => c.ball === ball).length;
     this._callouts.push({ ball, text, color, t: 0, life: 1.4, stack });
@@ -845,8 +846,9 @@ export class Renderer {
     // Sized for phones: the world is drawn at roughly 0.6x on a small screen
     const S = 4; // icon scale
     const rowH = 56;
+    const head = 80; // name + legs, then the resist line
     const w = 640;
-    const h = 52 + Math.max(1, guns.length) * rowH;
+    const h = head + Math.max(1, guns.length) * rowH;
     const x = Math.round(Math.max(8, Math.min(W.width - w - 8, ball.x - w / 2)));
     const above = ball.y - ball.radius - 30 - h;
     const y = Math.round(above > 60 ? above : Math.min(W.height - h - 8, ball.y + ball.radius + 30));
@@ -875,16 +877,29 @@ export class Renderer {
       ctx.textAlign = 'left';
       ctx.font = `700 22px ${FONT}`;
     }
+    // Resists per damage type (DEF counts for all three)
+    ctx.font = `700 16px ${FONT}`;
+    let rx = x + 16;
+    ctx.fillStyle = '#94b0c2';
+    ctx.fillText('RES', rx, y + 60);
+    rx += 50;
+    for (const t of DTYPE_KEYS) {
+      const label = `${DTYPES[t].short} ${Math.round(resistOf(ball, t) * 10) / 10}`;
+      ctx.fillStyle = DTYPES[t].color;
+      ctx.fillText(label, rx, y + 60);
+      rx += ctx.measureText(label).width + 22;
+    }
+    ctx.font = `700 22px ${FONT}`;
     if (!guns.length) {
       ctx.fillStyle = '#94b0c2';
-      ctx.fillText('UNARMED', x + 16, y + 52 + rowH / 2);
+      ctx.fillText('UNARMED', x + 16, y + head + rowH / 2);
     }
     const icon = (name, ix, iy) => {
       const c = iconCanvas(name);
       ctx.drawImage(c, ix, Math.round(iy - c.height * 1.5), c.width * 3, c.height * 3);
     };
     guns.forEach((g, i) => {
-      const ry = y + 52 + i * rowH;
+      const ry = y + head + i * rowH;
       const cy = ry + rowH / 2;
       if (i) {
         ctx.fillStyle = '#2a3048';
@@ -905,8 +920,8 @@ export class Renderer {
         ctx.fillText('DRONE · EVERY TURN', cx + 110, cy);
         return;
       }
-      icon('dmg', cx, cy);
-      ctx.fillStyle = '#f4f4f4';
+      icon(DTYPES[dtypeOf(g)].icon, cx, cy);
+      ctx.fillStyle = DTYPES[dtypeOf(g)].color;
       ctx.fillText(`${Math.round(g.dmg)}`, cx + 30, cy);
       cx += 86;
       // Range strip: 0 .. 1400 world px, the hittable band in the gun's colour
@@ -1045,9 +1060,6 @@ export class Renderer {
     if (ball.forcefield) rings.push('#a7f070');
     if (ball.burnTicks > 0) rings.push('#ef7d57');
     if (ball.isFrozen) rings.push('#73eff7');
-    if (ball.corrodeTicks > 0) rings.push('#a7f070');
-    if (ball.isOvercharged) rings.push('#ef7d57');
-    if (ball.hasFortified) rings.push('#41a6f6');
     rings.forEach((col, i) => {
       ctx.strokeStyle = col;
       ctx.lineWidth = 5;
@@ -1078,21 +1090,6 @@ export class Renderer {
     const dw = Math.round(size * sx);
     const dh = Math.round(size * sy);
     ctx.drawImage(this._ballSprite(ball, isFlashing), Math.round(ball.x - dw / 2), Math.round(ball.y + r - dh), dw, dh);
-    if (ball.shieldCharges > 0) {
-      ctx.strokeStyle = '#41a6f6';
-      ctx.fillStyle = 'rgba(65, 166, 246, 0.2)';
-      ctx.lineWidth = 5;
-      ctx.beginPath();
-      for (let i = 0; i < 6; i++) {
-        const a = (i / 6) * Math.PI * 2 + performance.now() / 900;
-        const px = ball.x + Math.cos(a) * (r + 12);
-        const py = ball.y + Math.sin(a) * (r + 12);
-        i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
-      }
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-    }
     if (ball.rank) {
       // Pixel crown marks mini-bosses and bosses (red once enraged)
       const cx = Math.round(ball.x);
@@ -1383,22 +1380,12 @@ export class Renderer {
       tags.push({ label: `BURN ${ball.burnTicks}`, color: '#ef7d57', desc: `Burning! Takes ${ball.burnDmg || 8} damage at the start of each turn. ${ball.burnTicks} turn(s) remaining.` });
     if (ball.isFrozen)
       tags.push({ label: 'FROZEN', color: '#73eff7', desc: 'Frozen! Next launch speed reduced by 35%.' });
-    if (ball.corrodeTicks > 0)
-      tags.push({ label: `ACID ${ball.corrodeTicks}`, color: '#a7f070', desc: `Corroded! Loses ${ball.corrodeDefDrain || 1} DEF at the start of each turn. ${ball.corrodeTicks} turn(s) remaining.` });
-    if (ball.isRallied)
-      tags.push({ label: 'RALLIED', color: '#ffcd75', desc: 'Rallied by Field Commander: +20% ATK and +3 DEF.' });
-    if (ball.isOvercharged)
-      tags.push({ label: 'CHARGED', color: '#ef7d57', desc: 'Charged guns: +35% damage this turn.' });
-    if (ball.hasFortified)
-      tags.push({ label: 'FORTIFIED', color: '#41a6f6', desc: 'Fortified Shield! Defense increased by +3.' });
     if (ball.exposed)
       tags.push({ label: 'EXPOSED', color: '#ffcd75', desc: 'Rammed! Takes +25% gun damage until its next turn.' });
     if (ball.heatCap && ball.heat > ball.heatCap)
       tags.push({ label: 'OVERHEATED', color: '#ff5d73', desc: 'Too hot to fire until it cools down.' });
 
     if (ball.team === 'player') {
-      const bs = this.worldRef?.battleStats;
-      if (bs?.bouncedThisTurn && this.worldRef?.relics?.includes?.('rel_radiant_crest')) tags.push({ label: 'RICOCHET +35%', color: '#ffcd75', desc: 'Ricochet Crest: your guns deal +35% this turn.' });
       if (ball.forcefield) tags.push({ label: 'FORCEFIELD', color: '#a7f070', desc: 'Forcefield Barrier Active! Blocks 1 incoming attack.' });
     }
     if (tags.length === 0) return;
@@ -1570,7 +1557,8 @@ export class Renderer {
   }
 
   _drawTurnHint(ctx, view, turnSystem, world) {
-    if ((world.battleStats?.turns || 0) > 1) return; // teach the controls on the first turns only
+    // Teach the controls on the first turns of a new player's first run only
+    if (!world.showHints || (world.battleStats?.turns || 0) > 1) return;
     if (turnSystem?.phase !== 'PLAYER_AIM' || world.slingshotInput?.dragging || world.slingshotInput?.placementMode) return;
     if (world.gear && !(world.player?.actionsLeft > 0)) return;
     this._centerNotice(ctx, view, world.gear ? '2 ACTIONS: DRAG TO MOVE, TAP A GUN TO FIRE, OR VENT' : 'DRAG ANYWHERE, PULL BACK & RELEASE TO FIRE', '#f4f4f4', view.cssH * 0.66);

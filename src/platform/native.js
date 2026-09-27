@@ -43,7 +43,6 @@ function handleBack() {
   }
 
   // 5. Sub-screens return to the main menu
-  if (isVisible('screen-tech')) return click('btn-tech-back');
   if (isVisible('screen-rig')) return click('btn-rig-back');
   if (isVisible('screen-result')) return click('btn-run-end');
   // 6. Main menu exits the app; mid-run screens ignore back (use ABANDON RUN).

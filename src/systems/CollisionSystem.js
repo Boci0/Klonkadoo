@@ -1,7 +1,8 @@
 // ============================================================
 // CollisionSystem — turns ball-vs-ball contacts into rams (EXPOSED)
-// and works out how much of an incoming hit reaches you (DEF, damage
-// reduction, Risk). Bodies themselves never deal damage.
+// and works out how much of an incoming hit reaches you (DEF + the
+// resist for its damage type, damage reduction, Risk). Bodies
+// themselves never deal damage.
 // ============================================================
 
 import { CONFIG } from '../config.js';
@@ -44,32 +45,24 @@ export class CollisionSystem {
     this.events.emit('ram', { attacker, victim });
   }
 
-  calculatePlayerDamage(rawDamage, { bypassDef = false } = {}) {
+  /** `dtype`: phys / heat / energy (Mech.DTYPES); its resist adds to DEF. */
+  calculatePlayerDamage(rawDamage, { bypassDef = false, dtype = 'phys' } = {}) {
     let damage = rawDamage;
 
-    // 1. Flat DEF reduction (unless bypassing DEF, e.g. status DOTs)
+    // 1. Flat DEF + resist reduction (unless bypassing it, e.g. status DOTs, pierce)
     if (!bypassDef) {
-      const def = this.stats.playerTotalDef || this.stats.playerDef || 0;
+      const def = (this.stats.playerTotalDef || this.stats.playerDef || 0) + (this.stats.playerRes?.[dtype] || 0);
       // Enemies pierce 25% DEF; only the first 12 DEF blocks flat damage
-      // (so stacked tech + armor can't erase hits), and Risk XI pierces half
+      // (so stacked armor can't erase hits), and Risk XI pierces half
       const effectiveDef = Math.min(12, def) * 0.75 * (1 - (this.stats.riskDefPierce || 0));
       const maxDefReduction = damage * 0.70; // 30% min damage floor
       const actualDefReduction = Math.min(maxDefReduction, effectiveDef);
       damage = Math.max(damage * 0.30, damage - actualDefReduction);
     }
 
-    // 2. Percentage Damage Reduction (Relics + Tech Tree Kinetic Dampener)
-    let redPct = this.stats.playerDamageReductionPct || 0;
-    if (this.stats.techStats?.kineticDampenerPct > 0) {
-      redPct += this.stats.techStats.kineticDampenerPct;
-    }
-    redPct = Math.max(-0.5, Math.min(0.85, redPct)); // negative = extra damage taken
+    // 2. Percentage damage reduction
+    const redPct = Math.max(-0.5, Math.min(0.85, this.stats.playerDamageReductionPct || 0)); // negative = extra damage taken
     damage = Math.max(1, Math.round(damage * (1 - redPct)));
-
-    // 2b. Bulwark (tech): less damage while one of your barriers stands
-    if (this.stats.techStats?.bulwarkPct > 0 && this.stats.hasBarrierUp?.()) {
-      damage = Math.max(1, Math.round(damage * (1 - this.stats.techStats.bulwarkPct)));
-    }
 
     // 3. Risk Modifier (+X% DMG TAKEN)
     if (this.stats.riskPlusDmgTaken > 0) {

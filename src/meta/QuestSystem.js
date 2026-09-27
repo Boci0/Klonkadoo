@@ -1,7 +1,7 @@
 // ============================================================
 // QuestSystem — generates a small set of quests for the current
-// run. Completing them awards Tech Points (permanent currency)
-// for the tech tree.
+// run. Completing them awards scrap (permanent: it upgrades
+// Rig parts).
 // ============================================================
 
 import { CONFIG } from '../config.js';
@@ -56,7 +56,7 @@ export class QuestSystem {
       if (this._evaluate(q.id, eventType, data)) {
         q.completed = true;
         this.completed.add(q.id);
-        this.saveSystem.addTechPoints(q.reward);
+        this.saveSystem.addScrap(q.reward);
         this.saveSystem.recordQuestCompleted();
         newly.push(q);
       }
@@ -87,8 +87,6 @@ export class QuestSystem {
         return eventType === 'combat_end' && data.won && data.nodeType === 'elite';
       case 'quest_rest':
         return eventType === 'rest' && data.healed >= 40;
-      case 'quest_bounce':
-        return eventType === 'wall_bounce_hit' && data.damageDealt > 0;
       case 'quest_lowhp':
         return eventType === 'combat_end' && data.won && data.playerHpLeft <= 10;
       default:

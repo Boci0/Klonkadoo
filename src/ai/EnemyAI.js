@@ -30,7 +30,7 @@ export class EnemyAI {
     this.difficulty = A.difficulty;
     this.aggression = 0;
     this.thinkDelayOverride = null;
-    this.aimErrorBonus = 0; // extra radians of error (e.g. Smoke Bomb relic)
+    this.aimErrorBonus = 0; // extra radians of aim error
     this.spotScorer = null; // (x, y, rammed, stay) => score, set by Game each turn
     this.world = { barriers: [], platforms: [], obstacles: [], pads: [] };
   }

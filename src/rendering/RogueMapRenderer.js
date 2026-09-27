@@ -21,9 +21,8 @@ export const NODE_STYLE = {
   shop: { label: 'SUPPLY DEPOT', tag: 'Trading Post', short: 'SHOP', icon: '$', color: '#ffcd75' },
   rest: { label: 'SAFE ZONE', tag: 'Outpost', short: 'REST', icon: '+', color: '#a7f070' },
   minigame: { label: 'DRILL ZONE', tag: 'Calibration', short: 'DRILL', icon: '*', color: '#73eff7' },
-  treasure: { label: 'TREASURE', tag: 'Free Relic', short: 'LOOT', icon: '#', color: '#ffcd75' },
+  treasure: { label: 'SUPPLY CACHE', tag: 'Free Supplies', short: 'LOOT', icon: '#', color: '#ffcd75' },
   gamble: { label: 'GAMBLE', tag: 'Risky Bet', short: 'BET', icon: '%', color: '#f4f4f4' },
-  shrine: { label: 'CURSE SHRINE', tag: 'Dark Bargain', short: 'CURSE', icon: '!', color: '#ff5d73' },
 };
 
 // Node tile size in map units (also used for tap hit-testing)

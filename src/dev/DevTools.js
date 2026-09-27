@@ -5,11 +5,10 @@
 // ============================================================
 
 export class DevTools {
-  constructor(gameRefGetter, runRefGetter, saveSystem, techTree) {
+  constructor(gameRefGetter, runRefGetter, saveSystem) {
     this.getGame = gameRefGetter;
     this.getRun = runRefGetter;
     this.saveSystem = saveSystem;
-    this.techTree = techTree;
 
     // Balancing Overrides
     this.overrides = {
@@ -75,13 +74,12 @@ export class DevTools {
         <button id="dev-close" style="background:none;border:none;color:#8a94a8;cursor:pointer;font-weight:bold;">✕</button>
       </div>
 
-      <!-- Section: TP & Tech Tree -->
+      <!-- Section: Keys, scrap, Risk -->
       <div class="dev-section" style="margin-bottom:14px;background:rgba(255,255,255,0.03);padding:10px;border-radius:4px;">
-        <div style="font-weight:700;color:#5fd3a8;margin-bottom:6px;">TECH POINTS & UPGRADES</div>
+        <div style="font-weight:700;color:#5fd3a8;margin-bottom:6px;">KEYS, SCRAP & RISK</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
-          <button class="dev-btn" data-act="add-tp-1k">+1,000 TP</button>
-          <button class="dev-btn" data-act="add-tp-50k">+50,000 TP</button>
-          <button class="dev-btn" data-act="unlock-all-tech">Unlock All Techs</button>
+          <button class="dev-btn" data-act="add-keys">+100 KEYS</button>
+          <button class="dev-btn" data-act="add-scrap">+1,000 SCRAP</button>
           <button class="dev-btn" data-act="unlock-risk-xi">Unlock Risk XI</button>
         </div>
       </div>
@@ -162,23 +160,16 @@ export class DevTools {
   _bindEvents() {
     this.panel.querySelector('#dev-close').addEventListener('click', () => this.toggle());
 
-    // TP Buttons
+    // Currency buttons
     this.panel.querySelectorAll('.dev-btn[data-act]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const act = btn.dataset.act;
-        if (act === 'add-tp-1k') {
-          this.saveSystem.addTechPoints(1000);
-          this._notify('Added +1,000 TP!');
-        } else if (act === 'add-tp-50k') {
-          this.saveSystem.addTechPoints(50000);
-          this._notify('Added +50,000 TP!');
-        } else if (act === 'unlock-all-tech') {
-          for (const node of this.techTree.getAllNodes()) {
-            const maxLvl = node.maxLevel || 1;
-            this.saveSystem.data.techTreePurchases[node.id] = maxLvl;
-          }
-          this.saveSystem.save();
-          this._notify('All Tech Tree Nodes Unlocked!');
+        if (act === 'add-keys') {
+          this.saveSystem.addTokens(100);
+          this._notify('Added +100 Keys!');
+        } else if (act === 'add-scrap') {
+          this.saveSystem.addScrap(1000);
+          this._notify('Added +1,000 scrap!');
         } else if (act === 'unlock-risk-xi') {
           // Every Risk level plus the secret one, selected; reload to refresh the menu
           this.saveSystem.data.maxRiskUnlocked = Math.max(10, this.saveSystem.data.maxRiskUnlocked || 0);

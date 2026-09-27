@@ -111,13 +111,19 @@ export function readRun() {
   const map = new RogueMap(snap.runSeed);
   map.floors = snap.floors.map((f) => {
     const nodeGrid = Array.from({ length: f.rows }, () => new Array(f.cols).fill(null));
-    for (const n of f.nodes) if (nodeGrid[n.row]) nodeGrid[n.row][n.col] = n;
+    for (const n of f.nodes) {
+      if (n.type === 'shrine') n.type = 'treasure'; // Curse Shrines were retired with relics
+      if (nodeGrid[n.row]) nodeGrid[n.row][n.col] = n;
+    }
     return { ...f, nodeGrid };
   });
 
   const { syntheticNode, ...data } = snap.run;
   const run = new RunState(data.permanent || {}, data.ballType);
   Object.assign(run, data);
+  // Relics and curses were retired: runs saved with them just drop them
+  delete run.relics;
+  delete run.curses;
   run.ballType = 'operator'; // runs saved on a retired class continue as the operator
   run.ball = getBall(run.ballType);
   run.currentNode = findNode(map.floors, run.currentNodeId) || syntheticNode || null;

@@ -1,10 +1,10 @@
 // ============================================================
-// SaveSystem — persistence foundation for permanent upgrades,
-// tech trees, and roguelike meta-progression.
+// SaveSystem — persistence for the rig (parts, Keys, scrap), Risk,
+// mastery, medals and stats.
 //
 // Stores data in localStorage. Old saves are migrated by merging
-// defaults so missing fields (techPoints, techTreePurchases, etc.)
-// never cause runtime errors.
+// defaults so missing fields never cause runtime errors, and _migrate
+// upgrades retired systems (the tech tree became Keys + scrap).
 // ============================================================
 
 import { CONFIG } from '../config.js';
@@ -12,6 +12,9 @@ import { masteryLevel } from './Mastery.js';
 import { INVENTORY_CAP, salvageValue, upgradeCost, MAX_LEVEL, STARTER_PARTS, STARTER_LOADOUT, SLOTS, getPart, newUid, openCrate, CRATES } from './Mech.js';
 
 const STORAGE_KEY = 'slingshot-save-v1';
+
+// Node costs of the last tech tree (v3), to convert what was spent on it
+const TECH_COSTS_V3 = {"rct_capacitor":[8,12,16,22,30],"rct_dynamo":[30,60],"rct_coolant":[14,22,32],"rct_opener":[40],"rct_scavenge":[40],"rct_overclock":[120],"bar_reinforce":[6,10,16,24],"bar_quick":[24,48],"bar_spikes":[12,20,30],"bar_twin":[45],"bar_bulwark":[16,26,38],"bar_aegis":[110],"vit_emergency_medkit":[6,10,14,20,28],"vit_overflow_shield":[8,12,18,26,36],"def_forcefield":[12,18,26,36,48],"vit_vampiric_vitality":[14,20,28,38,50],"def_counter":[30,50,80],"vit_second_wind":[50,90],"tac_war_chest":[6,10,14,20,28],"tac_merchant":[8,12,18,26,36],"tac_scout":[60],"tac_intellect":[10,16,24,34,46],"tac_keymaster":[30,60],"tac_supply_drop":[55,100]};
 
 export class SaveSystem {
   constructor() {
@@ -22,8 +25,9 @@ export class SaveSystem {
 
   /**
    * One-off upgrades for older saves:
-   *  - techVersion 2: the tech tree was rebuilt around skills, so every TP
-   *    spent on the old tree is refunded and purchases are cleared.
+   *  - techVersion 2 / 3: tech tree rebuilds refunded TP.
+   *  - techVersion 4: the tech tree is gone. Every Tech Point (held, or
+   *    spent on nodes) becomes 1 scrap, plus 1 Key per 20 (rounded up).
    *  - ballRisk: Risk is now climbed per ball (see getMaxRiskUnlocked).
    */
   _migrate() {
@@ -69,6 +73,24 @@ export class SaveSystem {
       if (refund) d.techRefund = (d.techRefund || 0) + refund; // shown once on the tech screen
       d.techVersion = 3;
     }
+    if ((d.techVersion || 1) < 4 && d.mech) {
+      const bought = d.techTreePurchases || {};
+      let tp = Math.max(0, d.techPoints || 0);
+      for (const [id, raw] of Object.entries(bought)) {
+        const lvl = raw === true ? 1 : Number(raw) || 0;
+        const costs = TECH_COSTS_V3[id] || [];
+        for (let i = 0; i < lvl; i++) tp += costs[Math.min(i, costs.length - 1)] || 0;
+      }
+      const keys = Math.ceil(tp / 20);
+      d.mech.tokens = (d.mech.tokens || 0) + keys;
+      d.mech.scrap = (d.mech.scrap || 0) + tp;
+      if (tp) d.techConverted = { tp, keys, scrap: tp }; // shown once on the menu
+      delete d.techPoints;
+      delete d.techTreePurchases;
+      delete d.techTree;
+      delete d.techRefund;
+      d.techVersion = 4;
+    }
     if (!d.ballRisk) {
       // Old saves shared one Risk ladder: each ball keeps what it has won on,
       // and the ball with the most wins keeps the whole old ladder
@@ -95,7 +117,7 @@ export class SaveSystem {
   _defaults() {
     return {
       version: 2,
-      techVersion: 3, // fresh saves start on the current tree (see _migrate)
+      techVersion: 4, // fresh saves have nothing to migrate (see _migrate)
       profile: {
         name: 'operator',
         callsign: 'SLING-01',
@@ -107,13 +129,10 @@ export class SaveSystem {
         totalRuns: 0,
         questsCompleted: 0,
       },
-      techPoints: 0, // currency earned from quests/roguelike runs
       difficultyLevel: 0, // selected Risk level (0..maxRiskUnlocked)
       maxRiskUnlocked: 0, // highest Risk level the player may select
-      techTreePurchases: {}, // nodeId -> level purchased (1)
       upgrades: {}, // legacy field kept for compatibility
       unlockedPerks: [], // roguelike perk ids
-      techTree: {}, // legacy: placeholder
       progression: {
         completedLevels: 1,
         unlockedLevels: 1,
@@ -134,12 +153,10 @@ export class SaveSystem {
           ...parsed,
           profile: { ...defaults.profile, ...(parsed.profile || {}) },
           meta: { ...defaults.meta, ...(parsed.meta || {}) },
-          techTreePurchases: (typeof parsed.techPoints === 'number' ? parsed : {})?.techTreePurchases || {},
           upgrades: parsed.upgrades || {},
           unlockedPerks: parsed.unlockedPerks || [],
-          techTree: parsed.techTree || {},
           progression: { ...defaults.progression, ...(parsed.progression || {}) },
-          techVersion: parsed.techVersion || 1, // old saves get the tree refund
+          techVersion: parsed.techVersion || 1, // old saves get converted
         };
       }
     } catch (e) {
@@ -182,36 +199,6 @@ export class SaveSystem {
       this.data.meta.totalLosses += 1;
     }
     this.save();
-  }
-
-  addTechPoints(amount) {
-    this.data.techPoints += amount;
-    this.save();
-  }
-
-  spendTechPoints(amount) {
-    if (this.data.techPoints < amount) return false;
-    this.data.techPoints -= amount;
-    this.save();
-    return true;
-  }
-
-  getTechLevel(nodeId) {
-    const val = (this.data.techTreePurchases || {})[nodeId];
-    if (val === true) return 1;
-    if (typeof val === 'number') return val;
-    return 0;
-  }
-
-  purchaseTechNode(nodeId) {
-    const current = this.getTechLevel(nodeId);
-    this.data.techTreePurchases[nodeId] = current + 1;
-    this.save();
-    return current + 1;
-  }
-
-  hasTechNode(nodeId) {
-    return this.getTechLevel(nodeId) > 0;
   }
 
   recordQuestCompleted() {
@@ -273,7 +260,7 @@ export class SaveSystem {
 
   /** Lifetime counters for medals. */
   getLifetime() {
-    return { runs: 0, wins: 0, bestFloor: 0, kills: 0, bossKills: 0, hits: 0, crits: 0, trickShots: 0, bestHit: 0, maxCombo: 0, maxRelics: 0, bestRiskWin: -1, ...(this.data.lifetime || {}) };
+    return { runs: 0, wins: 0, bestFloor: 0, kills: 0, bossKills: 0, hits: 0, crits: 0, trickShots: 0, bestHit: 0, maxCombo: 0, bestRiskWin: -1, ...(this.data.lifetime || {}) };
   }
 
   bumpLifetime(key, value, mode = 'max') {
@@ -287,11 +274,12 @@ export class SaveSystem {
     return !!(this.data.medals || {})[id];
   }
 
-  awardMedal(id, tp) {
+  /** Medals pay Keys. */
+  awardMedal(id, keys) {
     this.data.medals = this.data.medals || {};
     if (this.data.medals[id]) return false;
     this.data.medals[id] = Date.now();
-    this.data.techPoints += tp;
+    this.data.mech.tokens += keys;
     this.save();
     return true;
   }
@@ -302,7 +290,7 @@ export class SaveSystem {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
-  /** { canClaim, streak (after claiming today), reward } */
+  /** { canClaim, streak (after claiming today), reward (Keys) } */
   getDailyStatus() {
     const daily = this.data.daily || { last: null, streak: 0 };
     const today = SaveSystem._dayKey();
@@ -311,14 +299,14 @@ export class SaveSystem {
     const continues = daily.last === SaveSystem._dayKey(y);
     const canClaim = daily.last !== today;
     const streak = canClaim ? (continues ? daily.streak + 1 : 1) : daily.streak;
-    return { canClaim, streak, reward: 2 + Math.min(7, streak) };
+    return { canClaim, streak, reward: 1 + Math.min(3, Math.floor(streak / 2)) };
   }
 
   claimDaily() {
     const status = this.getDailyStatus();
     if (!status.canClaim) return null;
     this.data.daily = { last: SaveSystem._dayKey(), streak: status.streak };
-    this.data.techPoints += status.reward;
+    this.data.mech.tokens += status.reward;
     const life = this.getLifetime();
     life.bestStreak = Math.max(life.bestStreak || 0, status.streak);
     this.data.lifetime = life;
@@ -429,9 +417,9 @@ export class SaveSystem {
     return total;
   }
 
-  /** Tech Point multiplier from the selected Risk level. */
-  getTpMultiplier() {
-    return 1 + (this.getDifficultyLevel() * CONFIG.risk.tpPerLevel) / 100;
+  /** Scrap multiplier from the selected Risk level. */
+  getScrapMultiplier() {
+    return 1 + (this.getDifficultyLevel() * CONFIG.risk.scrapPerLevel) / 100;
   }
 
   getHealingMultiplier() {
@@ -489,17 +477,15 @@ export class SaveSystem {
     try {
       const parsed = this._decodeSave(input);
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
-      if (typeof parsed.techPoints !== 'number' || !parsed.meta || typeof parsed.meta !== 'object') return false;
+      if (!parsed.meta || typeof parsed.meta !== 'object') return false;
       const defaults = this._defaults();
       this.data = {
         ...defaults,
         ...parsed,
         profile: { ...defaults.profile, ...(parsed.profile || {}) },
         meta: { ...defaults.meta, ...(parsed.meta || {}) },
-        techTreePurchases: parsed.techTreePurchases || {},
         upgrades: parsed.upgrades || {},
         unlockedPerks: parsed.unlockedPerks || [],
-        techTree: parsed.techTree || {},
         progression: { ...defaults.progression, ...(parsed.progression || {}) },
         techVersion: parsed.techVersion || 1,
       };
@@ -553,6 +539,11 @@ export class SaveSystem {
 
   addTokens(n) {
     this.data.mech.tokens += Math.max(0, n);
+    this.save();
+  }
+
+  addScrap(n) {
+    this.data.mech.scrap += Math.max(0, Math.round(n));
     this.save();
   }
 

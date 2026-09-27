@@ -1,6 +1,6 @@
 // ============================================================
 // SLINGSHOT OPS — entry point + App state machine.
-// Orchestrates: main menu → tech tree → roguelike run map →
+// Orchestrates: main menu → rig → roguelike run map →
 // node events → slingshot battles → run results → meta progression.
 // ============================================================
 
@@ -8,15 +8,13 @@ import './styles.css';
 import { CONFIG } from './config.js';
 import { Game } from './core/Game.js';
 import { saveSystem } from './meta/SaveSystem.js';
-import { UpgradeSystem } from './meta/UpgradeSystem.js';
-import { TechTree } from './meta/TechTree.js';
 import { QuestSystem } from './meta/QuestSystem.js';
 import { RunState } from './rogue/RunState.js';
 import { RogueMap } from './rogue/RogueMap.js';
 import { RogueMapRenderer } from './rendering/RogueMapRenderer.js';
 import { Minigame } from './minigame/Minigame.js';
 import { UIManager } from './ui/UIManager.js';
-import { pickRelics } from './meta/Relics.js';
+import { rollSupplies, grantSupply, getSupply } from './rogue/Supplies.js';
 import { pickArena } from './core/Arenas.js';
 import { OPERATOR, skinColors } from './meta/Balls.js';
 import { MenuBackground } from './rendering/MenuBackground.js';
@@ -26,7 +24,7 @@ import { DevTools } from './dev/DevTools.js';
 import { checkMedals } from './meta/Medals.js';
 import './platform/native.js';
 import './platform/desktop.js';
-import { withMech, tokenReward, enemyWeapons, enemyRig, enemyLegs, CLEAN_WIN_KEYS } from './meta/Mech.js';
+import { withMech, tokenReward, enemyMech, enemyRig, CLEAN_WIN_KEYS, DTYPES, dtypeOf } from './meta/Mech.js';
 import { partIcon } from './rendering/pixelIcons.js';
 import { ballDataUrl, CLASS_PATTERN } from './rendering/ballSprite.js';
 import { withMastery, masteryLevel, runXp } from './meta/Mastery.js';
@@ -39,16 +37,11 @@ document.fonts?.load('16px "Pixel Digits"', '0123456789').catch(() => {});
 
 const canvas = document.getElementById('game-canvas');
 
-// One shared save instance for the whole app (UI, run state and battle all read it)
-const upgradeSystem = new UpgradeSystem(saveSystem);
-upgradeSystem.applyUpgrades();
-
-const techTree = new TechTree(saveSystem);
 const game = new Game(canvas);
 const minigame = new Minigame(canvas);
 let mapRenderer = null;
 // Dev panel only exists on the Vite dev server, never in release builds
-const devTools = import.meta.env.DEV ? new DevTools(() => game, () => run, saveSystem, techTree) : null;
+const devTools = import.meta.env.DEV ? new DevTools(() => game, () => run, saveSystem) : null;
 
 // ---------- Run state ----------
 
@@ -69,7 +62,6 @@ let minigameResultShown = false;
 
 const State = {
   MENU: 'MENU',
-  TECH: 'TECH',
   RUN_MAP: 'RUN_MAP',
   BATTLE: 'BATTLE',
   MINIGAME: 'MINIGAME',
@@ -109,10 +101,6 @@ const ui = new UIManager({
   },
   savedRun: savedRunInfo,
   onDataReset: clearRun,
-  onOpenTech: () => {
-    setState(State.TECH);
-    ui.showTech(techTree, saveSystem);
-  },
   onBallChanged: () => updateRiskDisplay(saveSystem.getDifficultyLevel()),
   onBackToMenu: () => {
     setState(State.MENU);
@@ -123,12 +111,6 @@ const ui = new UIManager({
     setState(State.MENU);
     ui.showMenu(saveSystem.getProfile(), saveSystem.getMeta());
   },
-  onTechPurchase: (nodeId) => {
-    if (techTree.purchase(nodeId)) {
-      ui.showTech(techTree, saveSystem);
-    }
-  },
-  getTechPoints: () => saveSystem.data.techPoints,
   onRenderMap: (mapCanvas, floorIndex) => {
     if (!mapRenderer) mapRenderer = new RogueMapRenderer(mapCanvas);
     map?.sanitizeGridNodes?.();
@@ -146,7 +128,7 @@ const ui = new UIManager({
   onNodeProceed: (node, leaveShop) => proceedFromNode(node, leaveShop),
   onBattleReportContinue: continueAfterCombatReport,
   onEncounterChoice: (idx) => resolveEncounterChoice(idx),
-  onRelicBuy: (relic) => buyRelicItem(relic),
+  onSupplyBuy: (i) => buySupply(i),
   onShopRefresh: () => {
     const node = run.currentNode;
     if (node && node.type === 'shop') {
@@ -161,7 +143,7 @@ const ui = new UIManager({
     if (refreshesLeft > 0 && run.spendGold(cost)) {
       reportQuest('gold_spent', { totalSpent: run.totalGoldSpent });
       node.refreshesLeft = refreshesLeft - 1;
-      node.shopItems = rollShopCollectibles(run, 3);
+      node.shopItems = rollShopItems();
       ui.showShop(run, node.shopItems, node.refreshesLeft, cost);
       ui.updateRunHud(run);
     }
@@ -178,9 +160,9 @@ const ui = new UIManager({
   onMinigameDone: finishMinigame,
 });
 
-/** Shop reroll price (Merchant Network perk discounts it). */
+/** Shop reroll price. */
 function rerollCost() {
-  return Math.max(1, Math.round(8 * (1 - (run?.permanent?.rerollDiscountBonus || 0))));
+  return 15;
 }
 
 // ---------- Run event toasts ----------
@@ -378,9 +360,9 @@ function updateGearHud(el, endBtn, ventBtn) {
     const ready = live && st.ok;
     const why = !st.ok ? GUN_BLOCK_LABEL[st.reason] || '' : '';
     const ammo = w.ammo ? `<b class="gun-ammo">${w.ammoLeft}/${w.ammo}</b>` : '';
-    return `<button class="mech-chip gear-gun ${ready ? 'ready' : 'cooling'}" data-gun="${i}" style="--c:${w.color}" title="[${i ? 'E' : 'Q'}] ${w.name}">
+    return `<button class="mech-chip gear-gun ${ready ? 'ready' : 'cooling'}" data-gun="${i}" style="--c:${w.color}" title="[${i ? 'E' : 'Q'}] ${w.name} · ${DTYPES[dtypeOf(w)].name}">
       <img src="${partIcon(w.id)}" alt="">${ammo}
-      <span class="gun-dmg">${w.fx?.mine ? 'MINE' : st.dmg ? `~${st.dmg}` : ''}</span>
+      <span class="gun-dmg" style="color:${DTYPES[dtypeOf(w)].color}">${w.fx?.mine ? 'MINE' : st.dmg ? `~${st.dmg}` : ''}</span>
       <span class="gun-cost"><i class="c-en">${w.en || 0}</i><i class="c-heat">${w.heat || 0}</i></span>
       <span class="gun-why">${ready ? (st.cover ? 'COVER' : 'FIRE') : why}</span></button>`;
   }).join('') + drones.map((d, i) => {
@@ -454,7 +436,7 @@ function startNewRun(skin = 'default') {
   const ballType = OPERATOR.id;
   runSeed = Math.floor(Math.random() * 100000) + 1;
   saveSystem.setSelectedBall(ballType); // Risk is per ball
-  const perm = withMastery(withMech(techTree.getPermanentStats(), saveSystem.getLoadoutParts()), masteryLevel(saveSystem.getMasteryXp(ballType)).level);
+  const perm = withMastery(withMech({}, saveSystem.getLoadoutParts()), masteryLevel(saveSystem.getMasteryXp(ballType)).level);
   run = new RunState(perm, ballType);
   run.skin = skin;
   run.risk = saveSystem.getDifficultyLevel(); // locked for the run (restored on resume)
@@ -486,9 +468,11 @@ function startNewRun(skin = 'default') {
   setState(State.RUN_MAP);
   ui.showRunScreen(run, map, 0);
   buildFloorTabs();
-  if (cond.id === 'supplied') rewardRandomCollectible('SUPPLIES');
-  // Supply Drop (tech capstone): free relics at the start of every run
-  for (let i = 0; i < (run.permanent?.supplyDropRelics || 0); i++) rewardRandomCollectible('SUPPLY DROP');
+  if (cond.id === 'supplied') {
+    const boon = CONFIG.boons[Math.floor(Math.random() * CONFIG.boons.length)];
+    run.applyBoon(boon.id);
+    addFeedEntry(`<span class="feed-boon">SUPPLIES: ${boon.name}</span>`);
+  }
   ui.updateRunHud(run);
   ui.showCondition(cond);
   persistRun();
@@ -656,10 +640,11 @@ function proceedFromNode(node, leaveShop) {
     case 'shop':
       if (!node.shopOpened) {
         node.shopOpened = true;
-        run.applyShopDiscount();
         node.refreshesLeft = 3;
-        node.shopItems = rollShopCollectibles(run, 3);
+        node.shopItems = rollShopItems();
       }
+      // Runs saved before relics were retired: restock the shelves
+      if (!(node.shopItems || []).every((it) => getSupply(it.id))) node.shopItems = rollShopItems();
       ui.showShop(run, node.shopItems, node.refreshesLeft ?? 3, rerollCost());
       break;
     case 'rest':
@@ -669,12 +654,12 @@ function proceedFromNode(node, leaveShop) {
       ui.showMinigameIntro();
       break;
     case 'treasure': {
-      const offer = pickRelics(2, run.relics);
+      const offer = rollSupplies(2);
       ui.showTreasure(offer, (id) => {
-        if (id) {
-          run.addRelic(id);
+        const s = getSupply(id);
+        if (s) {
           soundEngine.play('coin');
-          addFeedEntry(`<span class="feed-relic">+ RELIC: ${CONFIG.relics.find((r) => r.id === id).name}</span>`);
+          addFeedEntry(`<span class="feed-boon">CACHE: ${grantSupply(s, run)}</span>`);
         }
         finishNode(node);
       });
@@ -686,8 +671,9 @@ function proceedFromNode(node, leaveShop) {
         if (Math.random() < 0.5) {
           soundEngine.play('confirm');
           if (Math.random() < 0.5) {
-            const relic = rewardRandomCollectible('GAMBLE');
-            if (relic) return { won: true, text: `The dealer slides over a relic: <strong>${relic.name}</strong>.` };
+            saveSystem.addTokens(3);
+            run.tokensEarned = (run.tokensEarned || 0) + 3;
+            return { won: true, text: 'The dealer slides over a key ring: <strong>+3 KEYS</strong>.' };
           }
           const g = run.gainGold(45);
           return { won: true, text: `The coin lands your way: +${g} gold.` };
@@ -696,22 +682,6 @@ function proceedFromNode(node, leaveShop) {
         return { won: false, text: 'The coin lands wrong. Your 15 gold is gone.' };
       }, () => finishNode(node));
       break;
-    case 'shrine': {
-      const curse = CONFIG.curses[Math.floor(Math.random() * CONFIG.curses.length)];
-      const epic = pickRelics(1, run.relics.concat(CONFIG.relics.filter((r) => r.rarity !== 'epic').map((r) => r.id)))[0];
-      if (!epic) {
-        finishNode(node);
-        break;
-      }
-      ui.showShrine(curse, epic, () => {
-        run.addCurse(curse.id);
-        run.addRelic(epic.id);
-        soundEngine.play('alarm');
-        addFeedEntry(`<span class="feed-enemy-ability">CURSED: ${curse.name}</span> · <span class="feed-relic">+ ${epic.name}</span>`);
-        finishNode(node);
-      }, () => finishNode(node));
-      break;
-    }
     default:
       map.visitNode(run.floor, node.id);
       run.spendFloorAction();
@@ -878,7 +848,6 @@ function startCombat(node) {
   // Ensure player HP carries over safely (at least 1 HP)
   if (run.hp <= 0) run.hp = 1;
 
-  if (run.hasRelic('rel_nanite')) run.healFlat(15);
   const maxPowerMult = run.launchPowerMult;
   const thinkDelay = CONFIG.ai.thinkDelay;
   const riskLevel = saveSystem.getDifficultyLevel();
@@ -893,7 +862,7 @@ function startCombat(node) {
   const isEliteTier = ['elite', 'miniboss', 'boss'].includes(node.type);
   const cond = run.condition;
   const condHp = cond === 'gold_rush' ? 1.1 : 1;
-  const condAtk = (cond === 'glass_war' ? 1.3 : 1) * (cond === 'blood_moon' ? 1.15 : 1) * (1 + 0.1 * run.curseCount('curse_hunted'));
+  const condAtk = (cond === 'glass_war' ? 1.3 : 1) * (cond === 'blood_moon' ? 1.15 : 1);
   // Abyss: +8% HP and +5% ATK per depth, on top of the normal per-floor scaling
   const hpMult = (1 + (riskData.hpPct + (isEliteTier ? riskData.eliteHpPct : 0)) / 100) * condHp * (1 + ABYSS_HP_PER_DEPTH * abyssDepth);
   const atkMult = (1 + (riskData.atkPct + (isEliteTier ? riskData.eliteAtkPct : 0)) / 100) * condAtk * (1 + ABYSS_ATK_PER_DEPTH * abyssDepth);
@@ -915,7 +884,8 @@ function startCombat(node) {
   for (let i = 0; i < count; i++) {
     const archetype = pickArchetype(node.type, floorKey, i);
     const arch = CONFIG.enemyArchetypes[archetype];
-    const isBoss = node.type === 'boss';
+    const isBoss = node.type === 'boss' && i === 0;
+    const mech = enemyMech(node.type, archetype, run.floor + 1, Math.random, { atkMult: atkMult * waveAtkScale, boss: isBoss });
 
     const finalHp = Math.round(tier.hp * arch.hpMult * hpMult * floorHp * devHp * waveHpScale);
     const finalAtk = Math.round((tier.atk * arch.atkMult * atkMult * floorAtk * devAtk * waveAtkScale) * 100) / 100;
@@ -931,11 +901,13 @@ function startCombat(node) {
       rank: node.type === 'boss' || node.type === 'miniboss' ? node.type : null,
       archetype,
       aiDifficulty: Math.min(0.95, tier.aiDifficulty + arch.aiShift + riskData.aiBonus),
-      thinkDelay: arch.ability === 'aggressive' ? Math.max(0.3, thinkDelay - 0.2) : thinkDelay,
+      thinkDelay,
       xPct,
-      weapons: enemyWeapons(node.type, run.floor + 1, Math.random, { atkMult: atkMult * waveAtkScale, archetype }),
+      weapons: mech.weapons,
       rig: enemyRig(node.type, { cdCut: riskData.gunCdCut || 0 }),
-      legs: enemyLegs(node.type, archetype),
+      legs: mech.legs,
+      res: mech.res,
+      parts: mech.parts,
     });
   }
 
@@ -947,14 +919,15 @@ function startCombat(node) {
       atk: run.atk * (run.condition === 'glass_war' ? 1.3 : 1),
       def: run.def,
       totalDef: run.totalDef,
+      res: run.res,
       damageReductionPct: run.damageReductionPct,
     },
     enemies,
-    relics: run.relics,
     nodeType: node.type,
     ballType: OPERATOR.id,
     skinColors: skinColors(OPERATOR, run.skin),
-    techStats: run.permanent, // tech tree + equipped gear, fixed for the run
+    rigStats: run.permanent, // equipped gear + mastery, fixed for the run
+    showHints: saveSystem.getLifetime().runs === 0, // control tips: first run only
     riskLevel: riskLevel,
     riskPlusDmgTaken: riskData.plusDmgTaken || 0,
     riskDefPierce: riskData.defPierce || 0,
@@ -965,37 +938,21 @@ function startCombat(node) {
   // Wire quest hooks (clear old listeners first so no stacking)
   game.events.off('battle-end');
   game.events.off('player-dealt-damage');
-  game.events.off('wall-bounce-hit');
   game.events.off('ability-used');
   game.events.off('enemy-ability');
   game.events.off('enemy-dealt-damage');
 
   // (Mid-battle events have no toast: damage already shows as floating numbers)
   game.events.on('player-dealt-damage', ({ damage }) => reportQuest('damage_dealt', { amount: damage }));
-  game.events.on('wall-bounce-hit', ({ damage }) => reportQuest('wall_bounce_hit', { damageDealt: damage }));
   game.events.on('battle-end', ({ won }) => onBattleEnd(won, node));
   game.events.on('ability-used', ({ id, name }) => {
     game.renderer.addCallout(game.player, id === 'barrier' ? 'BARRIER UP' : name, id === 'barrier' ? '#41a6f6' : '#ffcd75');
   });
-  // Enemy abilities: short label over whoever it affects (the caster, or you for status ticks)
-  const ABILITY_LABELS = {
-    'Overdrive Charge': ['CHARGING SHOT', '#ef7d57'],
-    'Fortify Shield': ['FORTIFY +3 DEF', '#41a6f6'],
-    'Graviton Tether Pull': ['TETHER PULL', '#c46fd6'],
-    'Graviton Tether (Blocked)': ['TETHER BLOCKED', '#94b0c2'],
-    'War Command': ['WAR COMMAND: ALLIES +20% ATK', '#ffcd75'],
-    'Corrosive Acid Splash': ['ACID: -4 DEF', '#a7f070'],
-    'Shockwave Pulse': ['SHOCKWAVE', '#ef7d57'],
-    'Thermal Burn': ['BURNING', '#ef7d57'],
-    'Corrosion Tick': ['CORRODED: -DEF', '#a7f070'],
-    'Siphon Drain': ['SIPHON: STEALS HP', '#ff5d73'],
-    'Thermal Flare Ignition': ['IGNITED!', '#ef7d57', 'player'],
-    'Corrosive Impact': ['CORRODED!', '#a7f070', 'player'],
-    'Vampiric Vitality': ['LIFESTEAL', '#a7f070'],
-  };
+  // Status ticks (burn): a short label over whoever it affects
+  const STATUS_LABELS = { 'Thermal Burn': ['BURNING', '#ef7d57'] };
   game.events.on('enemy-ability', ({ enemy, ability }) => {
-    const [text, color, target] = ABILITY_LABELS[ability] || [ability.toUpperCase(), '#ff5d73'];
-    game.renderer.addCallout(target === 'player' || !enemy ? game.player : enemy, text, color);
+    const [text, color] = STATUS_LABELS[ability] || [ability.toUpperCase(), '#ff5d73'];
+    game.renderer.addCallout(enemy || game.player, text, color);
   });
 
   game.run = run;
@@ -1013,7 +970,7 @@ function startCombat(node) {
     ui.showBossIntro({
       title: node.type === 'boss' ? (run.floor >= CONFIG.map.floors ? `ABYSS ${run.floor - CONFIG.map.floors + 1}` : 'FINAL BOSS') : `FLOOR ${run.floor + 1} MINI-BOSS`,
       name: boss.displayName,
-      desc: node.type === 'boss' ? `Sends out a shockwave every turn. ${arch?.abilityDesc || ''}` : arch?.abilityDesc || '',
+      desc: boss.weapons.map((w) => w.name).join(' + ') + (node.type === 'boss' ? '. Bolted down, reaches anywhere. Reinforcements at half HP.' : `. ${arch?.desc || ''}`),
       color: arch?.color,
     }, () => {
       battlePaused = false;
@@ -1024,7 +981,7 @@ function startCombat(node) {
 
 /** Pick an enemy archetype based on floor weights. */
 function pickArchetype(nodeType, floor, index) {
-  const weights = CONFIG.archetypeWeights[nodeType === 'elite' ? 'elite' : nodeType === 'boss' ? 'boss' : floor] || CONFIG.archetypeWeights[1];
+  const weights = CONFIG.archetypeWeights[['elite', 'miniboss', 'boss'].includes(nodeType) ? nodeType : floor] || CONFIG.archetypeWeights[1];
   // Waves roll each enemy from the same weights; escorts in a boss / elite
   // wave skip the heavy hitters so fights stay readable
   if (index > 0 && (nodeType === 'boss' || nodeType === 'miniboss')) return Math.random() < 0.5 ? 'standard' : 'striker';
@@ -1035,17 +992,6 @@ function pickArchetype(nodeType, floor, index) {
     if (roll <= 0) return key;
   }
   return 'standard';
-}
-
-function rewardRandomCollectible(sourceName = 'REWARD') {
-  if (!run) return null;
-  const [relic] = pickRelics(1, run.relics);
-  if (!relic) return null;
-  run.addRelic(relic.id);
-  ui.updateRunHud(run);
-  ui.renderRelics(run);
-  addFeedEntry(`<span class="feed-relic">${sourceName}: + RELIC ${relic.name}</span>`);
-  return relic;
 }
 
 function onBattleEnd(won, node) {
@@ -1063,7 +1009,6 @@ function onBattleEnd(won, node) {
 
   // Per-class + lifetime stats (skins, medals)
   saveSystem.addBattleStats(run.ballType, game.battleStats.track);
-  saveSystem.bumpLifetime('maxRelics', run.relics.length);
   ui.celebrateMedals(checkMedals(saveSystem));
   if (won) run.onCombatWon();
   else {
@@ -1084,19 +1029,18 @@ function onBattleEnd(won, node) {
   if (won) {
     const rewards = CONFIG.nodes.rewards[node.type] || CONFIG.nodes.rewards.combat;
     let gold = 0;
-    let tech = 0;
+    let scrap = 0;
     let heal = 0;
 
     if (rewards.gold) {
-      gold = run.gainGold(rewards.gold + (run.hasRelic('rel_magnet') ? 6 : 0));
+      gold = run.gainGold(rewards.gold);
       addFeedEntry(`<span class="feed-gold">+${gold} GOLD</span>`);
     }
-    if (rewards.tech) {
-      const riskBonusPct = saveSystem.getTpMultiplier() * (run.condition === 'blood_moon' ? 1.5 : 1);
-      tech = Math.max(1, Math.round(rewards.tech * riskBonusPct * (1 + (run.permanent?.tpBonusPct || 0))));
-      if (run.hasRelic('rel_jade_pendant') && ['elite', 'miniboss', 'boss'].includes(node.type)) tech += 1;
-      saveSystem.addTechPoints(tech);
-      addFeedEntry(`<span class="feed-boon">+${tech} TECH PTS</span>`);
+    // Scrap upgrades parts: saved at once, kept even if the run is lost
+    if (rewards.scrap) {
+      scrap = Math.max(1, Math.round(rewards.scrap * saveSystem.getScrapMultiplier() * (run.condition === 'blood_moon' ? 1.5 : 1)));
+      saveSystem.addScrap(scrap);
+      addFeedEntry(`<span class="feed-boon">+${scrap} SCRAP</span>`);
     }
     if (rewards.healMax) {
       heal = Math.round(run.maxHp * (rewards.healMax / 100));
@@ -1113,7 +1057,7 @@ function onBattleEnd(won, node) {
     // Keys (saved as `tokens`) open supply pods on the Rig screen; saved at once, so they're kept even if the run is lost
     // Normal fights won without a scratch: bonus Keys and gold
     const clean = node.type === 'combat' && damageTaken === 0;
-    const tokens = tokenReward(node.type, saveSystem.getDifficultyLevel()) + (clean ? CLEAN_WIN_KEYS : 0) + (run.permanent?.keyBonus || 0);
+    const tokens = tokenReward(node.type, saveSystem.getDifficultyLevel()) + (clean ? CLEAN_WIN_KEYS : 0);
     if (clean) {
       gold += run.gainGold(8);
       addFeedEntry('<span class="feed-gold">CLEAN WIN</span>');
@@ -1122,18 +1066,6 @@ function onBattleEnd(won, node) {
       saveSystem.addTokens(tokens);
       run.tokensEarned = (run.tokensEarned || 0) + tokens;
       addFeedEntry(`<span class="feed-gold">+${tokens} KEYS</span>`);
-    }
-
-    // Elite nodes reward 1 collectible; mini-boss rewards 2; boss gives none
-    let rewardRelic = null;
-    let rewardRelics = null;
-    if (node.type === 'elite') {
-      rewardRelic = rewardRandomCollectible('ELITE DROP');
-    } else if (node.type === 'miniboss') {
-      const r1 = rewardRandomCollectible('MINI-BOSS DROP 1');
-      const r2 = rewardRandomCollectible('MINI-BOSS DROP 2');
-      rewardRelics = [r1, r2].filter(Boolean);
-      rewardRelic = rewardRelics[0] || null;
     }
 
     // Chance for a boon drop on combat wins only
@@ -1154,7 +1086,7 @@ function onBattleEnd(won, node) {
     // Rewards are paid: a reload must continue from here, not replay the fight
     persistRun('combat', { pendingBoonId: pendingBoon?.id });
     // Let the finishing blow and the VICTORY splash land, then the report
-    const rewardsWon = { gold, tech, heal, relic: rewardRelic, relics: rewardRelics, tokens, clean };
+    const rewardsWon = { gold, scrap, heal, tokens, clean };
     setTimeout(() => ui.showCombatResult(true, rewardsWon, run, battleReport(node, damageTaken)), 900);
   } else {
     ui.updateRunHud(run);
@@ -1257,20 +1189,18 @@ function resolveEncounterChoice(idx) {
       run.healFlat(choice.heal);
       addFeedEntry(`<span class="feed-heal">+${choice.heal} HP RECOVERED</span>`);
     }
-    if (choice.gainTech) {
-      saveSystem.addTechPoints(choice.gainTech);
-      addFeedEntry(`<span class="feed-boon">+${choice.gainTech} TECH PTS</span>`);
+    if (choice.gainScrap) {
+      saveSystem.addScrap(choice.gainScrap);
+      addFeedEntry(`<span class="feed-boon">+${choice.gainScrap} SCRAP</span>`);
     }
-    if (choice.gainRelic) {
-      rewardRandomCollectible('ENCOUNTER');
+    if (choice.gainKeys) {
+      saveSystem.addTokens(choice.gainKeys);
+      run.tokensEarned = (run.tokensEarned || 0) + choice.gainKeys;
+      addFeedEntry(`<span class="feed-gold">+${choice.gainKeys} KEYS</span>`);
     }
     if (choice.gainActions) {
       run.addFloorActions(choice.gainActions);
       addFeedEntry(`<span class="feed-heal">+${choice.gainActions} MOVE${choice.gainActions > 1 ? 'S' : ''}</span>`);
-    }
-    if (run.hasRelic('rel_scavenger_pack')) {
-      const g = run.gainGold(10);
-      addFeedEntry(`<span class="feed-gold">SCAVENGER PACK: +${g} GOLD</span>`);
     }
     ui.updateRunHud(run);
   }
@@ -1282,22 +1212,21 @@ function resolveEncounterChoice(idx) {
 
 // ---------- Shop ----------
 
-function rollShopCollectibles(run, count = 3) {
-  if (!run) return [];
-  return pickRelics(count, run.relics);
+/** Three shelf slots: { id, sold } (the supply is looked up by id, so saves stay small). */
+function rollShopItems() {
+  return rollSupplies(3).map((s) => ({ id: s.id, sold: false }));
 }
 
-function buyRelicItem(relic) {
-  if (!run || !relic) return false;
-  if (run.hasRelic(relic.id)) return false;
-  const cost = run.relicPrice(relic);
-  if (!run.spendGold(cost)) return false;
+/** Buy shelf slot `i` of the current shop. */
+function buySupply(i) {
+  const item = run?.currentNode?.shopItems?.[i];
+  const s = item && !item.sold ? getSupply(item.id) : null;
+  if (!s || !run.spendGold(run.price(s.cost))) return false;
+  item.sold = true;
   reportQuest('gold_spent', { totalSpent: run.totalGoldSpent });
-  run.addRelic(relic.id);
   soundEngine.play('coin');
+  addFeedEntry(`<span class="feed-boon">BOUGHT: ${grantSupply(s, run)}</span>`);
   ui.updateRunHud(run);
-  ui.renderRelics(run);
-  addFeedEntry(`<span class="feed-relic">+ RELIC: ${relic.name}</span>`);
   return true;
 }
 
@@ -1305,24 +1234,7 @@ function buyRelicItem(relic) {
 
 function resolveRest(choice) {
   if (choice === 'heal') {
-    let healAmount = CONFIG.run.hpRegenPerRest || 30;
-    let maxHpBonus = 0;
-
-    // Tech tree node: Titan Core
-    if (run.permanent?.titanCoreHealBonusPct > 0) {
-      healAmount = Math.round(healAmount * (1 + run.permanent.titanCoreHealBonusPct));
-      maxHpBonus += (run.permanent.titanCoreMaxHpBonus || 0);
-    }
-
-    if (run.hasRelic('rel_family_feast')) maxHpBonus += 10;
-
-    if (maxHpBonus > 0) {
-      run.addMaxHp(maxHpBonus);
-      addFeedEntry(`<span class="feed-heal">SAFE ZONE BONUS: +${maxHpBonus} MAX HP</span>`);
-    }
-
-    if (run.hasRelic('rel_golden_apple')) healAmount = run.maxHp; // heal to full
-    const healed = run.healFlat(healAmount, run.permanent);
+    const healed = run.healFlat(CONFIG.run.hpRegenPerRest || 30);
     soundEngine.play('heal');
     // Recovery quest counts every Safe Zone heal across the run
     run.maxRestHealed = (run.maxRestHealed || 0) + healed;
@@ -1355,29 +1267,23 @@ function calculateAndApplyMinigameRewards(result) {
 
   let gold = 0;
   let healText = '';
-  const relicsGained = [];
+  let keys = 0;
 
   if (isAllPerfect) {
     gold = run.gainGold(40);
     healText = 'Full HP Recovery';
     run.hp = run.maxHp;
 
-    const r1 = rewardRandomCollectible('FLAWLESS DRILL 1');
-    const r2 = rewardRandomCollectible('FLAWLESS DRILL 2');
-    if (r1) relicsGained.push(r1);
-    if (r2) relicsGained.push(r2);
-
-    addFeedEntry(`<span class="feed-heal">FLAWLESS DRILL: FULL HP & 2 RELICS</span>`);
+    keys = 3;
+    addFeedEntry(`<span class="feed-heal">FLAWLESS DRILL: FULL HP & ${keys} KEYS</span>`);
   } else if (perfects >= 3) {
     gold = run.gainGold(25);
     const effectiveHeal = Math.round(50 * saveSystem.getHealingMultiplier());
     healText = `+${effectiveHeal} HP Healed`;
     run.healFlat(50);
 
-    const r1 = rewardRandomCollectible('PRECISION DRILL');
-    if (r1) relicsGained.push(r1);
-
-    addFeedEntry(`<span class="feed-heal">PRECISION DRILL: +${effectiveHeal} HP & 1 RELIC</span>`);
+    keys = 1;
+    addFeedEntry(`<span class="feed-heal">PRECISION DRILL: +${effectiveHeal} HP & 1 KEY</span>`);
   } else if (hits >= 3) {
     gold = run.gainGold(15);
     addFeedEntry(`<span class="feed-gold">DRILL PASSED: +${gold} GOLD</span>`);
@@ -1386,6 +1292,10 @@ function calculateAndApplyMinigameRewards(result) {
     addFeedEntry(`<span class="feed-gold">DRILL CONSOLATION: +${gold} GOLD</span>`);
   }
 
+  if (keys) {
+    saveSystem.addTokens(keys);
+    run.tokensEarned = (run.tokensEarned || 0) + keys;
+  }
   reportQuest('minigame', { perfect: isAllPerfect });
   ui.updateRunHud(run);
   persistRun('minigame'); // rewards paid: a reload finishes the tile instead of replaying it
@@ -1393,7 +1303,7 @@ function calculateAndApplyMinigameRewards(result) {
   return {
     gold,
     healText,
-    relics: relicsGained,
+    keys,
     hits,
     perfects,
     isAllPerfect,
@@ -1416,7 +1326,7 @@ const ABYSS_ATK_PER_DEPTH = 0.05;
 
 /**
  * A boss is down. The first time (floor 5) the run counts as won right
- * away; after that each Abyss warden pays Keys and TP. Either way the
+ * away; after that each Abyss warden pays Keys and scrap. Either way the
  * player chooses: extract with the win, or descend one floor deeper.
  */
 function sectorCleared() {
@@ -1428,10 +1338,10 @@ function sectorCleared() {
     run.abyssDepth = depth;
     saveSystem.recordAbyssDepth(run.ballType, depth);
     const keys = 3 + depth * 2;
-    const tp = Math.round((2 + depth) * saveSystem.getTpMultiplier());
+    const scrap = Math.round((10 + depth * 5) * saveSystem.getScrapMultiplier());
     saveSystem.addTokens(keys);
-    saveSystem.addTechPoints(tp);
-    rewards = { keys, tp };
+    saveSystem.addScrap(scrap);
+    rewards = { keys, scrap };
   }
   ui.updateRunHud(run);
   persistRun('descend', { descend: { depth, next: depth + 1 } });
@@ -1498,7 +1408,7 @@ function endRun(victory) {
   activeNode = null;
   ui.closeModal();
   setState(State.RESULT);
-  ui.showRunResult(run, questSystem.getActiveQuests(), { ...saveSystem.getMeta(), techPoints: saveSystem.data.techPoints });
+  ui.showRunResult(run, questSystem.getActiveQuests(), saveSystem.getMeta());
   ui.showMasteryResult(run.ball, xp, levels, saveSystem.getMasteryXp(run.ballType));
 
   if (run.riskUnlocked) {
@@ -1531,7 +1441,7 @@ const ENCOUNTERS = [
     title: 'DEFECTOR INTEL',
     desc: 'A rogue enemy defector offers secret patrol coordinates for a price.',
     choices: [
-      { label: 'Purchase Coordinates', loseGold: 12, gainTech: 2 },
+      { label: 'Purchase Coordinates', loseGold: 12, gainScrap: 12 },
       { label: 'Interrogate Defector', loseHp: 8, gainGold: 18 },
     ],
   },
@@ -1579,7 +1489,7 @@ const ENCOUNTERS = [
     title: 'GLADIATOR DUEL ARENA',
     desc: 'An underground arena pit challenges passing operators.',
     choices: [
-      { label: 'Enter Arena Ring', loseHp: 14, gainGold: 28, gainTech: 2 },
+      { label: 'Enter Arena Ring', loseHp: 14, gainGold: 28, gainScrap: 12 },
       { label: 'Decline and Watch', heal: 12 },
     ],
   },
@@ -1588,14 +1498,14 @@ const ENCOUNTERS = [
     desc: 'A radar dish sweeps the sector. Overcharging it can locate map paths or burn out power.',
     choices: [
       { label: 'Overcharge Transmitter Core', loseHp: 20, gainActions: 1, gainGold: 10 },
-      { label: 'Collect Sector Telemetry', gainTech: 2 },
+      { label: 'Collect Sector Telemetry', gainScrap: 12 },
     ],
   },
   {
-    title: 'RELIC VAULT CACHE',
-    desc: 'A sealed ancient chest pulsates with noble heraldry.',
+    title: 'SEALED VAULT',
+    desc: 'A sealed supply vault, its lock still humming.',
     choices: [
-      { label: 'Decipher Ancient Seal', loseHp: 12, gainRelic: true },
+      { label: 'Crack the Lock', loseHp: 12, gainKeys: 2 },
       { label: 'Salvage Gold Trim', gainGold: 16 },
     ],
   },
@@ -1635,7 +1545,7 @@ const ENCOUNTERS = [
     title: 'CRASHED SUPPLY DRONE',
     desc: 'A courier drone lies sparking in the rubble, its cargo bay half open.',
     choices: [
-      { label: 'Salvage the Cargo', loseHp: 8, gainRelic: true },
+      { label: 'Salvage the Cargo', loseHp: 8, gainKeys: 2 },
       { label: 'Siphon its Battery', heal: 20 },
     ],
   },
@@ -1644,7 +1554,7 @@ const ENCOUNTERS = [
     desc: 'A retired marksman squints at your slingshot and offers to share a trick.',
     choices: [
       { label: 'Pay for the Lesson', loseGold: 10, gainBoon: 'boon_power' },
-      { label: 'Trade War Stories', gainTech: 1 },
+      { label: 'Trade War Stories', gainScrap: 6 },
     ],
   },
   {
@@ -1675,7 +1585,7 @@ const ENCOUNTERS = [
     title: 'ECHOING CAVE',
     desc: 'Something in the dark repeats your footsteps, a half-second too late.',
     choices: [
-      { label: 'Explore Deeper', loseHp: 14, gainRelic: true },
+      { label: 'Explore Deeper', loseHp: 14, gainKeys: 2 },
       { label: 'Leave Quietly', heal: 10 },
     ],
   },
@@ -1691,7 +1601,7 @@ const ENCOUNTERS = [
     title: 'LOST RECRUIT',
     desc: 'A lost recruit begs for directions back to base.',
     choices: [
-      { label: 'Escort them Personally', loseHp: 5, gainTech: 2 },
+      { label: 'Escort them Personally', loseHp: 5, gainScrap: 12 },
       { label: 'Point the Way', gainGold: 6 },
     ],
   },
@@ -1699,7 +1609,7 @@ const ENCOUNTERS = [
     title: 'SYNDICATE TRADE DELEGATE',
     desc: 'A high-ranking trade official offers a high-yield investment.',
     choices: [
-      { label: 'Invest Capital in Syndicate', loseGold: 15, gainTech: 3 },
+      { label: 'Invest Capital in Syndicate', loseGold: 15, gainScrap: 18 },
       { label: 'Accept Courtesy Stipend', gainGold: 12 },
     ],
   },
@@ -1826,4 +1736,4 @@ setTimeout(() => ui.checkUpdates(), 1500);
 
 // Expose for debugging
 // Debug handle for the dev server only; release builds don't expose game state
-if (import.meta.env.DEV) window.__SLINGSHOT__ = { game, saveSystem, techTree, ui, get run() { return run; }, get map() { return map; }, sectorCleared, descend, endRun };
+if (import.meta.env.DEV) window.__SLINGSHOT__ = { game, saveSystem, ui, get run() { return run; }, get map() { return map; }, sectorCleared, descend, endRun };

@@ -19,7 +19,7 @@ import { soundEngine } from '../utils/SoundEngine.js';
 import { saveSystem } from '../meta/SaveSystem.js';
 import { haptics } from '../platform/haptics.js';
 import { getBall } from '../meta/Balls.js';
-import { DEFAULT_MOVE } from '../meta/Mech.js';
+import { DEFAULT_MOVE, DTYPES, dtypeOf, resistOf } from '../meta/Mech.js';
 import { pickArena } from './Arenas.js';
 
 const W = CONFIG.world;
@@ -84,7 +84,6 @@ const DEFAULT_BATTLE = {
   enemies: [
     { maxHp: 100, atk: 1, def: 0, displayName: 'HOSTILE', archetype: 'standard', xPct: 0.75 },
   ],
-  relics: [],
   nodeType: 'combat',
   ballType: 'operator',
   floor: 1,
@@ -113,7 +112,6 @@ export class Game {
     this.accumulator = 0;
     this.running = false;
     this.abilities = this._freshAbilities();
-    this.relics = [];
     this.turnId = 1; // never reset: hazard hit tracking compares against it
 
     this._bindEvents();
@@ -140,10 +138,8 @@ export class Game {
   }
 
   _freshAbilities() {
-    const relicCut = this.relics?.includes('rel_overcharge') ? 1 : 0;
-    const tech = this.techStats || {};
     return {
-      barrier: { ready: true, cooldownLeft: 0, baseCooldown: Math.max(1, CONFIG.abilities.barrier.cooldown - relicCut - (tech.barrierCdCut || 0)), name: CONFIG.abilities.barrier.name },
+      barrier: { ready: true, cooldownLeft: 0, baseCooldown: CONFIG.abilities.barrier.cooldown, name: CONFIG.abilities.barrier.name },
     };
   }
 
@@ -152,7 +148,6 @@ export class Game {
       ...opts,
       player: { ...DEFAULT_BATTLE.player, ...(opts.player || {}) },
       enemies: (opts.enemies && opts.enemies.length ? opts.enemies : DEFAULT_BATTLE.enemies),
-      relics: opts.relics || [],
       nodeType: opts.nodeType || 'combat',
       ballType: 'operator',
       floor: opts.floor || 1,
@@ -164,7 +159,6 @@ export class Game {
   reset(config = DEFAULT_BATTLE) {
     this.battleConfig = config;
     this.battleStats = this._freshBattleStats();
-    this.relics = config.relics || [];
 
     const ballType = 'operator';
     const ballDef = getBall(ballType);
@@ -221,34 +215,31 @@ export class Game {
     this.enemies.forEach((b, i) => {
       b.rank = config.enemies[i]?.rank || null;
       b.weapons = (config.enemies[i]?.weapons || []).map((w) => ({ ...w, ammoLeft: w.ammo || 0 }));
-      b.legs = config.enemies[i]?.legs || null; // how it can move (Mech.enemyLegs)
+      b.legs = config.enemies[i]?.legs || null; // how it can move (Mech.enemyMech)
+      b.res = { ...(config.enemies[i]?.res || {}) }; // armor resists per damage type
+      b.parts = config.enemies[i]?.parts || null; // for the sprite
       this._initRig(b, config.enemies[i]?.rig || G.enemyRig[['elite', 'miniboss', 'boss'].includes(config.nodeType) ? config.nodeType : 'combat']);
     });
 
-    this.techStats = config.techStats || {};
+    this.rigStats = config.rigStats || {};
     // Rig weapons (classic: auto-fire after your shot settles; gear: fired by hand) and drones (every turn)
     const gunScale = G.dmgScale;
-    this.playerWeapons = (this.techStats.mech?.weapons || []).map((w) => ({ ...w, dmg: w.dmg * gunScale, ammoLeft: w.ammo || 0 }));
+    this.playerWeapons = (this.rigStats.mech?.weapons || []).map((w) => ({ ...w, dmg: w.dmg * gunScale, ammoLeft: w.ammo || 0 }));
     // Drones start docked (OFF): switching one ON deploys it for the rest of the battle
-    this.playerDrones = (this.techStats.mech?.drones || []).map((d) => ({ ...d, dmg: d.dmg ? d.dmg * gunScale : d.dmg, off: true })); // copies: the renderer tags them
-    this._initRig(this.player, this.techStats.mech?.rig || G.baseRig);
-    // Tech tree Reactor branch and reactor relics
-    const t = this.techStats;
-    const R = (id) => (config.relics || []).includes(id);
-    this.player.energyMax += (t.rigEnergy || 0) + (R('rel_energy_well') ? 12 : 0);
-    this.player.energy = this.player.energyMax;
-    this.player.regen += (t.rigRegen || 0) + (R('rel_energy_well') ? 3 : 0) + (R('rel_overcharge') ? 4 : 0);
-    this.player.cool += t.rigCool || 0;
+    this.playerDrones = (this.rigStats.mech?.drones || []).map((d) => ({ ...d, dmg: d.dmg ? d.dmg * gunScale : d.dmg, off: true })); // copies: the renderer tags them
+    this._initRig(this.player, this.rigStats.mech?.rig || G.baseRig);
     // Legs: how you move (launch power band / angle), or anchored = no moving
-    this.player.legs = this.techStats.mech?.legs || null;
+    this.player.legs = this.rigStats.mech?.legs || null;
+    this.player.parts = this.rigStats.mech?.parts || null;
     this.fireTarget = null; // gear: the enemy you tapped to aim your guns at
     this.enemyFire = null; // gear: an enemy working through its shots
     this.autoEnd = 0; // gear: seconds until a fire phase with nothing left to do ends itself
     this.inspected = null; // { ball, weapon? } shown by the renderer
     // Higher Risk = bolder enemies: they favour hard hits, fire sooner, use abilities more
     this.aggression = Math.min(1, (config.riskLevel || 0) / 8);
-    this.player.forcefield = !!this.techStats.hasForcefield || !!this.techStats.mech?.startForcefield;
-    this.medkitUsed = false;
+    this.player.forcefield = !!this.rigStats.mech?.startForcefield;
+    this.player.def = config.player.totalDef ?? 0; // shown on the inspect panel with the resists
+    this.player.res = { phys: 0, heat: 0, energy: 0, ...(config.player.res || {}) };
     this._enemyShotHit = false;
 
     // Random arena for this floor: platforms, obstacles, hazards, wind
@@ -267,13 +258,11 @@ export class Game {
       playerAtk: config.player.atk ?? 1,
       playerDef: config.player.def ?? 0,
       playerTotalDef: config.player.totalDef ?? config.player.def ?? 0,
+      playerRes: this.player.res, // same object: Acid hits strip it
       playerDamageReductionPct: config.player.damageReductionPct ?? 0,
       riskPlusDmgTaken: config.riskPlusDmgTaken || 0,
       riskDefPierce: config.riskDefPierce || 0,
-      hasBarrierUp: () => this.playerBarrierCount > 0,
-      relics: this.relics,
       battleStats: this.battleStats,
-      techStats: this.techStats,
       riskLevel: config.riskLevel || 0,
       gear: this.gear,
     });
@@ -291,15 +280,9 @@ export class Game {
     this.slingshotInput.zeroGTime = 0;
     this.slingshotInput.ignoreWind = false;
     this.slingshotInput.gravityMult = ballDef.gravityMult || 1;
-    this.fortifiedStacks = 0;
     this.slingshotInput.pads = this.hazards.filter((h) => h.type === 'pad');
     this.hitStop = 0;
 
-    // Silver Shield: a barrier already standing in front of the player
-    if (this.relics.includes('rel_silver_shield')) {
-      const hp = this._barrierHp();
-      this.barriers.push({ x: this.player.x + 150, y: groundAt(this.player.x + 157) - 90, w: 14, h: 90, active: true, hp, maxHp: hp });
-    }
     this.renderer.resetBattleFx?.();
   }
 
@@ -346,53 +329,13 @@ export class Game {
     });
   }
 
-  /**
-   * Wall Unit: plans YOUR best shot at it (same AI, from your side) and
-   * keeps a wall across that path, close enough to protect itself. It moves
-   * the wall when you find a new angle, with a cooldown between moves.
-   */
-  _tankWall(enemy, act = () => true) {
-    enemy.wallCd = Math.max(0, (enemy.wallCd || 0) - 1);
-    const wall = enemy.wall?.active ? enemy.wall : null;
-    if (!wall && enemy.hp >= enemy.maxHp * 0.9 && this.aggression < 0.4) return; // not threatened yet
-    if (enemy.wallCd > 0) return;
-
-    // Stand the wall in your line of fire, 110px in front of the tank
-    if (wall && !this._lineClear(this.player, enemy, 'player')) return; // already covered
-    const d = Math.hypot(this.player.x - enemy.x, this.player.y - enemy.y) || 1;
-    if (d < 150) return; // too close for cover to help
-    if (!act(8)) return; // raising a wall is one of its actions
-    const spot = { x: enemy.x + ((this.player.x - enemy.x) / d) * 110, y: enemy.y + ((this.player.y - enemy.y) / d) * 110 };
-    const side = Math.sign(this.player.x - enemy.x) || -1;
-    const pos = spot || { x: enemy.x + side * 110, y: groundAt(enemy.x + side * 110) - 50 };
-    const bw = 14;
-    const bh = 90;
-    if (wall) wall.active = false; // picked up and moved
-    const hp = CONFIG.damage.barrierHp;
-    const b = {
-      x: Math.max(20, Math.min(W.width - 20 - bw, pos.x - bw / 2)),
-      y: Math.max(40, Math.min(groundAt(pos.x) - bh, pos.y - bh / 2)),
-      w: bw,
-      h: bh,
-      active: true,
-      hp,
-      maxHp: hp,
-      owner: 'enemy',
-    };
-    this.barriers.push(b);
-    enemy.wall = b;
-    enemy.wallCd = this.aggression >= 0.5 ? 1 : 2;
-    soundEngine.playAbility('barrier');
-    this._callout(enemy, wall ? 'WALL MOVED' : 'WALL UP', '#41a6f6');
-  }
-
   _barrierHp() {
-    return Math.round(CONFIG.damage.barrierHp * (this.relics.includes('rel_graviton_lens') ? 2 : 1) * (1 + (this.techStats?.barrierHpPct || 0)));
+    return CONFIG.damage.barrierHp;
   }
 
-  /** Your barrier cap (tech can raise it). */
+  /** Your barrier cap. */
   _maxBarriers() {
-    return CONFIG.abilities.barrier.maxActive + (this.techStats?.barrierExtra || 0);
+    return CONFIG.abilities.barrier.maxActive;
   }
 
   deployBarrierAt(x, y) {
@@ -420,10 +363,6 @@ export class Game {
     this._afterPlayerAction();
     soundEngine.playAbility('barrier');
     this.events.emit('ability-used', { id: 'barrier', name: CONFIG.abilities.barrier.name });
-    if (this.techStats?.barrierForcefield && !this.player.forcefield) {
-      this.player.forcefield = true;
-      this._callout(this.player, 'AEGIS WALL', '#a7f070');
-    }
     return true;
   }
 
@@ -453,14 +392,7 @@ export class Game {
       this._tickRig(this.player);
       this.player.exposed = false; // a ram only exposes you until your own turn
       this.autoEnd = 0;
-      this.battleStats.bouncedThisTurn = false;
-      this.battleStats.fullDrawThisTurn = false;
       this.battleStats.freeMoveUsed = false;
-      // Overclock (tech capstone): every 3rd turn brings an extra action
-      if (this.techStats?.overclock && (this.battleStats.turns + 1) % 3 === 0) {
-        this.player.actionsLeft += 1;
-        this._callout(this.player, 'OVERCLOCK: +1 ACTION', '#73eff7');
-      }
     }
     this._rechargePads();
     this._clearShotEffects();
@@ -472,7 +404,7 @@ export class Game {
       this.slingshotInput.setAnchor(this.player.x, this.player.y, this.player.radius);
     }
 
-    // Tick player burn (from pyromancer ignition)
+    // Tick player burn (Flamer hits)
     if (this.player && this.player.burnTicks > 0) {
       const rawBurnDmg = this.player.burnDmg || 8;
       const burnDmg = this.collisionSystem.calculatePlayerDamage(rawBurnDmg, { bypassDef: true });
@@ -492,19 +424,6 @@ export class Game {
       }
     }
 
-    // Tick player corrosion (from corroder impact)
-    if (this.player && this.player.corrodeTicks > 0) {
-      const drain = this.player.corrodeDefDrain || 1;
-      const curDef = this.collisionSystem.stats.playerTotalDef || 0;
-      const newDef = Math.max(0, curDef - drain);
-      this.collisionSystem.stats.playerTotalDef = newDef;
-      this.player.corrodeTicks -= 1;
-      this.events.emit('enemy-ability', {
-        enemy: null,
-        ability: 'Corrosion Tick',
-        desc: `Corrosion drains ${drain} DEF! (Now ${newDef} DEF, ${this.player.corrodeTicks} turns left)`,
-      });
-    }
 
     this.events.emit('player-turn-start');
   }
@@ -523,103 +442,6 @@ export class Game {
     if (!enemy || enemy.hp <= 0) return this._passEnemyTurn();
     this._tickRig(enemy);
     enemy.exposed = false;
-
-    // Special abilities play by the same rules as everything else: each use
-    // costs the enemy one of its actions plus energy (shown on its panel),
-    // and it only spends them when the ability would actually do something.
-    const act = (energy) => {
-      if (enemy.actionsLeft < 1 || enemy.energy < energy) return false;
-      enemy.actionsLeft -= 1;
-      enemy.energy -= energy;
-      return true;
-    };
-    const ability = (label, color, desc) => {
-      this._callout(enemy, label, color);
-      this.events.emit('enemy-ability', { enemy, ability: label, desc });
-    };
-
-    if (enemy.archetype === 'striker') {
-      // Charge: its guns hit 35% harder this turn (only worth it when it can shoot from here)
-      const canShoot = (enemy.weapons || []).some((w) => this.gunStatus(enemy, w, this.player).ok);
-      if (canShoot && (this.aggression >= 0.4 || this.player.hp < this.player.maxHp * 0.6) && act(6)) {
-        enemy.isOvercharged = true;
-        ability('CHARGED SHOT', '#ef7d57', 'Striker charges its guns: +35% damage this turn.');
-      }
-    } else if (enemy.archetype === 'tank') {
-      this._tankWall(enemy, act);
-      if (enemy.hp < enemy.maxHp * 0.75 && !enemy.hasFortified) {
-        // Passive, once per battle: armour locks down when it's hurt
-        enemy.hasFortified = true;
-        enemy.def = (enemy.def || 0) + 3;
-        this.events.emit('enemy-ability', { enemy, ability: 'Fortify Shield', desc: 'Wall Unit hardens: +3 DEF.' });
-      }
-    } else if (enemy.archetype === 'disruptor') {
-      const dx = enemy.x - this.player.x;
-      const clear = this._lineClear(enemy, this.player, 'enemy');
-      const gap = enemy.radius + this.player.radius + 20;
-      const travel = Math.max(0, Math.min(200, Math.abs(dx) - gap));
-      if (clear && travel > 40 && act(10)) {
-        // Drag you up to 200px toward the Weaver (stopping short of it)
-        this.player.pullTo = { x: this.player.x + Math.sign(dx) * travel, speed: 700, time: 0.6 };
-        this.particles.push({ type: 'tether', from: enemy, to: this.player, life: 0.7, maxLife: 0.7 });
-        this.renderer.addScreenShake(12);
-        soundEngine.playAbility('overdrive');
-        const pullDamage = this.collisionSystem.calculatePlayerDamage(12);
-        this.player.takeDamage(pullDamage);
-        this._spawnHitParticles(this.player.x, this.player.y);
-        this.battleStats.playerDamageTaken += pullDamage;
-        this.events.emit('enemy-dealt-damage', { attacker: enemy, damage: pullDamage });
-        ability('TETHER PULL', '#c46fd6', `Graviton Weaver pulled you in, dealing ${pullDamage} damage.`);
-        if (this.player.hp <= 0) {
-          this._checkBattleEnd(this.player);
-          return;
-        }
-      }
-    } else if (enemy.archetype === 'tactician') {
-      const allies = this.enemies.filter((a) => a !== enemy && a.hp > 0 && !a.isRallied);
-      if (allies.length && act(10)) {
-        for (const ally of allies) {
-          ally.isRallied = true;
-          ally.atk = Math.round((ally.atk || 1) * 1.2 * 100) / 100;
-          ally.def = (ally.def || 0) + 3;
-          for (const w of ally.weapons || []) w.dmg = Math.round(w.dmg * 1.2);
-        }
-        soundEngine.playAbility('barrier');
-        ability('WAR COMMAND', '#ffcd75', 'Commander rallies its allies: +20% damage and +3 DEF.');
-      }
-    } else if (enemy.archetype === 'corroder') {
-      const s = this.collisionSystem.stats;
-      if ((s.playerTotalDef || 0) > 0 && act(8)) {
-        s.playerTotalDef = Math.max(0, (s.playerTotalDef || 0) - 4);
-        soundEngine.playAbility('overdrive');
-        this.renderer.addScreenShake(8);
-        ability('ACID SPLASH', '#a7f070', `Acid Drone strips 4 of your DEF for this battle (now ${s.playerTotalDef}).`);
-      }
-    } else if (enemy.archetype === 'medic') {
-      // Heal the most injured living enemy (possibly itself); limited supply so medic fights always end
-      const hurt = this.enemies.filter((e) => e.hp > 0 && e.hp < e.maxHp * 0.9).sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
-      enemy.healsLeft = enemy.healsLeft ?? 4;
-      if (hurt && enemy.healsLeft > 0 && act(8)) {
-        enemy.healsLeft -= 1;
-        // 12% to allies, only 6% to itself so a lone medic can't stall forever
-        const pct = hurt === enemy ? 0.06 : 0.12;
-        hurt.hp = Math.min(hurt.maxHp, hurt.hp + Math.round(hurt.maxHp * pct));
-        soundEngine.play('heal');
-        this._spawnHealSparkles(hurt);
-        this._callout(hurt, 'PATCHED UP', '#a7f070');
-      }
-    } else if (enemy.archetype === 'shielder') {
-      // Allies only: a drone that could shield itself every turn would be unkillable
-      const target = this.enemies.find((e) => e !== enemy && e.hp > 0 && !e.shieldCharges);
-      if (target && act(8)) {
-        target.shieldCharges = 1;
-        soundEngine.playAbility('barrier');
-        this._callout(target, 'SHIELDED', '#41a6f6');
-      }
-    }
-    if (enemy.displayName === 'SECTOR COMMANDER') {
-      if (Math.hypot(this.player.x - enemy.x, this.player.y - enemy.y) < 400 && act(10)) this._triggerShockwave(enemy);
-    }
 
     if (enemy.burnTicks > 0) {
       const burnDmg = enemy.burnDmg || 6;
@@ -645,7 +467,6 @@ export class Game {
     this.enemyAI.configure({
       difficulty: aiDifficulty,
       thinkDelay: enemy.thinkDelay ?? CONFIG.ai.thinkDelay,
-      aimErrorBonus: this.relics.includes('rel_smoke_bomb') ? (7 * Math.PI) / 180 : 0,
       aggression: this.aggression,
       // Gear combat: pick a landing spot with its guns in range and yours not
       // Pick a landing spot with its guns in range and yours not
@@ -653,34 +474,6 @@ export class Game {
     });
     this._syncAiWorld();
     this.enemyAI.startTurn(enemy, this.player);
-  }
-
-  /** Split Cell: two small cells burst out of the destroyed one. */
-  _splitEnemy(parent) {
-    for (const side of [-1, 1]) {
-      const cell = new Ball({
-        x: Math.max(30, Math.min(W.width - 30, parent.x + side * 30)),
-        y: parent.y - 10,
-        team: 'enemy',
-        color: parent.color,
-        darkColor: parent.darkColor,
-        maxHp: Math.max(8, Math.round(parent.maxHp * 0.3)),
-        displayName: 'SPLIT SPAWN',
-        archetype: 'splitter',
-        atk: Math.round(parent.atk * 0.6 * 100) / 100,
-        def: 0,
-        aiDifficulty: parent.aiDifficulty,
-        thinkDelay: parent.thinkDelay,
-        radius: 16,
-      });
-      cell.isSpawn = true;
-      cell.vx = side * 260;
-      cell.vy = -480;
-      this._armMinion(cell, parent, 0.5);
-      this.enemies.push(cell);
-    }
-    this._callout(parent, 'SPLIT!', '#a7f070');
-    soundEngine.play('select');
   }
 
   /** Spawned enemies play by the same rules: a weaker copy of the parent's gun, legs and a reactor. */
@@ -785,7 +578,7 @@ export class Game {
     ball.x = Math.max(ball.radius, Math.min(W.width - ball.radius, ball.x + dx));
   }
 
-  /** Floating label above a ball (ability names, relic triggers). */
+
   // ---------- Rig weapons ----------
 
   /** Quick tap (not a drag) on a ball inspects its weapons; tap it again or empty ground to close. */
@@ -1155,9 +948,9 @@ export class Game {
 
   /** Damage one use of your gun would deal to this target (before crits), for planning. */
   _previewDamage(w, target) {
-    let dmg = w.dmg * (w.fx?.burst || 1) * this._gearDamageMult();
+    let dmg = w.dmg * (w.fx?.burst || 1) * (this.collisionSystem.stats.playerAtk || 1);
     if (target.exposed) dmg *= G.exposedMult;
-    if (!(w.fx?.pierce || this.player.piercing)) dmg *= 1 - Math.min(CONFIG.run.maxDefCap || 15, target.def || 0) * CONFIG.damage.defensePerPoint;
+    if (!(w.fx?.pierce || this.player.piercing)) dmg *= 1 - Math.min(CONFIG.run.maxDefCap || 15, resistOf(target, dtypeOf(w))) * CONFIG.damage.defensePerPoint;
     return Math.max(1, Math.round(dmg));
   }
 
@@ -1207,14 +1000,7 @@ export class Game {
     const state = this.playerGunState(i);
     if (!state.ok) return state;
     const bs = this.battleStats;
-    if (this.techStats?.freeFirstShot && !bs.firstShotDone) {
-      // Opening Salvo: the first shot of the battle costs no energy or heat
-      if (w.ammo) w.ammoLeft -= 1;
-      this.player.actionsLeft -= 1;
-      this._callout(this.player, 'OPENING SALVO', '#73eff7');
-    } else {
-      this._payForShot(this.player, w);
-    }
+    this._payForShot(this.player, w);
     bs.firstShotDone = true;
     bs.report.shots += 1;
     bs.track.shots += 1;
@@ -1302,17 +1088,6 @@ export class Game {
     this._gearDrones();
     if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
     this._tickAbilities();
-    const bs = this.battleStats;
-
-    if (this.techStats.forcefieldTurnInterval > 0 && bs.turns % this.techStats.forcefieldTurnInterval === 0 && !this.player.forcefield) {
-      this.player.forcefield = true;
-      this._callout(this.player, 'FORCEFIELD RECHARGED', '#a7f070');
-    }
-
-    if (this.relics.includes('rel_medic')) {
-      this.player.hp = Math.min(this.player.maxHp, this.player.hp + 6);
-    }
-
     this.collisionSystem.stats.playerDef = this.battleConfig?.player?.def || 0;
 
     const firstIdx = this.enemies.findIndex((e) => e.hp > 0);
@@ -1328,7 +1103,6 @@ export class Game {
     const shooter = this.enemies[currentIdx];
     if (shooter) {
       shooter.missStreak = this._enemyShotHit ? 0 : (shooter.missStreak || 0) + 1;
-      shooter.isOvercharged = false; // a Striker's charge lasts one turn
     }
     let nextIdx = -1;
     for (let i = currentIdx + 1; i < this.enemies.length; i++) {
@@ -1459,127 +1233,59 @@ export class Game {
   /** One weapon hit landing on `target`. `owner` fired it (chains/splash hop from `from`). */
   _weaponHit(from, target, w, rawDmg, owner = from) {
     soundEngine.playUI(target.team === 'player' ? 220 : 660, 0.04);
-    // A rammed target takes extra gun damage; energy/heat guns hit the reactor
+    // A rammed target takes extra gun damage
     if (target.exposed) rawDmg *= G.exposedMult;
-    this._reactorFx(target, w);
+    const type = dtypeOf(w);
     if (target.team === 'enemy') {
-      if (target.shieldCharges > 0) {
-        target.shieldCharges -= 1;
-        this._callout(target, 'BLOCKED', '#41a6f6');
-        return;
-      }
-      // Your guns carry your ATK, crit chance and relics
+      // Your guns carry your ATK and crit chance
       const yours = owner === this.player;
-      const critChance = (w.fx?.crit || 0) + (yours ? 0.05 + (this.techStats?.critChance || 0) : 0);
+      const critChance = (w.fx?.crit || 0) + (yours ? 0.05 + (this.rigStats?.critChance || 0) : 0);
       const crit = critChance > 0 && Math.random() < critChance;
       let dmg = rawDmg * (crit ? 1.75 : 1);
-      if (yours) dmg = this._relicDamage(dmg * this._gearDamageMult(), target);
-      const armorPen = yours ? Math.min(0.9, this.techStats?.armorPenPct || 0) : 0;
-      if (!w.fx?.pierce) dmg *= 1 - Math.min(CONFIG.run.maxDefCap || 15, (target.def || 0) * (1 - armorPen)) * CONFIG.damage.defensePerPoint;
+      if (yours) dmg *= this.collisionSystem.stats.playerAtk || 1;
+      // Heat / Energy hits also load the reactor; past its limits, the rest spills into HP
+      dmg += this._reactorFx(target, w, dmg);
+      if (!w.fx?.pierce) dmg *= 1 - Math.min(CONFIG.run.maxDefCap || 15, resistOf(target, type)) * CONFIG.damage.defensePerPoint;
       dmg = Math.max(1, Math.round(dmg));
-      // Shadow Stiletto: finish off a non-boss enemy left below 15% HP
-      if (yours && this.relics.includes('rel_syndicate_blade') && !target.rank && target.hp - dmg > 0 && target.hp - dmg <= target.maxHp * 0.15) {
-        dmg = Math.ceil(target.hp);
-        this._callout(target, 'EXECUTE', '#ff5d73');
-      }
       const killed = target.takeDamage(dmg);
       target.flashTimer = 0.15;
-      if (w.fx?.burn || (yours && this.relics.includes('rel_pyro'))) {
-        target.burnTicks = Math.max(target.burnTicks || 0, w.fx?.burn || 3);
+      if (w.fx?.burn) {
+        target.burnTicks = Math.max(target.burnTicks || 0, w.fx.burn);
         target.burnDmg = Math.max(target.burnDmg || 0, 6);
       }
-      if (w.fx?.freeze || (yours && this.relics.includes('rel_cryo'))) target.isFrozen = true;
-      if (w.fx?.corrode) target.def = Math.max(0, (target.def || 0) - w.fx.corrode);
+      if (w.fx?.freeze) target.isFrozen = true;
+      if (w.fx?.corrode) target.res = { ...target.res, phys: Math.max(-(target.def || 0), (target.res?.phys || 0) - w.fx.corrode) };
       if (w.fx?.leech && yours) this.player.hp = Math.min(this.player.maxHp, this.player.hp + Math.round(dmg * w.fx.leech));
-      if (yours && !killed && this.relics.includes('rel_graviton')) this._singularityPull(target);
       if (yours) this._reportHit(w, dmg);
-      this._callout(target, `${w.name.split(' ').pop()} ${dmg}${crit ? '!' : ''}`, w.color || '#f4f4f4');
+      this._callout(target, `${dmg}${crit ? '!' : ''}`, DTYPES[type].color);
       this.events.emit('damage', { attacker: owner, victim: target, damage: dmg, killed, crit });
-      if (killed) {
-        if (yours && this.techStats?.killEnergy) {
-          this.player.energy = Math.min(this.player.energyMax, this.player.energy + this.techStats.killEnergy);
-          this._callout(this.player, `+${this.techStats.killEnergy} ENERGY`, '#73eff7');
-        }
-        this._checkBattleEnd(target);
-      }
+      if (killed) this._checkBattleEnd(target);
       return;
     }
-    // Enemy gun hitting you: Forcefield blocks it, DEF and damage reduction apply
+    // Enemy gun hitting you: Forcefield blocks it, resists and damage reduction apply
     if (this.player.forcefield) {
       this.player.forcefield = false;
       this._callout(this.player, 'BLOCKED', '#a7f070');
       return;
     }
-    let dmg = this.collisionSystem.calculatePlayerDamage(rawDmg * (owner.isOvercharged ? 1.35 : 1));
-    // Shadow Cloak: the first 2 hits you take each battle are halved
-    const bs = this.battleStats;
-    if (this.relics.includes('rel_shadow_cloak') && (bs.cloakHits || 0) < 2) {
-      bs.cloakHits = (bs.cloakHits || 0) + 1;
-      dmg = Math.max(1, Math.round(dmg / 2));
-      this._callout(this.player, 'CLOAK -50%', '#94b0c2');
-    }
+    const spill = this._reactorFx(this.player, w, rawDmg);
+    const dmg = this.collisionSystem.calculatePlayerDamage(rawDmg + spill, { dtype: type, bypassDef: !!w.fx?.pierce });
     const killed = this.player.takeDamage(dmg);
     this.player.flashTimer = 0.15;
+    if (w.fx?.leech && owner.hp > 0) owner.hp = Math.min(owner.maxHp, owner.hp + Math.round(dmg * w.fx.leech));
     if (w.fx?.burn) {
       this.player.burnTicks = Math.max(this.player.burnTicks || 0, w.fx.burn);
       this.player.burnDmg = Math.max(this.player.burnDmg || 0, 6);
     }
     if (w.fx?.freeze) this.player.isFrozen = true;
     if (w.fx?.corrode) {
-      const s = this.collisionSystem.stats;
-      s.playerTotalDef = Math.max(0, (s.playerTotalDef || 0) - w.fx.corrode);
+      const r = this.player.res;
+      r.phys = Math.max(-(this.collisionSystem.stats.playerTotalDef || 0), (r.phys || 0) - w.fx.corrode);
     }
-    this._callout(this.player, `${w.name.split(' ').pop()} ${dmg}`, w.color || '#ff5d73');
+    this._callout(this.player, `${dmg}`, DTYPES[type].color);
     // (the 'damage' handler counts it as damage taken and tells the run)
     this.events.emit('damage', { attacker: owner, victim: this.player, damage: dmg, killed });
     if (killed) this._checkBattleEnd(this.player);
-  }
-
-  /** Your gun damage multiplier: ATK, Risk Resonance, Full Draw / Ricochet Crest this turn. */
-  _gearDamageMult() {
-    let m = this.collisionSystem.stats.playerAtk || 1;
-    const tech = this.techStats || {};
-    if (tech.riskResonanceBonusPerLevel > 0 && this.battleConfig?.riskLevel > 0) m *= 1 + this.battleConfig.riskLevel * tech.riskResonanceBonusPerLevel;
-    const bs = this.battleStats;
-    if (this.relics.includes('rel_radiant_crest') && bs.bouncedThisTurn) m *= 1.35;
-    if (this.relics.includes('rel_vector_engine') && bs.fullDrawThisTurn) m *= 1.25;
-    return m;
-  }
-
-  /** Relics that change one hit on one enemy. */
-  _relicDamage(dmg, target) {
-    const R = (id) => this.relics.includes(id);
-    const bs = this.battleStats;
-    const p = this.player;
-    if (R('rel_knight_lance') && !bs.lanceUsed) {
-      dmg *= 1.35;
-      bs.lanceUsed = true;
-    }
-    if (R('rel_gladiator_glove') && target.hp >= target.maxHp * 0.75) dmg *= 1.25;
-    if (R('rel_blood_sample') && p.hp < p.maxHp * 0.5) dmg *= 1.25;
-    if (R('rel_combat_drug') && p.hp < p.maxHp * 0.3) dmg *= 1.5;
-    if (R('rel_echo') && !bs.echoUsed) {
-      dmg += 15;
-      bs.echoUsed = true;
-      this._callout(target, 'ECHO +15', '#ffcd75');
-    }
-    return dmg;
-  }
-
-  /** Singularity Core: enemies near the one you hit slide in next to it. */
-  _singularityPull(target) {
-    let pulled = false;
-    for (const ball of this.enemies) {
-      if (ball === target || ball.hp <= 0) continue;
-      const dx = target.x - ball.x;
-      if (Math.abs(dx) > 360) continue;
-      ball.pullTo = { x: target.x - Math.sign(dx || 1) * (target.radius + ball.radius + 6), speed: 900, time: 0.5 };
-      pulled = true;
-    }
-    if (pulled) {
-      this._callout(target, 'SINGULARITY', '#c46fd6');
-      this.particles.push({ type: 'implode', x: target.x, y: target.y, radius: 360, life: 0.4, maxLife: 0.4 });
-    }
   }
 
   /** Battle report: damage per gun, best hit. */
@@ -1589,17 +1295,29 @@ export class Game {
     r.byGun[w.name] = (r.byGun[w.name] || 0) + dmg;
   }
 
-  /** EMP drains energy, Heat Ray pumps in heat. */
-  _reactorFx(target, w) {
-    if (w.fx?.drain && target.energy !== undefined) {
+  /**
+   * Heat guns pump heat into the target, Energy guns drain its energy (half
+   * the hit, or the gun's own fx amount). Heat past the cap, or a drain
+   * deeper than the tank holds, spills over: returns the extra HP damage.
+   */
+  _reactorFx(target, w, dmg) {
+    const type = dtypeOf(w);
+    let spill = 0;
+    if (target.energy !== undefined && (type === 'energy' || w.fx?.drain)) {
+      const want = Math.round(w.fx?.drain ?? dmg * G.dtypeLoad);
       const before = target.energy;
-      target.energy = Math.max(0, target.energy - w.fx.drain);
-      if (before > target.energy) this._callout(target, `-${before - target.energy} ENERGY`, '#c46fd6');
+      target.energy = Math.max(0, target.energy - want);
+      spill += (want - (before - target.energy)) * G.dtypeSpill;
+      if (before > target.energy) this._callout(target, `-${before - target.energy} EN`, DTYPES.energy.color);
     }
-    if (w.fx?.heat && target.heat !== undefined) {
-      target.heat += w.fx.heat;
-      this._callout(target, target.heat > target.heatCap ? 'OVERHEATED' : `+${w.fx.heat} HEAT`, '#ef7d57');
+    if (target.heat !== undefined && (type === 'heat' || w.fx?.heat)) {
+      const add = Math.round(w.fx?.heat ?? dmg * G.dtypeLoad);
+      const over = Math.max(0, target.heat + add - target.heatCap) - Math.max(0, target.heat - target.heatCap);
+      target.heat += add;
+      spill += over * G.dtypeSpill;
+      this._callout(target, target.heat > target.heatCap ? 'OVERHEATED' : `+${add} HEAT`, DTYPES.heat.color);
     }
+    return spill;
   }
 
   _callout(ball, text, color) {
@@ -1610,60 +1328,6 @@ export class Game {
   _passEnemyTurn() {
     if (this.turnSystem.phase === TurnPhase.GAME_OVER || !this.running) return;
     this.events.emit('turn-end', { playerTurn: false });
-  }
-
-  _triggerShockwave(enemy) {
-    const dx = this.player.x - enemy.x;
-    const dy = this.player.y - enemy.y;
-    const dist = Math.hypot(dx, dy) || 1;
-    if (dist < 400) {
-      const force = (1 - dist / 400) * 450;
-      this.player.vx += (dx / dist) * force;
-      this.player.vy += (dy / dist) * force - 120;
-    }
-    for (const b of this.barriers) {
-      if (!b.active) continue;
-      const bx = b.x + b.w / 2;
-      if (Math.abs(bx - enemy.x) < 320) {
-        b.hp = Math.max(0, b.hp - 25);
-        if (b.hp <= 0) b.active = false;
-      }
-    }
-    this.renderer.addScreenShake(14);
-    soundEngine.playImpact(1.8);
-    this.particles.push({
-      x: enemy.x,
-      y: enemy.y,
-      radius: 20,
-      maxRadius: 280,
-      life: 0.45,
-      maxLife: 0.45,
-      type: 'shockwave',
-    });
-    this.events.emit('enemy-ability', {
-      enemy,
-      ability: 'Shockwave Pulse',
-      desc: 'Commander emits a seismic force pulse!',
-    });
-  }
-
-  _triggerChainLightning(originEnemy) {
-    soundEngine.playAbility('overdrive');
-    this.renderer.addScreenShake(10);
-
-    this._callout(originEnemy, 'CHAIN!', '#73eff7');
-    for (const enemy of this.enemies) {
-      if (enemy !== originEnemy && enemy.hp > 0) {
-        this.particles.push({ type: 'bolt', x1: originEnemy.x, y1: originEnemy.y, x2: enemy.x, y2: enemy.y, life: 0.4, maxLife: 0.4, seed: Math.random() });
-        enemy.hp = Math.max(0, enemy.hp - 25);
-        this._spawnHitParticles(enemy.x, enemy.y);
-        this.events.emit('player-dealt-damage', { victim: enemy, damage: 25 });
-        if (enemy.hp <= 0) {
-          this._spawnDefeatParticles(enemy.x, enemy.y, enemy.color);
-          this._checkBattleEnd(enemy);
-        }
-      }
-    }
   }
 
   _bindEvents() {
@@ -1762,7 +1426,7 @@ export class Game {
       }
     });
 
-    this.events.on('damage', ({ attacker, victim, damage, killed, isThorn, crit, combo, dive, pierce }) => {
+    this.events.on('damage', ({ attacker, victim, damage, killed, crit }) => {
       this._spawnHitParticles(victim.x, victim.y);
       if (attacker.team === 'player' && victim.team === 'enemy') {
         this._trackPlayerHit(victim, damage, killed, { crit });
@@ -1782,204 +1446,35 @@ export class Game {
         this.addHitStop(0.05);
       }
 
-      // HE Shell: splash the other enemies near the one you hit
-      if (attacker.team === 'player' && victim.team === 'enemy' && !isThorn && !this._splashing && this.relics.includes('rel_artillery_shell')) {
-        this._splashing = true;
-        const near = this.enemies.some((o) => o !== victim && o.hp > 0 && Math.hypot(o.x - victim.x, o.y - victim.y) <= 260);
-        if (near) {
-          this._callout(victim, 'SPLASH', '#ef7d57');
-          this.particles.push({ type: 'shockwave', x: victim.x, y: victim.y, radius: 20, maxRadius: 260, life: 0.35, maxLife: 0.35 });
-        }
-        for (const other of this.enemies) {
-          if (other === victim || other.hp <= 0) continue;
-          if (Math.hypot(other.x - victim.x, other.y - victim.y) > 260) continue;
-          const dead = other.takeDamage(10);
-          other.flashTimer = 0.15;
-          this.events.emit('damage', { attacker, victim: other, damage: 10, killed: dead });
-          this.events.emit('player-dealt-damage', { victim: other, damage: 10 });
-        }
-        this._splashing = false;
-      }
-
-      if (killed && victim.team === 'enemy' && this.relics.includes('rel_horn_of_war') && this.player.hp > 0) {
-        this.player.hp = Math.min(this.player.maxHp, this.player.hp + 12);
-        this._callout(this.player, 'HORN OF VALOR', '#a7f070');
-      }
-
       if (killed) {
         this.addHitStop(0.14);
         haptics.impact('heavy');
         soundEngine.playDefeat();
         this._spawnDefeatParticles(victim.x, victim.y, victim.color);
         this.renderer.addScreenShake(12);
-
-        if (victim.team === 'enemy' && this.relics.includes('rel_chain_lightning')) {
-          this._triggerChainLightning(victim);
-        }
       }
 
       if (attacker.team === 'player') {
         this.events.emit('player-dealt-damage', { victim, damage });
-
-        if (this.techStats?.vampiricVitalityPct > 0 && damage > 0) {
-          const healed = this._healPlayer(Math.max(1, Math.round(damage * this.techStats.vampiricVitalityPct)));
-          if (healed > 0) this._callout(this.player, `LIFESTEAL +${healed}`, '#a7f070');
-        }
       } else {
         this.battleStats.playerDamageTaken += damage;
         this.events.emit('enemy-dealt-damage', { attacker, damage });
-
-        if (attacker.archetype === 'vampire') {
-          const healAmt = Math.max(1, Math.round(damage * 0.40));
-          attacker.hp = Math.min(attacker.maxHp, attacker.hp + healAmt);
-          this._spawnHitParticles(attacker.x, attacker.y);
-          this.events.emit('enemy-ability', {
-            enemy: attacker,
-            ability: 'Siphon Drain',
-            desc: `Siphon Drone stole ${healAmt} HP!`,
-          });
-        } else if (attacker.archetype === 'pyromancer' && !(victim.burnTicks > 0)) {
-          victim.burnTicks = 2;
-          victim.burnDmg = 8;
-          this.events.emit('enemy-ability', {
-            enemy: attacker,
-            ability: 'Thermal Flare Ignition',
-            desc: 'Blaze Mortar ignited player with 2 turns of Thermal Burn (8 DMG/turn)!',
-          });
-        } else if (attacker.archetype === 'corroder') {
-          victim.corrodeTicks = 3;
-          victim.corrodeDefDrain = 1;
-          this.events.emit('enemy-ability', {
-            enemy: attacker,
-            ability: 'Corrosive Impact',
-            desc: 'Acid Drone hit you! Corrosion applied: -1 DEF/turn for 3 turns.',
-          });
-        }
-      }
-
-      if (victim.team === 'player' && this.techStats.emergencyMedkitHeal > 0 && !this.medkitUsed && victim.hp > 0 && victim.hp <= victim.maxHp * 0.25) {
-        this.medkitUsed = true;
-        this._healPlayer(this.techStats.emergencyMedkitHeal);
-        soundEngine.playAbility('barrier');
-        this.events.emit('emergency-medkit-heal', { hp: victim.hp });
-        this._callout(victim, 'EMERGENCY MEDKIT', '#a7f070');
-      }
-
-      if (victim.team === 'player' && this.techStats.fortifiedMatrixBonusDef > 0 && damage >= 20 && this.fortifiedStacks < 3) {
-        this.fortifiedStacks += 1; // max 3 stacks per battle
-        this.collisionSystem.stats.playerTotalDef = (this.collisionSystem.stats.playerTotalDef || 0) + this.techStats.fortifiedMatrixBonusDef;
-      }
-
-      if (attacker.team === 'player' && this.battleStats.bouncedThisTurn && this.battleStats.wallBounced) {
-        this.events.emit('wall-bounce-hit', { damage }); // Pinball quest
-        this.battleStats.wallBounced = false;
-      }
-
-      if (victim.team === 'player' && attacker.team === 'enemy' && this.techStats.counterPct > 0 && !isThorn && attacker.hp > 0) {
-        const back = Math.max(1, Math.round(damage * this.techStats.counterPct));
-        attacker.hp = Math.max(0, attacker.hp - back);
-        this._callout(attacker, `COUNTER -${back}`, '#41a6f6');
-        this.events.emit('player-dealt-damage', { victim: attacker, damage: back });
-        if (attacker.hp <= 0) this._checkBattleEnd(attacker);
-      }
-
-      if (victim.team === 'player' && attacker.team === 'enemy' && this.relics.includes('rel_thorns') && !isThorn) {
-        const reflected = Math.max(1, Math.round(damage * 0.25));
-        attacker.hp = Math.max(0, attacker.hp - reflected);
-        this.events.emit('player-dealt-damage', { victim: attacker, damage: reflected });
-        if (attacker.hp <= 0) {
-          this._checkBattleEnd(attacker);
-        }
       }
 
       if (victim.team === 'enemy' && victim.rank && !victim.phase2 && victim.hp > 0 && victim.hp <= victim.maxHp * 0.5) {
         this._enterPhaseTwo(victim);
-      }
-      if (killed && victim.archetype === 'splitter' && !victim.isSpawn) {
-        this._splitEnemy(victim);
       }
       if (killed) {
         this._checkBattleEnd(victim);
       }
     });
 
-    this.events.on('wall-bounce', ({ ball }) => {
-      soundEngine.playWallBounce();
-      if (ball.team === 'player') {
-        this.battleStats.wallBounced = true;
-        if (this.turnSystem.phase === TurnPhase.PLAYER_FLY) this.battleStats.bouncedThisTurn = true;
-        if (this.relics.includes('rel_cluster') && !this.battleStats.clusteredThisTurn) {
-          this.battleStats.clusteredThisTurn = true;
-          this._spawnClusterShards(ball);
-        }
-      }
-    });
-  }
-
-  /** Cluster: two fragments fly off the bounce and deal 9 damage to the first enemy they touch. */
-  _spawnClusterShards(ball, { count = 2, dmg = 9, label = 'SPLIT!' } = {}) {
-    this._callout(ball, label, '#ffcd75');
-    soundEngine.playAbility('overdrive');
-    this.renderer.addScreenShake(8);
-    for (let i = 0; i < count; i++) {
-      const angle = Math.atan2(ball.vy, ball.vx) + (count === 1 ? 0 : -0.35 + (0.7 * i) / (count - 1));
-      const speed = Math.max(500, Math.hypot(ball.vx, ball.vy) * 0.8);
-      this.particles.push({
-        x: ball.x,
-        y: ball.y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        size: 9,
-        color: '#ffcd75',
-        life: 0.9,
-        maxLife: 0.9,
-        shard: true,
-        dmg,
-      });
-    }
-  }
-
-  _updateShards(dt) {
-    for (const p of this.particles) {
-      if (!p.shard || p.life <= 0) continue;
-      // Steer toward the nearest living enemy
-      let target = null;
-      let best = Infinity;
-      for (const enemy of this.enemies) {
-        const d = enemy.hp > 0 ? Math.hypot(enemy.x - p.x, enemy.y - p.y) : Infinity;
-        if (d < best) { best = d; target = enemy; }
-      }
-      if (target) {
-        const speed = 900;
-        const k = Math.min(1, dt * 4); // soft homing: a bad bounce can still miss
-        p.vx += ((target.x - p.x) / best * speed - p.vx) * k;
-        p.vy += ((target.y - p.y) / best * speed - p.vy) * k;
-      }
-      for (const enemy of this.enemies) {
-        if (enemy.hp <= 0 || Math.hypot(p.x - enemy.x, p.y - enemy.y) > enemy.radius + 10) continue;
-        p.life = 0;
-        // Fragments obey shields and DEF like any other hit
-        if (enemy.shieldCharges > 0) {
-          enemy.shieldCharges -= 1;
-          enemy.flashTimer = 0.15;
-          break;
-        }
-        const def = Math.min(CONFIG.run.maxDefCap || 15, enemy.def || 0);
-        const dmg = Math.max(1, Math.round((p.dmg || 9) * (1 - def * CONFIG.damage.defensePerPoint)));
-        const killed = enemy.takeDamage(dmg);
-        enemy.flashTimer = 0.15;
-        this.battleStats.track.shardHits += 1;
-        this.events.emit('damage', { attacker: this.player, victim: enemy, damage: dmg, killed });
-        if (killed) this._checkBattleEnd(enemy);
-        break;
-      }
-    }
+    this.events.on('wall-bounce', () => soundEngine.playWallBounce());
   }
 
   _checkBattleEnd(victim) {
     if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
 
-    if (this.player.hp <= 0 && this._secondWind()) return;
     if (this.player.hp <= 0) {
       this.winner = 'enemy';
       soundEngine.play('lose');
@@ -2100,12 +1595,6 @@ export class Game {
         soundEngine.playUI(260 + Math.min(500, evt.impactSpeed / 2));
         if (evt.impactSpeed > 400) this.particles.push({ type: 'shockwave', x: evt.ball.x, y: W.groundY - 22, radius: 10, maxRadius: 60 + evt.impactSpeed / 12, life: 0.25, maxLife: 0.25 });
       }
-      if (evt.type === 'barrier' && evt.ball.team === 'enemy' && evt.barrier?.owner !== 'enemy' && this.techStats?.barrierSpikeDmg && !evt.ball.spiked) {
-        evt.ball.spiked = true;
-        const dead = evt.ball.takeDamage(this.techStats.barrierSpikeDmg);
-        this._callout(evt.ball, `SPIKES ${this.techStats.barrierSpikeDmg}`, '#41a6f6');
-        this.events.emit('damage', { attacker: this.player, victim: evt.ball, damage: this.techStats.barrierSpikeDmg, killed: dead, isThorn: true });
-      }
       if (evt.type === 'wall' || evt.type === 'barrier') {
         soundEngine.playWallBounce();
         this.events.emit('wall-bounce', { ball: evt.ball });
@@ -2115,7 +1604,6 @@ export class Game {
   }
 
   _updateParticles(dt) {
-    this._updateShards(dt);
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.life -= dt;
@@ -2203,8 +1691,7 @@ export class Game {
   }
 
   /**
-   * Heal the ball in battle (Risk / curse healing penalties apply). Healing
-   * past max HP becomes shield with Overflow Shielding. Returns HP gained.
+   * Heal the ball in battle (the Risk healing penalty applies). Returns HP gained.
    */
   _healPlayer(amount) {
     const p = this.player;
@@ -2212,25 +1699,7 @@ export class Game {
     const eff = Math.max(0, Math.round(amount * mult));
     const before = p.hp;
     p.hp = Math.min(p.maxHp, p.hp + eff);
-    const overflow = eff - (p.hp - before);
-    const capPct = this.techStats.overflowShieldCapPct || 0;
-    if (overflow > 0 && capPct > 0) p.shieldHp = Math.min(Math.round(p.maxHp * capPct), (p.shieldHp || 0) + overflow);
     return p.hp - before;
-  }
-
-  /** Second Wind (tech capstone): once per run, a lethal blow leaves you standing. */
-  _secondWind() {
-    const pct = this.techStats.secondWindPct || 0;
-    if (!pct || !this.run || this.run.secondWindUsed) return false;
-    this.run.secondWindUsed = true;
-    this.player.hp = Math.max(1, Math.round(this.player.maxHp * pct));
-    this.player.forcefield = true;
-    this.renderer.showBanner('SECOND WIND', '#a7f070');
-    this._callout(this.player, 'SECOND WIND', '#a7f070');
-    this.addHitStop(0.25);
-    soundEngine.play('heal');
-    haptics.impact('heavy');
-    return true;
   }
 
   render() {
@@ -2254,8 +1723,8 @@ export class Game {
       playerWeapons: this.playerWeapons || [],
       playerDrones: this.playerDrones || [],
       projectiles: this.projectiles || [],
-      relics: this.relics,
       gear: true,
+      showHints: !!this.battleConfig?.showHints,
       fireTarget: this._currentTarget(),
       inspected: this.inspected && this.inspected.ball.hp > 0 ? this.inspected : null,
     };
