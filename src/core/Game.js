@@ -19,7 +19,6 @@
 
 import { CONFIG } from '../config.js';
 import { Events } from './Events.js';
-import { setTerrain } from './Physics.js';
 import { Ball } from '../entities/Ball.js';
 import { CollisionSystem } from '../systems/CollisionSystem.js';
 import { TurnSystem, TurnPhase } from '../systems/TurnSystem.js';
@@ -191,7 +190,6 @@ export class Game {
       ...this.arena.mines.map((pos) => ({ type: 'mine', pos, x: posX(pos) - 24, w: 48, armed: true, born: 0, owner: 'arena', dmg: 30 })),
     ];
     W.wind = 0;
-    setTerrain(null);
     this.renderer.showArenaIntro?.(this.arena);
 
     this.particles = [];
@@ -1382,7 +1380,6 @@ export class Game {
       abilities: this.abilities,
       winner: this.winner,
       battleSummary: { kills: this.enemies.filter((e) => e.hp <= 0).length, turns: this.battleStats.turns },
-      slingshotInput: null,
       playerWeapons: this.playerWeapons || [],
       playerDrones: this.playerDrones || [],
       projectiles: this.projectiles,

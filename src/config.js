@@ -48,20 +48,6 @@ export const CONFIG = {
     maxHp: 100,
   },
 
-  // --- Movement: launches stay low (degrees above horizontal) ---
-  // Legs can narrow this band; Jump Jets are the only legs that go higher.
-  move: { minDeg: -10, maxDeg: 35 },
-
-  // --- Slingshot (player) ---
-  slingshot: {
-    maxPower: 1400, // max launch speed px/s
-    minPower: 150,
-    powerScale: 4.5, // drag distance (px) → launch speed multiplier
-    maxDragDistance: 300,
-    trajectoryPoints: 40,
-    trajectoryStep: 0.05,
-  },
-
   // --- Damage ---
   damage: {
     minImpactSpeed: 120, // below this, no damage on hit

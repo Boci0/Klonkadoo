@@ -12,7 +12,7 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
-import { getTerrain, groundAt } from '../core/Physics.js';
+import { getTerrain, groundAt } from '../core/Terrain.js';
 import { fitCanvas, clientToWorld } from './viewport.js';
 import { partCanvas, iconCanvas } from './pixelIcons.js';
 import { DTYPES, DTYPE_KEYS, dtypeOf, resistOf, legsLabel, reachLabel, LANE_SIZE } from '../meta/Mech.js';
@@ -20,7 +20,6 @@ import { mechLook, torsoCanvas, legsCanvas } from './mechSprite.js';
 
 const C = CONFIG.colors;
 const W = CONFIG.world;
-const S = CONFIG.slingshot;
 
 const FONT = '"Pixel Digits", "Pixelify Sans", monospace'; // clear digits: see styles.css
 const DISPLAY = '"Press Start 2P", monospace';
@@ -66,7 +65,6 @@ export class Renderer {
     this._wind = []; // wind streak particles (screen space)
     this._weather = []; // per-floor weather particles (screen space)
     this._lastPhase = null;
-    this.barrierCancelHover = false;
 
     // Tooltip overlay for status tags
     this._hoverZones = [];
@@ -196,7 +194,6 @@ export class Renderer {
     this._drawProjectiles(ctx, world, now);
     this._drawMineMarkers(ctx, world.hazards || [], now);
     this._drawMechRanges(ctx, world);
-    if (world.slingshotInput) world.slingshotInput.draw(ctx);
     this._drawInspectCard(ctx, world);
 
     // 3. HUD (CSS px)
@@ -207,8 +204,6 @@ export class Renderer {
     this._drawOffscreenMarkers(ctx, view, [player, ...livingEnemies]);
     this._drawCallouts(ctx, view, dt);
     this._drawFloaters(ctx, view, dt);
-    this._drawPowerMeter(ctx, view, world);
-    this._drawBarrierHint(ctx, view, world);
     this._drawTurnHint(ctx, view, turnSystem, world);
     this._drawWind(ctx, view, dt, W.wind || 0);
     this._drawArenaIntro(ctx, view, dt);
@@ -231,9 +226,7 @@ export class Renderer {
       return base;
     }
     const fighters = balls.filter((b) => b && b.hp > 0);
-    const inp = world?.slingshotInput;
-    const frozen = this._cam && (inp?.dragging || inp?.placementMode);
-    if (!frozen && fighters.length) {
+    if (fighters.length) {
       const xs = fighters.map((b) => b.x);
       const minX = Math.min(...xs) - CAM.margin;
       const maxX = Math.max(...xs) + CAM.margin;
@@ -812,11 +805,6 @@ export class Renderer {
     const P = r / 8;
     const onGround = ball.y + r >= groundAt(ball.x) - 6;
     let squash = onGround ? 1 : 0.75;
-    const inp = world.slingshotInput;
-    if (ball === world.player && inp?.dragging && inp.launchVelocity) {
-      const pull = Math.min(1, Math.hypot(inp.launchVelocity.x, inp.launchVelocity.y) / 1400);
-      squash = 1 - 0.35 * pull; // crouch deeper the harder you pull
-    }
     const since = now - (ball.launchedAt || -1e9);
     if (since < 260) squash = 1.3 - (since / 260) * 0.3; // spring
     const legsTop = ball.y + r - 10 * P * squash;
@@ -1227,7 +1215,7 @@ export class Renderer {
           ctx.globalAlpha = 1;
         }
       } else if (h.type === 'pad') {
-        // Spring: the plate rides on its coil and squashes under a ball (Physics.resolvePads)
+        // Spring: the plate rides on its coil and squashes under a ball
         const squash = Math.round(h.compress || 0);
         const plateY = gy - 24 + squash;
         ctx.fillStyle = '#333c57';
@@ -1591,41 +1579,10 @@ export class Renderer {
     }
   }
 
-  _drawPowerMeter(ctx, view, world) {
-    const input = world.slingshotInput;
-    if (!input?.dragging || !input.launchVelocity || !world.player) return;
-    const speed = Math.hypot(input.launchVelocity.x, input.launchVelocity.y);
-    const maxPower = S.maxPower * (input.powerMult || 1);
-    const pct = Math.max(0, Math.min(1, (speed - S.minPower) / (maxPower - S.minPower)));
-    const p = this._worldToCss(view, world.player.x, world.player.y);
-    const bw = 10;
-    const bh = 56;
-    const x = Math.round(p.x - world.player.radius * view.k / view.dpr - 22);
-    const y = Math.round(p.y - bh / 2 - 10);
-    ctx.fillStyle = '#000';
-    ctx.fillRect(x - 2, y - 2, bw + 4, bh + 4);
-    ctx.fillStyle = '#10111c';
-    ctx.fillRect(x, y, bw, bh);
-    const fh = Math.round(bh * pct);
-    ctx.fillStyle = pct > 0.85 ? '#ff5d73' : pct > 0.5 ? '#ffcd75' : '#a7f070';
-    ctx.fillRect(x, y + bh - fh, bw, fh);
-    ctx.font = `700 11px ${FONT}`;
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#f4f4f4';
-    ctx.fillText(`${Math.round(pct * 100)}%`, x + bw / 2, y - 6);
-  }
-
-  _drawBarrierHint(ctx, view, world) {
-    const input = world.slingshotInput;
-    if (input?.placementMode !== 'barrier') return;
-    const text = this.barrierCancelHover ? 'RELEASE TO CANCEL' : 'RELEASE TO PLACE · DRAG BACK TO CANCEL';
-    this._centerNotice(ctx, view, text, this.barrierCancelHover ? '#ff5d73' : '#73eff7', view.cssH * 0.5);
-  }
-
   _drawTurnHint(ctx, view, turnSystem, world) {
     // Teach the controls on the first turns of a new player's first run only
     if (!world.showHints || (world.battleStats?.turns || 0) > 1) return;
-    if (turnSystem?.phase !== 'PLAYER_AIM' || world.slingshotInput?.dragging || world.slingshotInput?.placementMode) return;
+    if (turnSystem?.phase !== 'PLAYER_AIM') return;
     if (world.gear && !(world.player?.actionsLeft > 0)) return;
     this._centerNotice(ctx, view, 'TAP A LIT PLATE TO MOVE, TAP A GUN TO FIRE, OR VENT', '#f4f4f4', view.cssH * 0.66);
   }
