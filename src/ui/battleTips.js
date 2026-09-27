@@ -43,9 +43,20 @@ function barrierTip(game) {
   const up = game.playerBarrierCount;
   const max = game._maxBarriers();
   return `<h4>BARRIER <em>[2] · 1 action</em></h4>
-    <p>Drag onto the arena to place a wall that stops shots (${game._barrierHp()} HP). Drag back to cancel.</p>
+    <p>Raises a wall right in front of you (${game._barrierHp()} HP). Direct fire hits it; lobs arc over and beams burn through. Walking can't pass it (jumping can).</p>
     ${row('On the field', `${up}/${max}`)}
     ${row('Cooldown', ab?.ready ? 'READY' : `${ab?.cooldownLeft} turn${ab?.cooldownLeft === 1 ? '' : 's'}`)}`;
+}
+
+function stompTip(game) {
+  const p = game.player;
+  const st = game.stompStatus(p, game.activeEnemy);
+  const why = { 'NOT ADJACENT': 'Get right next to the enemy.', COVER: 'A wall is in the way.', USED: 'Once per turn.', HOT: 'Too hot to move.' }[st.reason] || '';
+  return `<h4>STOMP <em>[F] · 1 action</em></h4>
+    ${row('Damage', `${Math.round(p.stompDmg || 0)} Physical`)}
+    ${row('Heat', `+${G.stompHeat}`, '#ef7d57')}
+    <p>Kick the enemy right next to you and knock it back 1. Damage comes from your legs. Once per turn, no energy.</p>
+    ${why ? `<p class="tip-why">${why}</p>` : ''}`;
 }
 
 function gunTip(game, i) {
@@ -89,7 +100,7 @@ export class BattleTips {
     // Mouse only: on touch the chips act on press, so there's nothing to hover
     hud.addEventListener('pointerover', (e) => {
       if (e.pointerType !== 'mouse') return;
-      const el = e.target.closest('#btn-vent, #btn-end-turn, #btn-barrier, [data-gun], [data-drone]');
+      const el = e.target.closest('#btn-vent, #btn-end-turn, #btn-barrier, #btn-stomp, [data-gun], [data-drone]');
       if (el) this.show(el);
     });
     hud.addEventListener('pointerout', (e) => {
@@ -126,7 +137,7 @@ export class BattleTips {
     }
     const t = this.target;
     const g = this.game;
-    const html = t.id === 'btn-vent' ? ventTip(g) : t.id === 'btn-end-turn' ? endTip(g) : t.id === 'btn-barrier' ? barrierTip(g) : t.dataset.gun !== undefined ? gunTip(g, Number(t.dataset.gun)) : droneTip(g, Number(t.dataset.drone));
+    const html = t.id === 'btn-vent' ? ventTip(g) : t.id === 'btn-end-turn' ? endTip(g) : t.id === 'btn-barrier' ? barrierTip(g) : t.id === 'btn-stomp' ? stompTip(g) : t.dataset.gun !== undefined ? gunTip(g, Number(t.dataset.gun)) : droneTip(g, Number(t.dataset.drone));
     if (html !== this._html) {
       this.el.innerHTML = html;
       this._html = html;

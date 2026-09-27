@@ -3753,6 +3753,8 @@ canvas {
 .mech-chip.gear-drone.off { opacity: 0.55; }
 
 .ability-vent { --ab: #73eff7; }
+.ability-stomp { --ab: #f4f4f4; }
+.ability-stomp.hidden { display: none; }
 .ability-end { --ab: var(--p-lime); }
 
 .ability-end:not(.hidden),

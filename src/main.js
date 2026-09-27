@@ -190,6 +190,20 @@ function bindAbilityButtons() {
     }
   };
 
+  document.getElementById('btn-barrier')?.addEventListener('click', (e) => {
+    if (battlePaused) return;
+    triggerBarrier(e);
+    if (!game.abilities?.barrier?.ready || !game.canPlayerAct) soundEngine.play('error');
+  });
+  const triggerStomp = () => {
+    if (state !== State.BATTLE || battlePaused) return;
+    if (game.stompPlayer()) return haptics.impact('medium');
+    soundEngine.play('error');
+    const why = game.stompStatus(game.player, game.activeEnemy).reason;
+    if (why && why !== 'NO STOMP') game.renderer.addCallout(game.player, why, '#94b0c2');
+  };
+  document.getElementById('btn-stomp')?.addEventListener('click', triggerStomp);
+
   document.getElementById('btn-retreat-battle')?.addEventListener('click', () => {
     if (!canRetreatFromBattle()) return;
     soundEngine.playUI();
@@ -211,7 +225,7 @@ function bindAbilityButtons() {
     if (!game.ventPlayer()) soundEngine.play('error');
   });
 
-  // Keyboard hotkeys: [Q] [E] guns, [2] / [B] barrier, [V] vent, [Space] end turn
+  // Keyboard hotkeys: [Q] [E] guns, [2] / [B] barrier, [F] stomp, [V] vent, [Space] end turn
   window.addEventListener('keydown', (e) => {
     if (state !== State.BATTLE || battlePaused) return;
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
@@ -224,6 +238,8 @@ function bindAbilityButtons() {
       if (game.endPlayerTurn()) soundEngine.playUI();
     } else if (e.code === 'KeyV') {
       if (!game.ventPlayer()) soundEngine.play('error');
+    } else if (e.code === 'KeyF') {
+      triggerStomp();
     }
   });
 }
@@ -323,9 +339,7 @@ function updateAbilityHud() {
   const cdBarrier = document.getElementById('cd-barrier');
   const br = game.abilities?.barrier;
   if (!br) return;
-  // The barrier returns with cover on the lane (2.0 stage 3)
-  btnBarrier?.classList.toggle('hidden', !!br.disabled);
-  const usable = br.ready && game.canPlayerAct;
+  const usable = br.ready && game.canPlayerAct && game.playerBarrierCount < game._maxBarriers();
   if (btnBarrier) {
     btnBarrier.disabled = !usable;
     btnBarrier.classList.toggle('ready', usable);
@@ -333,6 +347,20 @@ function updateAbilityHud() {
   if (cdBarrier) {
     const text = br.ready ? 'READY' : `${br.cooldownLeft}T`;
     if (cdBarrier.textContent !== text) cdBarrier.textContent = text;
+  }
+  // STOMP: lit when the enemy is right next to you
+  const btnStomp = document.getElementById('btn-stomp');
+  const cdStomp = document.getElementById('cd-stomp');
+  const st = game.player ? game.stompStatus(game.player, game.activeEnemy) : { ok: false, reason: 'NO STOMP' };
+  btnStomp?.classList.toggle('hidden', st.reason === 'NO STOMP');
+  const canStomp = st.ok && game.canPlayerAct;
+  if (btnStomp) {
+    btnStomp.disabled = !canStomp;
+    btnStomp.classList.toggle('ready', canStomp);
+  }
+  if (cdStomp) {
+    const text = canStomp ? `${st.dmg} DMG` : st.reason === 'NOT ADJACENT' ? 'ADJACENT' : st.reason === 'NO ACTIONS' ? '' : st.reason;
+    if (cdStomp.textContent !== text) cdStomp.textContent = text;
   }
 }
 
@@ -892,10 +920,7 @@ function startCombat(node) {
   });
 
   game.run = run;
-  if (run.condition === 'calm') {
-    battleConfig.arena = pickArena(run.floor + 1);
-    battleConfig.arena.wind = 0;
-  }
+  battleConfig.arena = run.condition === 'calm' ? pickArena(0, () => 0) : pickArena(run.floor + 1);
   game.startBattle(battleConfig);
 
   // Bosses get an intro card; the fight is frozen until it is dismissed
@@ -1592,4 +1617,4 @@ setTimeout(() => ui.checkUpdates(), 1500);
 
 // Expose for debugging
 // Debug handle for the dev server only; release builds don't expose game state
-if (import.meta.env.DEV) window.__SLINGSHOT__ = { game, saveSystem, ui, get run() { return run; }, get map() { return map; }, sectorCleared, descend, endRun };
+if (import.meta.env.DEV) window.__SLINGSHOT__ = { game, saveSystem, ui, get run() { return run; }, get map() { return map; }, sectorCleared, descend, endRun, startCombat };
