@@ -24,6 +24,7 @@ import { Ball } from '../entities/Ball.js';
 import { CollisionSystem } from '../systems/CollisionSystem.js';
 import { TurnSystem, TurnPhase } from '../systems/TurnSystem.js';
 import { Renderer } from '../rendering/Renderer.js';
+import { planTurn } from '../ai/LaneAI.js';
 import { soundEngine } from '../utils/SoundEngine.js';
 import { saveSystem } from '../meta/SaveSystem.js';
 import { haptics } from '../platform/haptics.js';
@@ -842,71 +843,80 @@ export class Game {
     }
   }
 
-  // ---------- Enemy (stage 1: simple and fair; the look-ahead search is stage 2) ----------
+  // ---------- Enemy: plans its turn with LaneAI, one action at a time ----------
 
+  /** A plain copy of one mech for the planner. */
+  _aiUnit(u, guns) {
+    return {
+      team: u.team,
+      pos: u.pos,
+      hp: u.hp,
+      heat: u.heat,
+      heatCap: u.heatCap,
+      cool: u.cool,
+      energy: u.energy,
+      energyMax: u.energyMax,
+      regen: u.regen,
+      actions: u.actionsLeft,
+      maxActions: G.actions,
+      freeUsed: !!u._freeMoveUsed,
+      frozen: !!u.isFrozen,
+      shield: !!u.forcefield,
+      legs: u.legs || DEFAULT_LEGS,
+      def: u.def || 0,
+      res: { ...(u.res || {}) },
+      guns: guns.map((w) => ({
+        dmg: w.dmg,
+        burst: w.fx?.burst || 1,
+        en: w.en || 0,
+        heat: w.heat || 0,
+        reach: w.reach,
+        ammo: w.ammo || 0,
+        ammoLeft: w.ammoLeft,
+        used: w.usedOn === u.turnNo,
+        dtype: dtypeOf(w),
+        pierce: !!w.fx?.pierce,
+        heatFx: w.fx?.heat,
+        drain: w.fx?.drain,
+        push: w.fx?.push || 0,
+        pull: w.fx?.pull || 0,
+        freeze: !!w.fx?.freeze,
+        mine: !!w.fx?.mine,
+      })),
+    };
+  }
+
+  /** Plan the rest of the enemy's turn and take its first action (it re-plans after each). */
   _enemyAct(e) {
-    if (!this.running || e.hp <= 0) return;
-    const gun = this._enemyBestGun(e);
-    if (gun) {
-      this._payForShot(e, gun);
-      this._shoot(e, gun, this.player);
+    if (!this.running || !e || e.hp <= 0) return;
+    const p = this.player;
+    const plan = planTurn(
+      {
+        size: L.size,
+        me: this._aiUnit(e, e.weapons || []),
+        foe: this._aiUnit(p, this.playerWeapons || []),
+        mines: this.hazards.filter((h) => h.type === 'mine').map((h) => ({ pos: h.pos, owner: h.owner, dmg: h.dmg })),
+      },
+      { difficulty: Math.min(0.95, e.aiDifficulty ?? 0.5), aggression: this.aggression },
+    );
+    const a = plan[0] || { type: 'end' };
+    if (a.type === 'fire') {
+      const w = e.weapons[a.gun];
+      this._payForShot(e, w);
+      this._shoot(e, w, p);
       return this._afterAction(e);
     }
-    // Too hot to shoot well next turn: cool down (a whole turn, so only at its start)
-    if (e.heat > e.heatCap * 0.7 && e.actionsLeft === G.actions) {
+    if (a.type === 'move') {
+      this._moveUnit(e, a.pos, a.how);
+      return this._afterAction(e, 0.15);
+    }
+    if (a.type === 'vent') {
       this._vent(e);
       return this._afterAction(e);
     }
-    const moves = this.reachable(e);
-    const here = this._scorePos(e, e.pos);
-    let best = null;
-    for (const [pos, how] of moves) {
-      const s = this._scorePos(e, pos) - (how === 'jump' ? 0.5 : 0);
-      if (s > here + 1 && (!best || s > best.s)) best = { pos, how, s };
-    }
-    if (best) {
-      this._moveUnit(e, best.pos, best.how);
-      return this._afterAction(e, 0.15);
-    }
-    if (e.heat > e.heatCap * 0.4 && e.actionsLeft === G.actions) this._vent(e);
-    else e.actionsLeft = 0;
-    this._afterAction(e);
-  }
-
-  /** The enemy's shot this turn: its hardest hit that can fire (overheating only to finish you off). */
-  _enemyBestGun(e) {
-    const p = this.player;
-    const lethal = (w) => w.dmg * (w.fx?.burst || 1) >= p.hp;
-    const ready = (e.weapons || []).filter((w) => {
-      const st = this.gunStatus(e, w, p);
-      return st.ok && (!st.overheats || lethal(w));
-    });
-    if (!ready.length) return null;
-    const save = ready.length > 1 && p.hp > p.maxHp * 0.6; // keep ammo guns for later
-    const minesDown = this.hazards.filter((h) => h.type === 'mine' && h.owner === 'enemy').length;
-    const value = (w) => (w.fx?.mine ? (minesDown < 2 ? 18 : 2) : w.dmg * (w.fx?.burst || 1)) * (w.ammo && save && !w.fx?.mine ? 0.4 : 1);
-    return ready.sort((a, b) => value(b) - value(a))[0];
-  }
-
-  /** How good standing on `pos` is: its guns in reach of you, yours not in reach of it. */
-  _scorePos(e, pos) {
-    const d = Math.abs(pos - this.player.pos);
-    let score = 0;
-    let gap = Infinity;
-    for (const w of e.weapons || []) {
-      if (w.ammo && w.ammoLeft <= 0) continue;
-      if (d >= w.reach[0] && d <= w.reach[1]) score += w.dmg * (w.fx?.burst || 1);
-      gap = Math.min(gap, Math.max(0, d - w.reach[1], w.reach[0] - d));
-    }
-    if (Number.isFinite(gap)) score -= gap * 4;
-    let threat = 0;
-    for (const w of this.playerWeapons || []) {
-      if (w.ammo && w.ammoLeft <= 0) continue;
-      if (d >= w.reach[0] && d <= w.reach[1]) threat = Math.max(threat, w.dmg * (w.fx?.burst || 1));
-    }
-    score -= threat * (0.3 - 0.2 * this.aggression);
-    if (this.hazards.some((h) => h.type === 'mine' && h.pos === pos && h.owner !== 'enemy')) score -= 40;
-    return score;
+    if (e.actionsLeft === G.actions) this._callout(e, 'HOLDING', '#94b0c2'); // only a whole turn spent waiting
+    e.actionsLeft = 0;
+    this._afterAction(e, 0.1);
   }
 
   // ---------- Input: tap a lit plate to move, tap a mech to inspect ----------
