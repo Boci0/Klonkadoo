@@ -19,15 +19,16 @@
 
 ## Key Features
 
-- **Mechs Built From Parts**: Frame, Legs, Armor, two Guns, a Drone and two Mods. What you equip is what you see on the field, and what the enemy sees.
+- **Mechs Built From Parts**: Frame, Legs, 4 side guns and 2 top guns, a Drone, Charge / Teleport / Hook specials and 8 Mods, all under one 1000 kg load cap (a few kg over costs HP). What you equip is what you see on the field, and what the enemy sees.
 - **Lane Combat**: Two actions a turn on a 12-position lane: walk or jump (your legs decide how far), fire each gun once, STOMP an adjacent mech, or VENT to cool down.
-- **Heat & Energy, Super Mechs style**: Every shot costs energy and heat. Start a turn over your heat cap and you lose it; drain a mech's energy past zero and it bleeds HP.
+- **Heat & Energy**: Every shot costs energy and heat. Start a turn over your heat cap and you lose it; drain a mech's energy past zero and it bleeds HP.
 - **Hazards**: Arenas bring spike plates and mines that hurt whoever steps on them; jump over them.
 - **Teams**: A garage of up to three mechs. SWAP takes your turn; a knocked-out mech's replacement drops in, and every mech keeps its own HP through the run.
-- **Physical / Explosive / Electric Damage**: Explosive hits pile on heat, Electric hits drain energy, and armor resists each type separately.
+- **Physical / Explosive / Electric Damage**: Explosive hits pile on heat, Electric hits drain energy, and resist mods cover each type separately. Legs stomp with their own damage type.
 - **Enemy Mechs**: No special abilities. Every hostile is a loadout of real parts, from Scattergun Wall Units to the bolted-down Sector Commander, and at the bottom of the Abyss, KLONKADOO PRIME.
 - **Branching Tactical Node Map**: Procedurally generated 5-floor campaign with Combat, Elite, Boss, Encounter, Shop, Rest and Cache nodes, then 5 Abyss floors and an endless descent.
-- **Progression Through Gear**: Win Keys to open supply pods (79 parts, odds shown) and scrap to upgrade parts to level 10. Never real money.
+- **Progression Through Gear**: Win Keys to open supply pods one at a time or in packs of five (87 parts, odds shown), level parts with scrap, then TRANSFORM them up a tier by melting spare parts of the same tier. Never real money.
+- **AUTO**: Let the planner play your turns in battle, and farm a Risk you have already won with AUTO RUN (it stops at the Abyss).
 
 ---
 
