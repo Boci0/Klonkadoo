@@ -280,7 +280,8 @@ export class UIManager {
       else {
         const rule = saveSystem.riskLevels(b.id)[val - 1];
         const more = val > 1 ? ` <span class="dim-text">+${val - 1}</span>` : '';
-        summary.innerHTML = `<span class="risk-tp-inline">+${val * CONFIG.risk.scrapPerLevel}% SCRAP · +${val * CONFIG.risk.keysPerLevel}% KEYS</span> <b class="${rule.allElite ? 'abyss-text' : ''}" title="${rule.desc}">${rule.name}</b>${more}`;
+        const x2 = val > levels ? ` · x${CONFIG.risk.secret.rewardMult} ALL` : '';
+        summary.innerHTML = `<span class="risk-tp-inline">+${val * CONFIG.risk.scrapPerLevel}% SCRAP · +${val * CONFIG.risk.keysPerLevel}% KEYS${x2}</span> <b class="${rule.allElite ? 'abyss-text' : ''}" title="${rule.desc}">${rule.name}</b>${more}`;
       }
       const bar = m.need ? `<i class="bm-bar" title="${m.into}/${m.need} XP"><i style="width:${Math.round((m.into / m.need) * 100)}%"></i></i>` : '<em>MAX</em>';
       const ms = masteryStats(m.level);
@@ -1516,11 +1517,12 @@ export class UIManager {
   }
 
   /** After a boss: extract with the win, or descend deeper into the Abyss. */
-  showDescend({ depth, next, rewards, hp, maxHp }, onDescend, onExtract) {
+  showDescend({ depth, next, rewards, hp, maxHp, keeper, scaling, nextKeys }, onDescend, onExtract) {
     const first = depth === 0;
     const reward = rewards ? `<div class="reward-tiles">
         <div class="reward-tile" style="--c:#ffcd75">${ico('key')}<strong>+${rewards.keys}</strong><span>KEYS</span></div>
         <div class="reward-tile" style="--c:#94b0c2">${ico('scrap')}<strong>+${rewards.scrap}</strong><span>SCRAP</span></div>
+        ${rewards.pod ? `<div class="reward-tile" style="--c:${rewards.pod.color}" title="Open it for free on RIG > PODS">${ico('pod', rewards.pod.color)}<strong>+${rewards.pods || 1}</strong><span>${rewards.pod.name}</span></div>` : ''}
       </div>` : '';
     const final = rewards?.final;
     this.openModal(first ? 'SECTOR CLEAR' : final ? 'TRUE FINAL BOSS DOWN' : `ABYSS ${depth} CLEARED`, `
@@ -1529,8 +1531,9 @@ export class UIManager {
       ${first ? '' : reward}
       <div class="node-chips">
         <span class="node-chip">${ico('hp')}${Math.ceil(hp)}/${maxHp}</span>
-        <span class="node-chip bad">${ico('skull')}ABYSS ${next}: +${next * 8}% HP</span>
-        <span class="node-chip">${ico('key')}${3 + next * 2} per floor</span>
+        <span class="node-chip bad" title="Enemy HP and ATK on the next floor, on top of every Risk rule">${ico('skull')}ABYSS ${next}: +${Math.round((scaling?.hp || 0) * 100)}% HP +${Math.round((scaling?.atk || 0) * 100)}% ATK</span>
+        <span class="node-chip bad" title="Who waits at the end of the next floor">${ico('skull')}${keeper || 'ABYSS WARDEN'}</span>
+        <span class="node-chip" title="What its keeper pays (before the Risk bonus), plus scrap and a free pod">${ico('key')}${nextKeys || 0} + ${ico('pod', '#ff5d73')}POD</span>
       </div>`,
     `<div class="btn-row">
       <button class="btn btn-accent" data-act="extract">EXTRACT</button>

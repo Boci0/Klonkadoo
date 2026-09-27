@@ -42,6 +42,7 @@ const LOADOUTS = {
   sustain: ['fr_reclaimer', 'lg_strider', 'wp_blaster', 'wp_siphon', 'wp_breacher', 'wp_mortar', 'dr_medic', 'md_plating', 'md_salvage'],
   // Late game: epic / legendary kit (level 1, so a floor for what veterans bring)
   late: ['fr_colossus', 'lg_coil', 'wp_tesla', 'wp_beam', 'wp_rifle', 'wp_scatter', 'wp_missiles', 'wp_rail', 'dr_reaper', 'md_titanplate', 'md_overclock', 'md_composite', 'md_amp'],
+  lateMedic: ['fr_colossus', 'lg_coil', 'wp_tesla', 'wp_beam', 'wp_rifle', 'wp_scatter', 'wp_missiles', 'wp_rail', 'dr_medic', 'md_titanplate', 'md_overclock', 'md_composite', 'md_amp'],
   // mid with one sustain piece each, to see what each is worth
   midMedic: ['fr_brawler', 'lg_strider', 'wp_blaster', 'wp_scatter', 'wp_rifle', 'wp_mortar', 'dr_medic', 'md_plating', 'md_physres', 'md_heavyplate'],
   midSiphon: ['fr_brawler', 'lg_strider', 'wp_blaster', 'wp_siphon', 'wp_rifle', 'wp_mortar', 'dr_hornet', 'md_plating', 'md_physres', 'md_heavyplate'],
@@ -173,8 +174,10 @@ function drones(me, foe, turn, heal) {
   for (const d of me.drones) {
     if (me.energy < d.en) continue;
     if (d.heal) {
-      if (me.hp >= me.maxHp) continue;
-      me.hp = Math.min(me.maxHp, me.hp + d.heal * (me.team === 'player' ? heal : 1));
+      if (me.hp >= me.maxHp || (d.healed || 0) >= me.maxHp * G.droneHealCap) continue;
+      const before = me.hp;
+      me.hp = Math.min(me.maxHp, me.hp + Math.min(me.maxHp * G.droneHealCap - (d.healed || 0), d.heal * (me.team === 'player' ? heal : 1)));
+      d.healed = (d.healed || 0) + me.hp - before;
     } else if (d.chill) {
       if (me.heat <= 0) continue;
       me.heat = Math.max(0, me.heat - d.chill);

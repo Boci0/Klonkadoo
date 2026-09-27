@@ -25,7 +25,7 @@ import { DevTools } from './dev/DevTools.js';
 import { checkMedals } from './meta/Medals.js';
 import './platform/native.js';
 import './platform/desktop.js';
-import { withMech, tokenReward, riskEase, enemyMech, enemyRig, CLEAN_WIN_KEYS, DTYPES, dtypeOf, droneUpkeep } from './meta/Mech.js';
+import { withMech, tokenReward, riskEase, CRATES, enemyMech, enemyRig, CLEAN_WIN_KEYS, DTYPES, dtypeOf, droneUpkeep } from './meta/Mech.js';
 import { partIcon, ico } from './rendering/pixelIcons.js';
 import { pickNode, pickChoice, pickBuys, supplyValue } from './rogue/AutoRun.js';
 import { withMastery, masteryLevel, runXp } from './meta/Mastery.js';
@@ -1116,12 +1116,13 @@ function advanceFloorIfNeeded() {
       }
     }
 
-    // Abyss floors: out of moves, the floor's warden attacks
+    // Abyss floors: out of moves, the floor's keeper attacks (a Guardian or a Warden, see abyssKeeper)
     if (run.floor >= CONFIG.map.floors) {
-      const bossNode = { id: `abyss-${run.floor}-boss`, floor: run.floor, type: 'boss', displayName: 'ABYSS WARDEN' };
+      const keeper = abyssKeeper(run.floor - CONFIG.map.floors + 1);
+      const bossNode = { id: `abyss-${run.floor}-boss`, floor: run.floor, type: keeper.type, displayName: keeper.name, abyss: true };
       run.currentNode = bossNode;
       run.currentNodeId = bossNode.id;
-      addFeedEntry('<span class="feed-enemy-ability">OUT OF MOVES — THE ABYSS WARDEN ATTACKS!</span>');
+      addFeedEntry(`<span class="feed-enemy-ability">OUT OF MOVES — THE ${keeper.name} ATTACKS!</span>`);
       startCombat(bossNode);
       return true;
     }
@@ -1295,7 +1296,8 @@ function startCombat(node) {
     const arch = CONFIG.enemyArchetypes[boss.archetype];
     battlePaused = true;
     ui.showBossIntro({
-      title: node.type === 'boss' ? (run.floor - CONFIG.map.floors + 1 === ABYSS_FINAL_DEPTH ? 'TRUE FINAL BOSS' : run.floor >= CONFIG.map.floors ? `ABYSS ${run.floor - CONFIG.map.floors + 1}` : 'FINAL BOSS') : `FLOOR ${run.floor + 1} MINI-BOSS`,
+      title: node.type === 'boss' ? (run.floor - CONFIG.map.floors + 1 === ABYSS_FINAL_DEPTH ? 'TRUE FINAL BOSS' : run.floor >= CONFIG.map.floors ? `ABYSS ${run.floor - CONFIG.map.floors + 1}` : 'FINAL BOSS')
+        : run.floor >= CONFIG.map.floors ? `ABYSS ${run.floor - CONFIG.map.floors + 1} GUARDIAN` : `FLOOR ${run.floor + 1} MINI-BOSS`,
       name: boss.displayName,
       desc: boss.weapons.map((w) => w.name).join(' + ') + (node.type !== 'boss' ? `. ${arch?.desc || ''}`
         : run.floor - CONFIG.map.floors + 1 === ABYSS_FINAL_DEPTH ? '. Phase legs, reaches everywhere, and a blade for anyone who comes close.'
@@ -1407,8 +1409,8 @@ function onBattleEnd(won, node) {
     }
 
     ui.updateRunHud(run);
-    // Final boss: let the VICTORY splash land, then go straight to the run summary
-    if (node.type === 'boss') {
+    // Final boss (or an Abyss keeper): let the VICTORY splash land, then the descend choice
+    if (node.type === 'boss' || (node.type === 'miniboss' && run.floor >= CONFIG.map.floors)) {
       run.floor5BossCleared = true;
       pendingBoon = null;
       persistRun('sector');
@@ -1664,11 +1666,25 @@ function finishMinigame() {
 
 // ---------- Run end ----------
 
-// Endless Abyss: extra enemy scaling per floor below floor 5. Abyss 5's
-// boss is the true final boss; past it the Abyss goes on without end.
+// Endless Abyss: extra enemy scaling per floor below floor 5 (HP and ATK
+// alike). Each floor ends in a keeper: a Guardian (mini-boss) on odd depths,
+// a Warden (boss) on even ones; Abyss 5's is the true final boss. Every
+// keeper pays Keys, scrap and a free pod (Abyss Pod from Risk 7, else Elite).
 const ABYSS_FINAL_DEPTH = 5;
 const ABYSS_HP_PER_DEPTH = 0.08;
-const ABYSS_ATK_PER_DEPTH = 0.05;
+const ABYSS_ATK_PER_DEPTH = 0.08;
+
+/** Who ends Abyss floor `depth`. */
+function abyssKeeper(depth) {
+  if (depth === ABYSS_FINAL_DEPTH || depth % 2 === 0) return { type: 'boss', name: 'ABYSS WARDEN' };
+  return { type: 'miniboss', name: 'ABYSS GUARDIAN' };
+}
+
+/** The pod an Abyss keeper drops: the Abyss Pod once the run's Risk allows it, else the best below. */
+function abyssPodFor(risk) {
+  const open = CRATES.filter((c) => !c.minRisk || risk >= c.minRisk);
+  return open[open.length - 1];
+}
 
 /**
  * A boss is down. The first time (floor 5) the run counts as won right
@@ -1684,11 +1700,15 @@ function sectorCleared() {
     run.abyssDepth = depth;
     saveSystem.recordAbyssDepth(run.ballType, depth);
     const final = depth === ABYSS_FINAL_DEPTH;
-    const keys = riskKeys(3 + depth * 2 + (final ? 15 : 0));
-    const scrap = Math.round((10 + depth * 5 + (final ? 60 : 0)) * scrapMult());
+    const keys = riskKeys(5 + depth * 3 + (final ? 20 : 0));
+    const scrap = Math.round((20 + depth * 8 + (final ? 80 : 0)) * scrapMult());
     run.earnKeys(keys);
     run.earnScrap(scrap);
-    rewards = { keys, scrap, final };
+    const pod = abyssPodFor(run.risk ?? saveSystem.getDifficultyLevel());
+    const pods = saveSystem.getRewardMultiplier(); // Risk XI: two pods
+    saveSystem.addPodCredit(pod.id, pods);
+    run.podsEarned = (run.podsEarned || 0) + pods;
+    rewards = { keys, scrap, final, pod, pods };
     if (final) {
       saveSystem.bumpLifetime('trueFinalClears', 1, 'add');
       addFeedEntry('<span class="feed-boon">KLONKADOO PRIME IS DOWN: THE ABYSS GOES ON FOREVER</span>');
@@ -1697,7 +1717,8 @@ function sectorCleared() {
   ui.updateRunHud(run);
   stopAutoRun('SECTOR CLEARED'); // the Abyss is yours to choose
   persistRun('descend', { descend: { depth, next: depth + 1 } });
-  ui.showDescend({ depth, next: depth + 1, rewards, hp: run.hp, maxHp: run.maxHp }, descend, () => endRun(true));
+  const next = depth + 1;
+  ui.showDescend({ depth, next, rewards, hp: run.hp, maxHp: run.maxHp, keeper: abyssKeeper(next).name, scaling: { hp: next * ABYSS_HP_PER_DEPTH, atk: next * ABYSS_ATK_PER_DEPTH }, nextKeys: 5 + next * 3 }, descend, () => endRun(true));
 }
 
 /** Endless Abyss: a new floor laid out like floor 5, deeper and harder. */

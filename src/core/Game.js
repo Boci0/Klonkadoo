@@ -1254,7 +1254,7 @@ export class Game {
       if (d.off) continue;
       const { en, heat } = droneUpkeep(d);
       if (d.forcefieldEvery && (owner.forcefield || this.battleStats.turns % d.forcefieldEvery !== 0)) continue;
-      if (d.heal && owner.hp >= owner.maxHp) continue;
+      if (d.heal && (owner.hp >= owner.maxHp || (d.healed || 0) >= owner.maxHp * G.droneHealCap)) continue; // full, or spent for this battle
       if (d.chill && owner.heat <= 0) continue;
       if (d.dmg && !foe) continue;
       if (owner.energy < en) {
@@ -1272,8 +1272,12 @@ export class Game {
     if (d.heal) {
       const before = shooter.hp;
       d.firedAt = performance.now();
-      shooter.hp = Math.min(shooter.maxHp, shooter.hp + Math.round(d.heal));
-      if (shooter.hp > before) this._callout(shooter, `REPAIR +${shooter.hp - before}`, d.color);
+      // The Risk heal penalty applies to your drone, and it runs dry at droneHealCap of max HP per battle
+      const mult = shooter === this.player ? (this.run ? this.run.healMult : saveSystem.getHealingMultiplier()) : 1;
+      const room = shooter.maxHp * G.droneHealCap - (d.healed || 0);
+      shooter.hp = Math.min(shooter.maxHp, shooter.hp + Math.max(0, Math.min(room, Math.round(d.heal * mult))));
+      d.healed = (d.healed || 0) + (shooter.hp - before);
+      if (shooter.hp > before) this._callout(shooter, (d.healed >= shooter.maxHp * G.droneHealCap - 0.5) ? `REPAIR +${Math.round(shooter.hp - before)} · SPENT` : `REPAIR +${Math.round(shooter.hp - before)}`, d.color);
       this._spawnHealSparkles(shooter);
     } else if (d.chill) {
       d.firedAt = performance.now();

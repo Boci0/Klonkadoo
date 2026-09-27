@@ -74,6 +74,7 @@ export const CONFIG = {
   gear: {
     dmgScale: 1.3, // gun/drone damage vs the classic numbers (bodies no longer hit)
     enemyDmgScale: 0.5, // enemy guns hit this much of a same-level player gun
+    droneHealCap: 0.2, // repair drones fix at most this share of max HP per battle
     enemyHpScale: 0.75, // every enemy's HP: elites ~10-12 turns, bosses ~20 (tools/balance-sim.mjs)
     exposedMult: 1.25, // rammed targets take +25% gun damage until their next turn
     // Damage types (Mech.DTYPES): Explosive hits add heat and Electric hits drain energy,
@@ -186,12 +187,12 @@ export const CONFIG = {
     scrapPerLevel: 15,
     keysPerLevel: 10, // +10% Keys per level (fractions carry over between fights)
     // Enemy strength per Risk level (HP and gun damage x curve[level]), on top of the
-    // level rules below. Fitted with tools/balance-sim.mjs so ONE mech with good gear
-    // climbs a steady ramp (~90% wins at Risk 1 down to ~8% at Risk XI) instead of
-    // cruising to Risk 8 and hitting a wall; it dips at 9-XI because those rules
-    // already pile on. Risk 0 stays half strength for new players. Aim eases from
+    // level rules below. Fitted with tools/balance-sim.mjs so ONE mech climbs a steady
+    // ramp (~90% wins at Risk 1 down to ~8% at Risk XI) against the gear players have
+    // by then: max-level parts at Risk 1-4, one tier up at 5-6, two tiers up (with a
+    // Medic Drone) from 7. It dips at 9-XI because those rules already pile on. Risk 0 stays half strength for new players. Aim eases from
     // `ai` at Risk 0 to none at `fullAt`. The Abyss is always full strength (1).
-    ease: { hp: 0.5, atk: 0.5, ai: -0.2, fullAt: 12, curve: [0.5, 0.75, 0.87, 0.94, 0.97, 1.0, 1.03, 1.02, 0.94, 0.84, 0.8, 0.63] },
+    ease: { hp: 0.5, atk: 0.5, ai: -0.2, fullAt: 12, curve: [0.5, 0.75, 0.87, 0.94, 1.04, 1.18, 1.22, 1.29, 1.26, 1.12, 0.97, 0.8] },
     levels: [
       { name: 'HARDENED', desc: 'Enemies +15% HP.', hpPct: 15 },
       { name: 'RANGEFINDERS', desc: 'Enemy guns reach 1 position further.', enemyReach: 1 },
@@ -209,7 +210,8 @@ export const CONFIG = {
     // Hinted at in the Risk panel, the RULES list and the results screen.
     secret: {
       name: 'OBLIVION',
-      desc: 'Every hostile is an elite. Enemies +30% HP, +25% ATK, pierce half your DEF, guns reload faster.',
+      desc: 'Every hostile is an elite. Enemies +30% HP, +25% ATK, pierce half your DEF, guns reload faster. Double Keys, scrap, gold and Abyss pods.',
+      rewardMult: 2, // keys, scrap, gold and Abyss pods x this (so it's worth the pain)
       hint: 'Win on Risk 10 without fighting a common hostile. Sneaking past is fine.',
       hpPct: 30,
       atkPct: 25,

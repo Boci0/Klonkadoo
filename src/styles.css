@@ -4730,7 +4730,8 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 @keyframes auto-hold { to { width: calc(100% - 6px); } }
 
 /* SALVAGE SPARES */
-.rig-foot-row { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; }
+.rig-foot-row { grid-column: 1 / -1; align-self: end; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; }
+.rig-foot-row .rig-foot { margin: 0; }
 .rig-salvage-btn { display: inline-flex; align-items: center; gap: 4px; min-height: 30px; padding: 4px 10px calc(4px + var(--px, 2px)); font-size: 12px; }
 .rig-salvage-btn em { font-style: normal; color: var(--p-yellow); }
 .salv-panel .drops-title strong { display: flex; align-items: center; gap: 4px; }
@@ -4749,3 +4750,17 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 .salv-item i { position: absolute; right: 2px; bottom: 0; font-style: normal; font-size: 10px; color: var(--p-white, #f4f4f4); }
 .salv-more { display: grid; place-items: center; width: 44px; height: 44px; font-size: 12px; color: var(--text-dim); border: 2px dashed #2a3048; }
 .pcard-scrap { display: flex; align-items: center; justify-content: center; gap: 3px; font-style: normal; font-size: 11px; color: #94b0c2; }
+
+/* Free pods from the Abyss: a count on the pod, and CLAIM instead of the key prices */
+.rig-pod-count {
+  position: absolute;
+  right: -10px;
+  top: -4px;
+  padding: 2px 6px calc(2px + var(--px, 2px));
+  font-size: 13px;
+  color: #1a1c2c;
+  background: var(--p-yellow);
+  box-shadow: 0 0 0 2px #1a1c2c;
+}
+.rig-pod.has-free { box-shadow: 0 0 0 2px var(--pod), 0 0 18px color-mix(in srgb, var(--pod) 40%, transparent); }
+.rig-pod-claim { align-self: stretch; }

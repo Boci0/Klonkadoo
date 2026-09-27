@@ -478,14 +478,19 @@ export class SaveSystem {
     return total;
   }
 
+  /** Risk XI (the secret level) multiplies every reward. */
+  getRewardMultiplier() {
+    return this.getDifficultyLevel() > CONFIG.risk.levels.length ? CONFIG.risk.secret.rewardMult || 1 : 1;
+  }
+
   /** Scrap multiplier from the selected Risk level. */
   getScrapMultiplier() {
-    return 1 + (this.getDifficultyLevel() * CONFIG.risk.scrapPerLevel) / 100;
+    return (1 + (this.getDifficultyLevel() * CONFIG.risk.scrapPerLevel) / 100) * this.getRewardMultiplier();
   }
 
   /** Keys multiplier from the selected Risk level (lower than scrap's). */
   getKeyMultiplier() {
-    return 1 + (this.getDifficultyLevel() * CONFIG.risk.keysPerLevel) / 100;
+    return (1 + (this.getDifficultyLevel() * CONFIG.risk.keysPerLevel) / 100) * this.getRewardMultiplier();
   }
 
   getHealingMultiplier() {
@@ -495,7 +500,7 @@ export class SaveSystem {
 
   getGoldMultiplier() {
     const risk = this.getRiskData();
-    return Math.max(0.2, 1 - (risk.minusGold || 0) / 100);
+    return Math.max(0.2, 1 - (risk.minusGold || 0) / 100) * this.getRewardMultiplier();
   }
 
   getShopPriceMultiplier() {
@@ -679,10 +684,17 @@ export class SaveSystem {
    * Buy and open a crate (`free`: the daily pod; `pack`: PACK_SIZE at once).
    * Returns the new parts (an array), or null if you can't afford it.
    */
-  buyCrate(crateId, { free = false, pack = false } = {}) {
+  buyCrate(crateId, { free = false, pack = false, credit = false } = {}) {
     const m = this.data.mech;
     const crate = CRATES.find((c) => c.id === crateId);
     if (!crate) return null;
+    // Pods won in the Abyss: spend those instead of Keys (a pack takes PACK_SIZE of them)
+    if (credit) {
+      const n = pack ? PACK_SIZE : 1;
+      if (!(this.getPodCredits()[crateId] >= n)) return null;
+      m.podCredits[crateId] -= n;
+      free = true;
+    }
     const cost = free ? 0 : pack ? packCost(crate) : crate.cost;
     if (m.tokens < cost || (!free && crate.minRisk && this.bestRiskAnyBall() < crate.minRisk)) return null;
     m.tokens -= cost;
@@ -738,6 +750,17 @@ export class SaveSystem {
     this.data.mech.loadout[slotId] = null;
     this.save();
     return true;
+  }
+
+  /** Pods won in the Abyss, waiting to be opened: { podId: count }. */
+  getPodCredits() {
+    return { ...(this.data.mech.podCredits || {}) };
+  }
+
+  addPodCredit(podId, n = 1) {
+    const m = this.data.mech;
+    m.podCredits = { ...(m.podCredits || {}), [podId]: ((m.podCredits || {})[podId] || 0) + n };
+    this.save();
   }
 
   /** Bulk-salvage settings (saved): which tiers, the safety keeps, and auto-salvage for new pod drops. */

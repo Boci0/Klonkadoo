@@ -499,19 +499,28 @@ export class RigScreen {
   _renderPods() {
     const m = saveSystem.getMech();
     const maxRisk = saveSystem.bestRiskAnyBall(); // pods unlock account-wide
+    const credits = saveSystem.getPodCredits(); // free pods won in the Abyss
     const pods = CRATES.map((c) => {
       const locked = c.minRisk && maxRisk < c.minRisk;
       const can = !locked && m.tokens >= c.cost;
       const canPack = !locked && m.tokens >= packCost(c);
       const odds = Object.entries(c.odds);
       const pct = (v) => (v < 1 ? v.toFixed(2).replace(/0+$/, '') : v);
-      return `<div class="rig-pod ${locked ? 'locked' : ''}" style="--pod:${c.color}">
-        <div class="rig-pod-art-wrap"><img class="rig-pod-art" src="${uiIcon('pod', locked ? '#566c86' : c.color)}" alt="">${locked ? ico('lock') : ''}</div>
+      const free = credits[c.id] || 0; // won in the Abyss: claimed instead of bought
+      return `<div class="rig-pod ${locked && !free ? 'locked' : ''} ${free ? 'has-free' : ''}" style="--pod:${c.color}">
+        <div class="rig-pod-art-wrap"><img class="rig-pod-art" src="${uiIcon('pod', locked && !free ? '#566c86' : c.color)}" alt="">${locked && !free ? ico('lock') : ''}${free ? `<b class="rig-pod-count" title="Free pods won in the Abyss">x${free}</b>` : ''}</div>
         <strong>${c.name}</strong>
         <div class="rig-odds">${odds.map(([r, v]) => `<i style="flex:${Math.max(v, 1.5)};background:${rarityColor(r)}"></i>`).join('')}</div>
         <div class="rig-odds-legend">${odds.map(([r, v]) => `<span style="color:${rarityColor(r)}" title="${rarityName(r)}">${pct(v)}%</span>`).join('')}</div>
         <button class="rig-drops-btn" data-drops="${c.id}">POSSIBLE DROPS</button>
-        ${locked
+        ${free >= PACK_SIZE
+          ? `<div class="rig-pod-buy">
+              <button class="btn btn-accent" data-credit="${c.id}" title="Won in the Abyss: open one for free">CLAIM x1</button>
+              <button class="btn btn-accent" data-credit-pack="${c.id}" title="Won in the Abyss: open ${PACK_SIZE} for free">CLAIM x${PACK_SIZE}</button>
+            </div>`
+          : free
+          ? `<button class="btn btn-accent rig-pod-claim" data-credit="${c.id}" title="Won in the Abyss: open one for free">CLAIM${free > 1 ? ` (${free})` : ''}</button>`
+          : locked
           ? `<button class="btn btn-disabled" disabled>${ico('lock')}RISK ${c.minRisk}</button>`
           : `<div class="rig-pod-buy">
               <button class="btn ${can ? 'btn-primary' : 'btn-disabled'}" data-pod="${c.id}" ${can ? '' : 'disabled'}>x1 ${ico('key')}${c.cost}</button>
@@ -532,6 +541,8 @@ export class RigScreen {
     });
     this.body.querySelectorAll('[data-pod]').forEach((b) => b.addEventListener('click', () => this._openPod(b.dataset.pod)));
     this.body.querySelectorAll('[data-pack]').forEach((b) => b.addEventListener('click', () => this._openPod(b.dataset.pack, { pack: true })));
+    this.body.querySelectorAll('[data-credit]').forEach((b) => b.addEventListener('click', () => this._openPod(b.dataset.credit, { credit: true })));
+    this.body.querySelectorAll('[data-credit-pack]').forEach((b) => b.addEventListener('click', () => this._openPod(b.dataset.creditPack, { credit: true, pack: true })));
     this.body.querySelectorAll('[data-drops]').forEach((b) => b.addEventListener('click', () => {
       soundEngine.playUI();
       this._showDrops(b.dataset.drops);
@@ -647,8 +658,8 @@ export class RigScreen {
    * better cards shift the glow to their colour halfway (a tease), then it
    * flips over to show the part. Single pods are one card, packs five.
    */
-  _openPod(podId, { free = false, pack = false } = {}) {
-    const got = saveSystem.buyCrate(podId, { free, pack });
+  _openPod(podId, { free = false, pack = false, credit = false } = {}) {
+    const got = saveSystem.buyCrate(podId, { free, pack, credit });
     if (!got) return soundEngine.play('error');
     this._renderWallet();
     const crate = CRATES.find((c) => c.id === podId);

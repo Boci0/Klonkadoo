@@ -171,7 +171,7 @@ export const PARTS = [
   { id: 'dr_gnat', type: 'drone', name: 'GNAT DRONE', rarity: 'common', dtype: 'phys', weight: 30, upkeep: { en: 3, heat: 1 }, dmg: 4, color: '#94b0c2' },
   { id: 'dr_firefly', type: 'drone', name: 'FIREFLY DRONE', rarity: 'common', dtype: 'heat', weight: 30, upkeep: { en: 3, heat: 1 }, dmg: 3, fx: { heat: 6 }, color: '#ef7d57', icon: 'dr_gnat', desc: 'Small Explosive hits that add 6 heat every turn.' },
   { id: 'dr_hornet', type: 'drone', name: 'HORNET DRONE', rarity: 'rare', dtype: 'phys', weight: 45, upkeep: { en: 4, heat: 2 }, dmg: 5, color: '#ffcd75' },
-  { id: 'dr_medic', type: 'drone', name: 'MEDIC DRONE', rarity: 'rare', weight: 40, upkeep: { en: 6, heat: 0 }, heal: 6, color: '#a7f070', desc: 'Repairs you every turn it is deployed (grows with its level only). It never attacks.' },
+  { id: 'dr_medic', type: 'drone', name: 'MEDIC DRONE', rarity: 'rare', weight: 40, upkeep: { en: 6, heat: 0 }, heal: 6, color: '#a7f070', desc: 'Repairs you every turn it is deployed, up to 30% of your max HP per battle (grows with level; the Risk heal penalty applies). It never attacks.' },
   { id: 'dr_static', type: 'drone', name: 'STATIC DRONE', rarity: 'rare', dtype: 'energy', weight: 40, upkeep: { en: 3, heat: 2 }, dmg: 4, fx: { drain: 6 }, color: '#73eff7', icon: 'dr_hornet', desc: 'Electric zaps that drain 6 energy every turn.' },
   { id: 'dr_coolant', type: 'drone', name: 'COOLANT DRONE', rarity: 'rare', weight: 40, upkeep: { en: 5, heat: 0 }, chill: 8, color: '#73eff7', icon: 'dr_medic', desc: 'Pulls 8 heat out of you every turn it is deployed (grows with level). It never attacks.' },
   { id: 'dr_guardian', type: 'drone', name: 'GUARDIAN DRONE', rarity: 'epic', weight: 50, upkeep: { en: 7, heat: 0 }, forcefieldEvery: 3, color: '#a7f070', desc: 'Forcefield every 3rd turn.' },
@@ -411,6 +411,7 @@ export function partChips(owned) {
   add(p.heatCap, 'heat', `${p.type === 'frame' ? '' : '+'}${p.heatCap}`, 'Heat cap', DTYPES.heat.color);
   add(p.cool, 'cool', `-${p.cool}`, 'Cooling per turn', '#73eff7');
   add(p.heal, 'heal', `${Math.round(p.heal)}/T`, 'Repair per turn');
+  add(p.heal, 'hp', `MAX ${pct(CONFIG.gear.droneHealCap)}%`, 'Repairs at most this share of your max HP per battle');
   add(p.chill, 'cool', `-${Math.round(p.chill || 0)}/T`, 'Heat it pulls out of you per turn', '#73eff7');
   add(p.fx?.execute, 'skull', `<${pct(p.fx?.execute || 0)}%`, `x1.8 damage against a target below ${pct(p.fx?.execute || 0)}% HP`, '#ff5d73');
   add(p.fx?.lifesteal, 'heal', `${pct(p.fx?.lifesteal || 0)}%`, 'Repairs you for this share of the HP damage it deals');
