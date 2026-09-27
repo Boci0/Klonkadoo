@@ -118,6 +118,18 @@ export const PARTS = [
   { id: 'wp_howitzer', type: 'weapon', name: 'SIEGE HOWITZER', rarity: 'legendary', dtype: 'phys', weight: 34, reach: [6, 9], dmg: 24, en: 12, heat: 18, ammo: 2, arc: true, fx: { splash: 1 }, color: '#ffcd75', desc: 'Lobbed. 2 shells per battle.' },
   { id: 'wp_scythe', type: 'weapon', name: 'PLASMA SCYTHE', rarity: 'legendary', dtype: 'energy', weight: 24, reach: [1, 1], dmg: 24, en: 28, heat: 6, color: '#c46fd6', desc: 'A brutal energy blade: huge damage, right next to the enemy only.' },
   { id: 'wp_sniper', type: 'weapon', name: 'SNIPER CANNON', rarity: 'legendary', dtype: 'phys', weight: 26, reach: [7, 10], dmg: 23, en: 10, heat: 14, ammo: 3, color: '#f4f4f4', desc: 'Huge hit at long range. 3 shots.' },
+  // Explosive specialists: cook the target until it locks up, then cash the heat in
+  { id: 'wp_blowtorch', type: 'weapon', name: 'BLOWTORCH', rarity: 'common', dtype: 'heat', weight: 10, reach: [1, 2], dmg: 5, en: 4, heat: 16, fx: { heat: 18 }, color: '#ef7d57', desc: 'Weak hit, but pumps 18 heat into the target.' },
+  { id: 'wp_napalm', type: 'weapon', name: 'NAPALM LAUNCHER', rarity: 'rare', dtype: 'heat', weight: 18, reach: [3, 6], dmg: 8, en: 5, heat: 22, arc: true, fx: { heat: 12, napalm: 2 }, color: '#ff5d73', desc: "+12 heat, and sets the target's plate on fire for 2 turns: +8 heat to whoever stands or lands there." },
+  { id: 'wp_rupturer', type: 'weapon', name: 'COOLANT RUPTURER', rarity: 'epic', dtype: 'heat', weight: 16, reach: [2, 4], dmg: 10, en: 4, heat: 19, fx: { coolDmg: 3 }, color: '#ffcd75', desc: 'Cracks their coolant: -3 cooling for the rest of the fight (stacks, never below 2).' },
+  { id: 'wp_thermal', type: 'weapon', name: 'THERMAL LANCE', rarity: 'epic', dtype: 'heat', weight: 20, reach: [2, 6], dmg: 14, en: 5, heat: 21, fx: { line: true, hotBonus: true }, color: '#ef7d57', desc: 'Double damage against a target above 75% of its heat cap.' },
+  { id: 'wp_meltdown', type: 'weapon', name: 'MELTDOWN CANNON', rarity: 'legendary', dtype: 'heat', weight: 26, reach: [3, 7], dmg: 12, en: 5, heat: 21, fx: { meltdown: true }, color: '#ffcd75', desc: 'Against an overheating target: its heat over the cap blasts out as 2x damage, and it drops back to its cap (so it keeps its turn).' },
+  // Electric specialists: starve the target so it can't shoot
+  { id: 'wp_spark', type: 'weapon', name: 'SPARK PISTOL', rarity: 'common', dtype: 'energy', weight: 8, reach: [1, 3], dmg: 5, en: 14, heat: 3, fx: { drain: 14 }, color: '#73eff7', desc: 'Weak hit, but drains 14 energy.' },
+  { id: 'wp_leech', type: 'weapon', name: 'LEECH COIL', rarity: 'rare', dtype: 'energy', weight: 14, reach: [1, 3], dmg: 7, en: 20, heat: 4, fx: { drain: 12, steal: true }, color: '#a7f070', desc: 'Drains 12 energy and gives it to you (energy only, never HP).' },
+  { id: 'wp_gridbreaker', type: 'weapon', name: 'GRID BREAKER', rarity: 'epic', dtype: 'energy', weight: 18, reach: [2, 5], dmg: 10, en: 19, heat: 4, fx: { regenDmg: 4 }, color: '#41a6f6', desc: 'Breaks their generator: -4 regen for the rest of the fight (stacks, never below 3).' },
+  { id: 'wp_capdump', type: 'weapon', name: 'CAPACITOR DUMP', rarity: 'epic', dtype: 'energy', weight: 16, reach: [1, 4], dmg: 8, en: 13, heat: 3, fx: { dump: true }, color: '#c46fd6', desc: 'Spends ALL your remaining energy: +1 damage for every 2 energy spent.' },
+  { id: 'wp_blackout', type: 'weapon', name: 'BLACKOUT CANNON', rarity: 'legendary', dtype: 'energy', weight: 26, reach: [3, 7], dmg: 12, en: 28, heat: 7, fx: { drain: 20, jam: true }, color: '#29366f', desc: "Drains 20. If that leaves them at 0 energy, their guns jam next turn (they can still move, stomp and vent)." },
   { id: 'wp_nova', type: 'weapon', name: 'NOVA LANCE', rarity: 'mythic', dtype: 'energy', weight: 30, reach: [3, 5], dmg: 24, en: 24, heat: 5, ammo: 2, fx: { pierce: true }, color: '#ff5d73', desc: 'A mid-range lance that ignores resists. 2 shots.' },
 
   // Drones: act every turn, any range, free to run
@@ -410,8 +422,8 @@ export const ENEMY_LOADOUTS = {
   tank: { legs: ['lg_treads'], armor: 'ar_titanium', guns: [['wp_scatter'], ['wp_repulsor']] },
   striker: { legs: ['lg_catapult', 'lg_strider'], armor: 'ar_kevlar', guns: [['wp_rifle'], ['wp_blaster']], heavy: 'wp_sniper' },
   vampire: { legs: ['lg_coil', 'lg_strider'], armor: 'ar_aegis', guns: [['wp_scythe'], ['wp_smg']] },
-  pyromancer: { legs: ['lg_treads', 'lg_strider'], armor: 'ar_reactive', guns: [['wp_flamer'], ['wp_mortar']] },
-  disruptor: { legs: ['lg_jumpjets', 'lg_coil'], armor: 'ar_aegis', guns: [['wp_grapple'], ['wp_cryo']] },
+  pyromancer: { legs: ['lg_treads', 'lg_strider'], armor: 'ar_reactive', guns: [['wp_blowtorch', 'wp_flamer'], ['wp_napalm', 'wp_thermal', 'wp_rupturer']], heavy: 'wp_meltdown' },
+  disruptor: { legs: ['lg_jumpjets', 'lg_coil'], armor: 'ar_aegis', guns: [['wp_spark', 'wp_leech'], ['wp_gridbreaker', 'wp_grapple']], heavy: 'wp_blackout' },
   tactician: { legs: ['lg_strider', 'lg_coil'], armor: 'ar_reactive', guns: [['wp_tesla'], ['wp_missiles']] },
   corroder: { legs: ['lg_hopper', 'lg_coil'], armor: 'ar_kevlar', guns: [['wp_acid'], ['wp_emp']] },
   minelayer: { legs: ['lg_treads', 'lg_hopper'], armor: 'ar_reactive', guns: [['wp_minelauncher'], ['wp_blaster', 'wp_scatter']] },

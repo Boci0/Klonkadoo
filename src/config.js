@@ -120,12 +120,12 @@ export const CONFIG = {
       color: '#d32f2f', darkColor: '#8b0000',
     },
     pyromancer: {
-      name: 'BLAZE UNIT', desc: 'Flamer and Mortar: Heat damage that cooks your reactor.',
+      name: 'BLAZE UNIT', desc: 'Explosive specialist: heats you until you lock up, then cashes it in.',
       hpMult: 1.15, atkMult: 1.15, defBonus: 0, aiShift: 0.05,
       color: '#ff5722', darkColor: '#bf360c',
     },
     disruptor: {
-      name: 'GRAVITON UNIT', desc: 'Grapple Hook drags you in, Cryo slows your launches.',
+      name: 'SURGE UNIT', desc: 'Electric specialist: drains your energy until your guns jam.',
       hpMult: 1.2, atkMult: 1.0, defBonus: 1, aiShift: 0.04,
       color: '#7b1fa2', darkColor: '#4a148c',
     },

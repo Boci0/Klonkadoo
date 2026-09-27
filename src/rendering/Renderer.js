@@ -989,6 +989,17 @@ export class Renderer {
       }
     }
 
+    // Reactor damage and jams, in red: they last the rest of the fight
+    const hurt = [
+      ball.coolLost ? `COOLING -${ball.coolLost}` : '',
+      ball.regenLost ? `REGEN -${ball.regenLost}` : '',
+      ball.jammed || ball.jamNext ? 'GUNS JAMMED' : '',
+    ].filter(Boolean);
+    if (hurt.length) {
+      ctx.fillStyle = '#ff5d73';
+      ctx.fillText(hurt.join('  '), sx + 8, y + 62);
+    }
+
     const icon = (name, ix, iy, k = 4) => {
       const c = iconCanvas(name);
       ctx.drawImage(c, ix, Math.round(iy - (c.height * k) / 2), c.width * k, c.height * k);
@@ -1171,6 +1182,20 @@ export class Renderer {
         }
         ctx.fillStyle = '#b13e53';
         for (let x = h.x; x < h.x + h.w; x += 16) ctx.fillRect(x, gy - 4, 8, 4);
+      } else if (h.type === 'fire') {
+        // Napalm: flickering pixel flames across the plate
+        const n = Math.max(3, Math.floor(h.w / 18));
+        for (let i = 0; i < n; i++) {
+          const fx = h.x + (i + 0.5) * (h.w / n);
+          const flick = Math.floor(now / 90 + i * 3) % 3;
+          const fh = 16 + ((i * 7 + flick * 5) % 14);
+          ctx.fillStyle = '#b13e53';
+          ctx.fillRect(Math.round(fx - 7), gy - fh, 14, fh);
+          ctx.fillStyle = '#ef7d57';
+          ctx.fillRect(Math.round(fx - 5), gy - fh + 6, 10, fh - 6);
+          ctx.fillStyle = '#ffcd75';
+          ctx.fillRect(Math.round(fx - 2), gy - Math.round(fh * 0.5), 4, Math.round(fh * 0.5));
+        }
       } else if (h.type === 'mine') {
         // Landmine: hazard-striped casing, blinking light, pulsing danger zone
         const cx = Math.round(h.x + h.w / 2);

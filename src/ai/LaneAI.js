@@ -56,7 +56,7 @@ export function laneMoves(u, otherPos, size) {
 }
 
 function canFire(u, g, dist) {
-  if (g.used || (g.ammo && g.ammoLeft <= 0)) return false;
+  if (g.used || u.jammed || (g.ammo && g.ammoLeft <= 0)) return false;
   if (u.heat > u.heatCap || u.energy < g.en) return false;
   return dist >= g.reach[0] && dist <= g.reach[1];
 }
@@ -92,14 +92,29 @@ function apply(s, a) {
       s.minesLaid = (s.minesLaid || 0) + 1;
       return true;
     }
-    let dmg = hitDamage(g, foe);
-    if (g.dtype === 'heat' || g.heatFx) foe.heat += g.heatFx ?? Math.round(g.dmg * 0.5);
+    // Specialist payoffs: hot targets (Thermal Lance, Meltdown), all your energy (Capacitor Dump)
+    let shot = g;
+    if (g.hotBonus && foe.heat > foe.heatCap * 0.75) shot = { ...shot, dmg: shot.dmg * 2 };
+    if (g.meltdown && foe.heat > foe.heatCap) {
+      shot = { ...shot, dmg: shot.dmg + (foe.heat - foe.heatCap) * 2 };
+      foe.heat = foe.heatCap;
+    }
+    if (g.dump) {
+      shot = { ...shot, dmg: shot.dmg + (Math.max(0, me.energy) / 2) * g.dumpScale };
+      me.energy = 0;
+    }
+    let dmg = hitDamage(shot, foe);
+    if ((g.dtype === 'heat' || g.heatFx) && !g.meltdown) foe.heat += g.heatFx ?? Math.round(g.dmg * 0.5);
     if (g.dtype === 'energy' || g.drain) {
       const want = g.drain ?? Math.round(g.dmg * 0.5);
       const took = Math.min(foe.energy, want);
       foe.energy -= took;
       dmg += want - took; // energy break
+      if (g.steal) me.energy = Math.min(me.energyMax, me.energy + took);
     }
+    if (g.coolDmg) foe.cool = Math.max(2, foe.cool - g.coolDmg);
+    if (g.regenDmg) foe.regen = Math.max(3, foe.regen - g.regenDmg);
+    if (g.jam && foe.energy <= 0) foe.jamNext = true;
     if (foe.shield) {
       foe.shield = false; // forcefield eats the hit
       dmg = 0;
@@ -178,7 +193,7 @@ function sequences(s, prefix = [], out = []) {
  * Returns 0 if it would start over its heat cap (turn lost).
  */
 function threat(u, target, size) {
-  if (u.heat > u.heatCap) return 0;
+  if (u.heat > u.heatCap || u.jamNext) return 0; // overheated or jammed: no shots next turn
   const v = clone(u);
   v.energy = Math.min(v.energyMax, v.energy + v.regen);
   v.heat = Math.max(0, v.heat - v.cool);
@@ -201,7 +216,7 @@ function score(start, end, aggression) {
   if (me.hp <= 0) return -10000;
   let s = end.dealt;
   // Their answer next turn (none if they're over their heat cap: overheat)
-  const foeLocked = foe.heat > foe.heatCap;
+  const foeLocked = foe.heat > foe.heatCap || foe.jamNext;
   const reply = foeLocked ? 0 : threat(foe, me, end.size);
   s -= reply * (0.7 - 0.4 * aggression);
   if (foeLocked) s += 12;

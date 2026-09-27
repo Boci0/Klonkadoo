@@ -235,7 +235,7 @@ function bindAbilityButtons() {
 // Classic: tap one to see its range. Gear combat: tap to fire it; each chip
 // shows its energy / heat cost, ammo and why it can't fire right now.
 
-const GUN_BLOCK_LABEL = { USED: 'USED', EMPTY: 'EMPTY', HOT: 'TOO HOT', ENERGY: 'NO ENERGY', RANGE: 'OUT OF RANGE', 'TOO CLOSE': 'TOO CLOSE', BLOCKED: 'NO LINE', 'NO TARGET': 'NO TARGET', 'NO ACTIONS': 'NO ACTIONS', WAIT: '' };
+const GUN_BLOCK_LABEL = { JAMMED: 'JAMMED', USED: 'USED', EMPTY: 'EMPTY', HOT: 'TOO HOT', ENERGY: 'NO ENERGY', RANGE: 'OUT OF RANGE', 'TOO CLOSE': 'TOO CLOSE', BLOCKED: 'NO LINE', 'NO TARGET': 'NO TARGET', 'NO ACTIONS': 'NO ACTIONS', WAIT: '' };
 
 function fireGun(i) {
   const res = game.firePlayerWeapon(i);

@@ -11,7 +11,7 @@ import { DTYPES, dtypeOf, partNote, reachLabel, droneUpkeep } from '../meta/Mech
 
 const G = CONFIG.gear;
 
-const WHY = { USED: 'Already fired this turn: each gun fires once per turn', EMPTY: 'Out of ammo', HOT: 'Over your heat cap: VENT, or your next turn is lost', ENERGY: 'Not enough energy', RANGE: 'Out of reach: move closer', 'TOO CLOSE': 'Too close for this gun', BLOCKED: 'No clear line to the target', 'NO TARGET': 'No target', 'NO ACTIONS': 'No actions left', WAIT: 'Wait for your turn' };
+const WHY = { JAMMED: 'Guns jammed: you were drained to 0 energy (you can still move, stomp and vent)', USED: 'Already fired this turn: each gun fires once per turn', EMPTY: 'Out of ammo', HOT: 'Over your heat cap: VENT, or your next turn is lost', ENERGY: 'Not enough energy', RANGE: 'Out of reach: move closer', 'TOO CLOSE': 'Too close for this gun', 'NO TARGET': 'No target', 'NO ACTIONS': 'No actions left', WAIT: 'Wait for your turn' };
 
 const row = (label, value, color = '') => `<div class="tip-row"><span>${label}</span><b${color ? ` style="color:${color}"` : ''}>${value}</b></div>`;
 

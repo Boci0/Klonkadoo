@@ -282,7 +282,7 @@ export class Game {
     };
   }
 
-  static MEMBER_FIELDS = ['maxHp', 'hp', 'def', 'res', 'legs', 'stompDmg', 'parts', 'forcefield', 'energyMax', 'energy', 'regen', 'heatCap', 'heat', 'cool', 'burnTicks', 'burnDmg', 'isFrozen'];
+  static MEMBER_FIELDS = ['maxHp', 'hp', 'def', 'res', 'legs', 'stompDmg', 'parts', 'forcefield', 'energyMax', 'energy', 'regen', 'heatCap', 'heat', 'cool', 'burnTicks', 'burnDmg', 'isFrozen', 'coolLost', 'regenLost', 'jamNext', 'jammed'];
 
   /** Put the active mech's state back into its team record. */
   _saveMember() {
@@ -445,6 +445,7 @@ export class Game {
   /** A unit finished moving onto its position: spikes bite, mines go off. */
   _arrive(u) {
     if (u.hp <= 0) return;
+    if (this.hazards.some((h) => h.type === 'fire' && h.pos === u.pos)) this._burnPlate(u);
     if (this.hazards.some((h) => h.type === 'spikes' && h.pos === u.pos)) {
       const dmg = u.team === 'player' ? this.collisionSystem.calculatePlayerDamage(8, { bypassDef: true }) : 8;
       const killed = u.takeDamage(dmg);
@@ -507,8 +508,12 @@ export class Game {
     u.energy = Math.min(u.energyMax, u.energy + u.regen);
     u.actionsLeft = G.actions;
     u._freeMoveUsed = false;
+    u.jammed = !!u.jamNext; // Blackout Cannon: guns jam for this turn
+    u.jamNext = false;
+    if (u.jammed) this._callout(u, 'GUNS JAMMED', DTYPES.energy.color);
     const over = u.heat > u.heatCap;
     u.heat = Math.max(0, u.heat - u.cool);
+    if (this.hazards.some((h) => h.type === 'fire' && h.pos === u.pos)) this._burnPlate(u);
     if (!over) return true;
     u.actionsLeft = 0;
     const shut = u.heat > u.heatCap;
@@ -538,6 +543,10 @@ export class Game {
     this.turnId += 1;
     this.turnSystem.startPlayerTurn();
     const p = this.player;
+    for (const x of this.enemies) x.jammed = false; // a jam lasts one turn
+    // Napalm fires burn out after their turns
+    for (const h of this.hazards) if (h.type === 'fire') h.turns -= 1;
+    this.hazards = this.hazards.filter((h) => h.type !== 'fire' || h.turns > 0);
     if (!this._tickBurn(p)) return;
     const canAct = this._upkeep(p);
     this.moveMap = this.reachable(p);
@@ -557,6 +566,7 @@ export class Game {
     this.moveMap = new Map();
     if (!this._tickBurn(e)) return;
     if (!this._upkeep(e)) return this._afterAction(e, 1.1);
+    this.player.jammed = false; // a jam lasts one turn
     this.enemyThink = L.thinkTime * (1 - 0.35 * this.aggression);
     soundEngine.playTurn(false);
   }
@@ -734,6 +744,7 @@ export class Game {
     if (!(shooter.actionsLeft > 0)) return { ok: false, reason: 'NO ACTIONS' };
     if (w.ammo && w.ammoLeft <= 0) return { ok: false, reason: 'EMPTY' };
     if (w.usedOn === shooter.turnNo) return { ok: false, reason: 'USED' };
+    if (shooter.jammed) return { ok: false, reason: 'JAMMED' };
     if (shooter.heat > shooter.heatCap) return { ok: false, reason: 'HOT' };
     if (shooter.energy < (w.en || 0) && !this._freeShot(shooter)) return { ok: false, reason: 'ENERGY' };
     if (!target) return { ok: false, reason: 'NO TARGET' };
@@ -776,6 +787,12 @@ export class Game {
     if (w.ammo) w.ammoLeft -= 1;
     w.usedOn = shooter.turnNo; // each gun once per turn
     shooter.actionsLeft -= 1;
+    if (w.fx?.dump) {
+      // Capacitor Dump: everything left goes into this shot
+      const spent = Math.max(0, Math.floor(shooter.energy));
+      shooter.energy = 0;
+      w._dumpBonus = Math.round((spent / 2) * G.dmgScale);
+    }
   }
 
   /** VENT (the cooldown): cool 2x your cooling; it takes the rest of your turn. */
@@ -839,10 +856,51 @@ export class Game {
   /** A projectile arrived: the hit, and on the last round the gun's effects. */
   _landShot(shooter, w, target, last) {
     if (w.fx?.mine) return this._plantMine(shooter, target, w);
-    if (target.hp > 0) this._weaponHit(shooter, target, w, w.dmg);
+    if (target.hp > 0) this._weaponHit(shooter, target, w, this._shotDamage(w, target));
     if (!last || this.turnSystem.phase === TurnPhase.GAME_OVER || target.hp <= 0) return;
+    if (w.fx?.napalm) this._ignite(target.pos, w.fx.napalm);
     if (w.fx?.push) this._shove(target, shooter, w.fx.push, w.color);
     if (w.fx?.pull) this._shove(target, shooter, -w.fx.pull, w.color);
+  }
+
+  /** This round's damage before resists: Thermal Lance, Meltdown Cannon and Capacitor Dump change it. */
+  _shotDamage(w, target) {
+    let dmg = w.dmg;
+    if (w.fx?.hotBonus && target.heat > target.heatCap * 0.75) {
+      dmg *= 2;
+      this._callout(target, 'SEARED x2', DTYPES.heat.color);
+    }
+    if (w.fx?.meltdown && target.heat > target.heatCap) {
+      const excess = target.heat - target.heatCap;
+      dmg += excess * 2;
+      target.heat = target.heatCap;
+      this._callout(target, 'MELTDOWN', '#ff5d73');
+      this.renderer.addScreenShake(12);
+    }
+    if (w._dumpBonus) {
+      dmg += w._dumpBonus;
+      w._dumpBonus = 0;
+    }
+    return dmg;
+  }
+
+  /** Napalm: the plate burns for `turns` rounds. */
+  _ignite(pos, turns) {
+    this.hazards = this.hazards.filter((h) => !(h.type === 'fire' && h.pos === pos));
+    this.hazards.push({ type: 'fire', pos, turns, x: posX(pos) - W.width / L.size / 2 + 6, w: W.width / L.size - 12, born: performance.now() });
+    this.particles.push({ type: 'shockwave', x: posX(pos), y: W.groundY, radius: 8, maxRadius: 70, life: 0.3, maxLife: 0.3 });
+  }
+
+  /** Standing or landing on a burning plate: +8 heat (resists soften it). */
+  _burnPlate(u) {
+    const add = Math.max(1, Math.round(8 * this._reactorKeep(u, 'heat')));
+    u.heat += add;
+    this._callout(u, `ON FIRE +${add} HEAT`, DTYPES.heat.color);
+  }
+
+  /** How much of a heat / drain effect gets through the target's resist. */
+  _reactorKeep(target, type) {
+    return 1 - Math.min(CONFIG.run.maxDefCap || 15, resistOf(target, type)) * CONFIG.damage.defensePerPoint;
   }
 
   /** Mine Launcher: a mine on a free position next to the target (their side of it first). */
@@ -869,7 +927,7 @@ export class Game {
       let dmg = rawDmg * (crit ? 1.75 : 1);
       if (yours) dmg *= this.collisionSystem.stats.playerAtk || 1;
       if (!w.fx?.pierce) dmg *= 1 - Math.min(CONFIG.run.maxDefCap || 15, resistOf(target, type)) * CONFIG.damage.defensePerPoint;
-      dmg = Math.max(1, Math.round(dmg)) + this._reactorFx(target, w, rawDmg);
+      dmg = Math.max(1, Math.round(dmg)) + this._reactorFx(target, w, w.dmg ?? rawDmg, owner); // heat / drain from the base hit, not specialist bonuses
       const killed = target.takeDamage(dmg);
       if (w.fx?.burn) {
         target.burnTicks = Math.max(target.burnTicks || 0, w.fx.burn);
@@ -887,7 +945,7 @@ export class Game {
       this._callout(this.player, 'BLOCKED', '#a7f070');
       return;
     }
-    const dmg = this.collisionSystem.calculatePlayerDamage(rawDmg, { dtype: type, bypassDef: !!w.fx?.pierce }) + this._reactorFx(this.player, w, rawDmg);
+    const dmg = this.collisionSystem.calculatePlayerDamage(rawDmg, { dtype: type, bypassDef: !!w.fx?.pierce }) + this._reactorFx(this.player, w, w.dmg ?? rawDmg, owner);
     const killed = this.player.takeDamage(dmg);
     if (w.fx?.burn) {
       this.player.burnTicks = Math.max(this.player.burnTicks || 0, w.fx.burn);
@@ -906,21 +964,48 @@ export class Game {
    * heat never touches HP. Energy guns drain energy the same way; whatever
    * the tank can't cover comes off HP 1:1. Returns that extra HP damage.
    */
-  _reactorFx(target, w, dmg) {
+  _reactorFx(target, w, dmg, owner = null) {
     const type = dtypeOf(w);
     let extra = 0;
-    if (type === 'heat' || w.fx?.heat) {
-      const add = Math.round(w.fx?.heat ?? dmg * G.dtypeLoad);
+    // (Meltdown vents the target instead of heating it)
+    if ((type === 'heat' || w.fx?.heat) && !w.fx?.meltdown) {
+      const add = Math.round((w.fx?.heat ?? dmg * G.dtypeLoad) * this._reactorKeep(target, 'heat'));
       target.heat += add;
       this._callout(target, target.heat > target.heatCap ? 'OVERHEATING' : `+${add} HEAT`, DTYPES.heat.color);
     }
     if (type === 'energy' || w.fx?.drain) {
-      const want = Math.round(w.fx?.drain ?? dmg * G.dtypeLoad);
+      const want = Math.round((w.fx?.drain ?? dmg * G.dtypeLoad) * this._reactorKeep(target, 'energy'));
       const took = Math.min(target.energy, want);
       target.energy -= took;
       extra = want - took;
       if (took) this._callout(target, `-${took} EN`, DTYPES.energy.color);
       if (extra) this._callout(target, 'ENERGY BREAK', '#ff5d73');
+      // Leech Coil: what it drains, you get
+      if (w.fx?.steal && took && owner && owner.hp > 0) {
+        owner.energy = Math.min(owner.energyMax, owner.energy + took);
+        this._callout(owner, `+${took} EN`, DTYPES.energy.color);
+      }
+    }
+    // Reactor damage lasts the rest of the fight
+    if (w.fx?.coolDmg) {
+      const cut = Math.min(w.fx.coolDmg, Math.max(0, target.cool - 2));
+      if (cut) {
+        target.cool -= cut;
+        target.coolLost = (target.coolLost || 0) + cut;
+        this._callout(target, `COOLING -${cut}`, '#ff5d73');
+      }
+    }
+    if (w.fx?.regenDmg) {
+      const cut = Math.min(w.fx.regenDmg, Math.max(0, target.regen - 3));
+      if (cut) {
+        target.regen -= cut;
+        target.regenLost = (target.regenLost || 0) + cut;
+        this._callout(target, `REGEN -${cut}`, '#ff5d73');
+      }
+    }
+    if (w.fx?.jam && target.energy <= 0 && !target.jamNext) {
+      target.jamNext = true;
+      this._callout(target, 'BLACKOUT: GUNS JAM', DTYPES.energy.color);
     }
     return extra;
   }
@@ -1008,6 +1093,8 @@ export class Game {
       maxActions: G.actions,
       freeUsed: !!u._freeMoveUsed,
       frozen: !!u.isFrozen,
+      jammed: !!u.jammed,
+      jamNext: !!u.jamNext,
       shield: !!u.forcefield,
       legs: u.legs || DEFAULT_LEGS,
       def: u.def || 0,
@@ -1031,6 +1118,14 @@ export class Game {
         pull: w.fx?.pull || 0,
         freeze: !!w.fx?.freeze,
         mine: !!w.fx?.mine,
+        hotBonus: !!w.fx?.hotBonus,
+        meltdown: !!w.fx?.meltdown,
+        steal: !!w.fx?.steal,
+        jam: !!w.fx?.jam,
+        coolDmg: w.fx?.coolDmg || 0,
+        regenDmg: w.fx?.regenDmg || 0,
+        dump: !!w.fx?.dump,
+        dumpScale: G.dmgScale,
       })),
     };
   }
