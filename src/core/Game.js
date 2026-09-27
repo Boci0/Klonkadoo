@@ -28,7 +28,7 @@ import { soundEngine } from '../utils/SoundEngine.js';
 import { saveSystem } from '../meta/SaveSystem.js';
 import { haptics } from '../platform/haptics.js';
 import { getBall } from '../meta/Balls.js';
-import { DEFAULT_LEGS, DTYPES, dtypeOf, resistOf, getPart, legsRules } from '../meta/Mech.js';
+import { DEFAULT_LEGS, DTYPES, dtypeOf, resistOf, getPart, legsRules, droneUpkeep } from '../meta/Mech.js';
 import { pickArena } from './Arenas.js';
 
 /** Runs saved before the lane: guns without a reach and legs without walk/jump get them from the catalog. */
@@ -50,9 +50,6 @@ export function vfxOf(w) {
   if (w.fx?.burn || w.fx?.corrode || w.fx?.freeze) return 'spray';
   return 'bullet';
 }
-
-/** Direct-fire guns are stopped by walls; lobs arc over, beams burn through. */
-export const blockedByWalls = (w) => !w.fx?.mine && !['lob', 'beam'].includes(vfxOf(w));
 
 /** STOMP as a hit: Physical, from the legs. */
 const STOMP_GUN = { id: 'stomp', name: 'STOMP', dtype: 'phys', fx: {} };
@@ -179,10 +176,10 @@ export class Game {
       gear: true,
     });
 
-    // The arena: cover walls, spike plates, neutral mines (core/Arenas.js)
+    // The arena: spike plates and neutral mines (core/Arenas.js); no walls
     this.arena = config.arena || pickArena(config.floor || 1);
     this.platforms = [];
-    this.obstacles = this.arena.walls.map((w) => this._makeWall(w.at, w.hp, 'arena', w.tall));
+    this.obstacles = [];
     this.hazards = [
       ...this.arena.spikes.map((pos) => ({ type: 'spikes', pos, x: posX(pos) - W.width / L.size / 2 + 6, w: W.width / L.size - 12 })),
       ...this.arena.mines.map((pos) => ({ type: 'mine', pos, x: posX(pos) - 24, w: 48, armed: true, born: 0, owner: 'arena', dmg: 30 })),
@@ -364,38 +361,6 @@ export class Game {
     return !this.activeEnemy && this.enemyReserve.length === 0;
   }
 
-  // ---------- Cover: walls between positions ----------
-
-  /** A wall standing between position `at` and `at + 1` (drawn by the Renderer as an obstacle). */
-  _makeWall(at, hp, owner, tall = false) {
-    const h = tall ? 220 : 110;
-    return { at, owner, x: (at * W.width) / L.size - 15, y: W.groundY - h, w: 30, h, hp, maxHp: hp, active: true };
-  }
-
-  /** Standing walls between positions a and b (nearest to `a` first). */
-  _wallsBetween(a, b) {
-    const lo = Math.min(a, b);
-    const hi = Math.max(a, b);
-    const walls = this.obstacles.filter((w) => w.active && w.at >= lo && w.at < hi);
-    return walls.sort((x, y) => Math.abs(x.at + 0.5 - a) - Math.abs(y.at + 0.5 - a));
-  }
-
-  /** A wall soaks a hit and may break. */
-  _hitWall(wall, dmg) {
-    if (!wall.active) return;
-    wall.hp = Math.max(0, wall.hp - Math.round(dmg));
-    const cx = wall.x + wall.w / 2;
-    this._spawnHitParticles(cx, wall.y + 30);
-    this.renderer.addFloatingText(cx, wall.y - 20, `-${Math.round(dmg)}`, '#94b0c2');
-    soundEngine.playUI(180, 0.05);
-    if (wall.hp <= 0) {
-      wall.active = false;
-      this.particles.push({ type: 'shockwave', x: cx, y: wall.y + wall.h / 2, radius: 10, maxRadius: 120, life: 0.35, maxLife: 0.35 });
-      this.renderer.addFloatingText(cx, wall.y - 10, 'WALL DOWN', '#ffcd75', true);
-      this.renderer.addScreenShake(10);
-    }
-  }
-
   // ---------- The lane ----------
 
   _unitAt(pos) {
@@ -418,8 +383,8 @@ export class Game {
     for (const dir of [-1, 1]) {
       for (let d = 1; d <= walk; d++) {
         const p = unit.pos + dir * d;
-        // Walking stops at a mech or a standing wall; jumping goes over both
-        if (p < 1 || p > L.size || this._unitAt(p) || this._wallsBetween(p - dir, p).length) break;
+        // Walking stops at a mech; jumping goes over it
+        if (p < 1 || p > L.size || this._unitAt(p)) break;
         out.set(p, 'walk');
       }
       if (legs.jump) {
@@ -510,7 +475,7 @@ export class Game {
     let blocked = false;
     for (let i = 0; i < Math.abs(n); i++) {
       const next = to + step;
-      if (next < 1 || next > L.size || this._unitAt(next) || this._wallsBetween(to, next).length) {
+      if (next < 1 || next > L.size || this._unitAt(next)) {
         blocked = true;
         break;
       }
@@ -713,7 +678,6 @@ export class Game {
     if (u.stompedOn === u.turnNo) return { ok: false, reason: 'USED' };
     if (u.heat > u.heatCap) return { ok: false, reason: 'HOT' };
     if (!target || this.distance(u, target) !== 1) return { ok: false, reason: 'NOT ADJACENT' };
-    if (this._wallsBetween(u.pos, target.pos).length) return { ok: false, reason: 'COVER' };
     return { ok: true, reason: '', dmg: Math.round(u.stompDmg) };
   }
 
@@ -770,14 +734,10 @@ export class Game {
     if (shooter.heat > shooter.heatCap) return { ok: false, reason: 'HOT' };
     if (shooter.energy < (w.en || 0) && !this._freeShot(shooter)) return { ok: false, reason: 'ENERGY' };
     if (!target) return { ok: false, reason: 'NO TARGET' };
-    // Direct fire into a wall hits the wall (lobs arc over, beams burn through),
-    // so the range that counts is the range to that wall
-    const wall = blockedByWalls(w) ? this._wallsBetween(shooter.pos, target.pos)[0] : null;
-    const cover = !!wall;
-    const d = wall ? Math.ceil(Math.abs(wall.at + 0.5 - shooter.pos)) : this.distance(shooter, target);
+    const d = this.distance(shooter, target);
     if (d < w.reach[0]) return { ok: false, reason: 'TOO CLOSE' };
     if (d > w.reach[1]) return { ok: false, reason: 'RANGE' };
-    return { ok: true, reason: '', cover, overheats: shooter.heat + (w.heat || 0) > shooter.heatCap };
+    return { ok: true, reason: '', overheats: shooter.heat + (w.heat || 0) > shooter.heatCap };
   }
 
   _currentTarget() {
@@ -846,12 +806,8 @@ export class Game {
       pulse: Math.max(0.12, Math.min(0.45, dist / 1100)),
     }[kind];
     const rounds = w.fx?.burst || 1;
-    const walls = w.fx?.mine ? [] : this._wallsBetween(shooter.pos, target.pos);
-    const wall = blockedByWalls(w) ? walls[0] : null;
-    const block = wall ? { x: wall.x + wall.w / 2, y: Math.max(wall.y + 20, Math.min(from.y, W.groundY - 30)), k: 1 } : null;
     for (let i = 0; i < rounds; i++) {
       this.projectiles.push({
-        block,
         kind,
         color: w.color || '#f4f4f4',
         x0: from.x,
@@ -860,7 +816,7 @@ export class Game {
         t: -i * 0.09,
         dur,
         last: i === rounds - 1,
-        onHit: (last) => (wall ? this._hitWall(wall, w.dmg) : this._landShot(shooter, w, target, last, kind === 'beam' ? walls : [])),
+        onHit: (last) => this._landShot(shooter, w, target, last),
       });
     }
     soundEngine.playUI(kind === 'lob' ? 180 : kind === 'beam' ? 880 : 520, 0.05);
@@ -873,17 +829,13 @@ export class Game {
       p.t += dt;
       if (p.t < p.dur) continue;
       this.projectiles.splice(i, 1);
-      if (this.turnSystem.phase !== TurnPhase.GAME_OVER && (p.block || p.target.hp > 0)) p.onHit(p.last);
+      if (this.turnSystem.phase !== TurnPhase.GAME_OVER && p.target.hp > 0) p.onHit(p.last);
     }
   }
 
   /** A projectile arrived: the hit, and on the last round the gun's effects. */
-  _landShot(shooter, w, target, last, burnedThrough = []) {
+  _landShot(shooter, w, target, last) {
     if (w.fx?.mine) return this._plantMine(shooter, target, w);
-    // A beam burns through cover, chipping each wall it crosses
-    for (const wall of burnedThrough) this._hitWall(wall, w.dmg * 0.3);
-    // Splash chips walls right next to the target
-    if (w.fx?.splash) for (const wall of this._wallsBetween(target.pos - 1, target.pos + 1)) this._hitWall(wall, w.dmg * 0.5);
     if (target.hp > 0) this._weaponHit(shooter, target, w, w.dmg);
     if (!last || this.turnSystem.phase === TurnPhase.GAME_OVER || target.hp <= 0) return;
     if (w.fx?.push) this._shove(target, shooter, w.fx.push, w.color);
@@ -983,11 +935,9 @@ export class Game {
 
   /** Deployed drones act at the end of your turn, paying their energy. */
   _gearDrones() {
-    const D = G.drone;
     for (const d of this.playerDrones) {
       if (d.off) continue;
-      const en = d.heal ? D.healEn : d.forcefieldEvery ? D.shieldEn : D.dmgEn;
-      const heat = d.dmg ? D.dmgHeat : 0;
+      const { en, heat } = droneUpkeep(d);
       if (d.forcefieldEvery && (this.player.forcefield || this.battleStats.turns % d.forcefieldEvery !== 0)) continue;
       if (d.heal && this.player.hp >= this.player.maxHp) continue;
       if (d.dmg && !this.activeEnemy) continue;
@@ -1080,8 +1030,6 @@ export class Game {
         pull: w.fx?.pull || 0,
         freeze: !!w.fx?.freeze,
         mine: !!w.fx?.mine,
-        blocked: blockedByWalls(w),
-        beam: vfxOf(w) === 'beam',
       })),
     };
   }
@@ -1096,7 +1044,6 @@ export class Game {
         me: this._aiUnit(e, e.weapons || []),
         foe: this._aiUnit(p, this.playerWeapons || []),
         mines: this.hazards.filter((h) => h.type === 'mine').map((h) => ({ pos: h.pos, owner: h.owner, dmg: h.dmg })),
-        walls: this.obstacles.filter((w) => w.active).map((w) => ({ at: w.at, hp: w.hp })),
         stompHeat: G.stompHeat,
       },
       { difficulty: Math.min(0.95, e.aiDifficulty ?? 0.5), aggression: this.aggression },

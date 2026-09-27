@@ -25,7 +25,7 @@ import { DevTools } from './dev/DevTools.js';
 import { checkMedals } from './meta/Medals.js';
 import './platform/native.js';
 import './platform/desktop.js';
-import { withMech, tokenReward, enemyMech, enemyRig, CLEAN_WIN_KEYS, DTYPES, dtypeOf } from './meta/Mech.js';
+import { withMech, tokenReward, enemyMech, enemyRig, CLEAN_WIN_KEYS, DTYPES, dtypeOf, droneUpkeep } from './meta/Mech.js';
 import { partIcon } from './rendering/pixelIcons.js';
 import { withMastery, masteryLevel, runXp } from './meta/Mastery.js';
 import { writeRun, readRun, clearRun, hasSavedRun, savedRunInfo, patchRunQuests } from './rogue/RunSave.js';
@@ -281,7 +281,6 @@ function updateGearHud(el, endBtn, ventBtn) {
   const sig = `${live}|${left}|` + guns.map((w, i) => `${w.ammoLeft}:${states[i].ok}:${states[i].reason}:${states[i].dmg}:${states[i].cover}:${states[i].overheats}`).join(',') + '|' + drones.map((d) => d.off).join(',');
   if (sig === mechHudSig) return;
   mechHudSig = sig;
-  const D = CONFIG.gear.drone;
   el.innerHTML = guns.map((w, i) => {
     const st = states[i];
     const ready = live && st.ok;
@@ -293,14 +292,14 @@ function updateGearHud(el, endBtn, ventBtn) {
       <img src="${partIcon(w.id)}" alt="">${ammo}
       <span class="gun-dmg" style="color:${DTYPES[dtypeOf(w)].color}">${w.fx?.mine ? 'MINE' : st.dmg ? `~${st.dmg}` : ''}</span>
       <span class="gun-cost"><i class="c-en">${w.en || 0}</i><i class="c-heat">${w.heat || 0}</i></span>
-      <span class="gun-why">${ready ? (hot ? 'OVERHEAT' : st.cover ? 'COVER' : 'FIRE') : why}</span></button>`;
+      <span class="gun-why">${ready ? (hot ? 'OVERHEAT' : 'FIRE') : why}</span></button>`;
   }).join('') + drones.map((d, i) => {
-    const en = d.heal ? D.healEn : d.forcefieldEvery ? D.shieldEn : D.dmgEn;
+    const { en, heat } = droneUpkeep(d);
     // Docked: a bright DEPLOY button while you have an action for it; out: ON (tap to recall, free)
     const state = !d.off ? 'on' : live ? 'ready' : 'off';
     const label = !d.off ? 'ON' : live ? 'DEPLOY' : 'NO ACTIONS';
     return `<button class="mech-chip drone gear-drone ${state}" data-drone="${i}" style="--c:${d.color}" aria-label="${d.name}">
-      <img src="${partIcon(d.id)}" alt=""><span class="gun-cost"><i class="c-en">${en}</i></span><span class="gun-why">${label}</span></button>`;
+      <img src="${partIcon(d.id)}" alt=""><span class="gun-cost"><i class="c-en">${en}</i>${heat ? `<i class="c-heat">${heat}</i>` : ''}</span><span class="gun-why">${label}</span></button>`;
   }).join('');
   el.querySelectorAll('[data-gun]').forEach((b) => b.addEventListener('pointerdown', (e) => {
     e.stopPropagation();

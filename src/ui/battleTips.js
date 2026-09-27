@@ -7,7 +7,7 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
-import { DTYPES, dtypeOf, partNote, reachLabel } from '../meta/Mech.js';
+import { DTYPES, dtypeOf, partNote, reachLabel, droneUpkeep } from '../meta/Mech.js';
 
 const G = CONFIG.gear;
 
@@ -25,9 +25,8 @@ function ventTip(game) {
 
 function endTip(game) {
   const p = game.player;
-  const D = G.drone;
   const on = (game.playerDrones || []).filter((d) => !d.off);
-  const drones = on.map((d) => row(d.name.replace(' DRONE', ''), `${d.heal ? D.healEn : d.forcefieldEvery ? D.shieldEn : D.dmgEn} EN`, d.color)).join('');
+  const drones = on.map((d) => row(d.name.replace(' DRONE', ''), `${droneUpkeep(d).en} EN`, d.color)).join('');
   const left = p.actionsLeft || 0;
   return `<h4>END TURN <em>[Space]</em></h4>
     ${left ? `<p>${left} action${left > 1 ? 's' : ''} left unused.</p>` : ''}
@@ -41,7 +40,7 @@ function endTip(game) {
 function stompTip(game) {
   const p = game.player;
   const st = game.stompStatus(p, game.activeEnemy);
-  const why = { 'NOT ADJACENT': 'Get right next to the enemy.', COVER: 'A wall is in the way.', USED: 'Once per turn.', HOT: 'Too hot to move.' }[st.reason] || '';
+  const why = { 'NOT ADJACENT': 'Get right next to the enemy.', USED: 'Once per turn.', HOT: 'Too hot to move.' }[st.reason] || '';
   return `<h4>STOMP <em>[F] · 1 action</em></h4>
     ${row('Damage', `${Math.round(p.stompDmg || 0)} Physical`)}
     ${row('Heat', `+${G.stompHeat}`, '#ef7d57')}
@@ -70,12 +69,11 @@ function gunTip(game, i) {
 function droneTip(game, i) {
   const d = game.playerDrones?.[i];
   if (!d) return '';
-  const D = G.drone;
-  const en = d.heal ? D.healEn : d.forcefieldEvery ? D.shieldEn : D.dmgEn;
+  const { en, heat } = droneUpkeep(d);
   const does = d.heal ? `Repairs ${Math.round(d.heal)} HP` : d.forcefieldEvery ? `Forcefield every ${d.forcefieldEvery} turns` : `Shoots for ~${Math.round(d.dmg)} ${DTYPES[dtypeOf(d)].name}`;
   return `<h4 style="color:${d.color || '#f4f4f4'}">${d.name} <em>${d.off ? 'DOCKED' : 'DEPLOYED'}</em></h4>
     <p>${does} at the end of each of your turns, any range.</p>
-    ${row('Upkeep', `${en} EN per turn${d.dmg ? ` · +${D.dmgHeat} heat` : ''}`, '#73eff7')}
+    ${row('Upkeep', `${en} EN per turn${heat ? ` · +${heat} heat` : ''}`, '#73eff7')}
     <p>${d.off ? 'Tap to DEPLOY: uses 1 action, then it works every turn.' : 'Tap to recall it (free).'}</p>`;
 }
 

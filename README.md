@@ -20,9 +20,9 @@
 ## Key Features
 
 - **Mechs Built From Parts**: Frame, Legs, Armor, two Guns, a Drone and two Mods. What you equip is what you see on the field, and what the enemy sees.
-- **Lane Combat**: Two actions a turn on a 12-position lane: walk or jump (your legs decide how far), fire each gun once, STOMP an adjacent mech, raise a BARRIER, or VENT to cool down.
+- **Lane Combat**: Two actions a turn on a 12-position lane: walk or jump (your legs decide how far), fire each gun once, STOMP an adjacent mech, or VENT to cool down.
 - **Heat & Energy, Super Mechs style**: Every shot costs energy and heat. Start a turn over your heat cap and you lose it; drain a mech's energy past zero and it bleeds HP.
-- **Cover**: Walls block walking and direct fire; lobs arc over, beams burn through. Arenas bring spikes and mines too.
+- **Hazards**: Arenas bring spike plates and mines that hurt whoever steps on them; jump over them.
 - **Teams**: A garage of up to three mechs. SWAP takes your turn; a knocked-out mech's replacement drops in, and every mech keeps its own HP through the run.
 - **Physical / Explosive / Electric Damage**: Explosive hits pile on heat, Electric hits drain energy, and armor resists each type separately.
 - **Enemy Mechs**: No special abilities. Every hostile is a loadout of real parts, from Scattergun Wall Units to the bolted-down Sector Commander, and at the bottom of the Abyss, KLONKADOO PRIME.

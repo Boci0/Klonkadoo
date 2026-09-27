@@ -84,7 +84,6 @@ export const CONFIG = {
     actions: 2, // actions per turn: WALK / JUMP, FIRE a gun (each gun once per turn), DEPLOY a drone; VENT takes the rest of the turn
     vent: { coolMult: 2, energyPct: 0 }, // VENT (cooldown): cools 2x your cooling; energy only comes from regen
     stompHeat: 4, // STOMP adds this much heat to the stomper
-    drone: { dmgEn: 4, dmgHeat: 2, healEn: 6, shieldEn: 8 }, // ON drones pay this at the end of your turn
     // Energy pool / refill per turn, heat cap / cooling per turn when no frame sets them
     baseRig: { energy: 30, regen: 14, heatCap: 30, cool: 12 },
     // Enemy reactors by tier: bigger threats sustain more fire
@@ -280,7 +279,7 @@ export const CONFIG = {
     { id: 'glass_war', name: 'GLASS WAR', desc: 'Everyone deals +30% damage.' },
     { id: 'scouted', name: 'SCOUTED', desc: '+1 move on every floor.' },
     { id: 'blood_moon', name: 'BLOOD MOON', desc: 'Enemies +15% ATK, but +50% scrap from battles.' },
-    { id: 'calm', name: 'OPEN GROUND', desc: 'Every arena is an open field: no walls, spikes or mines.' },
+    { id: 'calm', name: 'OPEN GROUND', desc: 'Every arena is an open field: no spikes or mines.' },
   ],
 
   // --- Roguelike node definitions ---

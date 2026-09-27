@@ -9,8 +9,7 @@
 //   - the best damage the foe can answer with next turn (move + fire, or two guns)
 //   + what it can do next turn from where it stands
 //   - ending over its own heat cap (its next turn is lost)
-// Walls: walking can't pass one, direct fire hits it, lobs go over and
-// beams burn through. STOMP kicks a mech right next to you.
+// STOMP kicks a mech right next to you.
 // Difficulty (0..1) = how often it takes the best line; otherwise it picks
 // among the next few. Everything runs on plain snapshots, never on the
 // live battle, so a plan can't change anything by itself.
@@ -20,11 +19,7 @@ const DEF_PER_POINT = 0.04;
 const DEF_CAP = 15;
 
 const clone = (u) => ({ ...u, res: { ...u.res }, guns: u.guns.map((g) => ({ ...g })) });
-const cloneState = (s) => ({ ...s, me: clone(s.me), foe: clone(s.foe), mines: s.mines.map((m) => ({ ...m })), walls: (s.walls || []).map((w) => ({ ...w })) });
-
-/** Standing walls between positions a and b, nearest to `a` first. */
-const wallsBetween = (walls, a, b) =>
-  (walls || []).filter((w) => w.hp > 0 && w.at >= Math.min(a, b) && w.at < Math.max(a, b)).sort((x, y) => Math.abs(x.at + 0.5 - a) - Math.abs(y.at + 0.5 - a));
+const cloneState = (s) => ({ ...s, me: clone(s.me), foe: clone(s.foe), mines: s.mines.map((m) => ({ ...m })) });
 
 /** HP damage one gun hit would do to `target` (burst included), before crits. */
 function hitDamage(g, target) {
@@ -33,7 +28,7 @@ function hitDamage(g, target) {
 }
 
 /** Positions `u` can move to, given the other mech at `otherPos`: [{ pos, how }]. */
-export function laneMoves(u, otherPos, size, walls = []) {
+export function laneMoves(u, otherPos, size) {
   const out = [];
   const legs = u.legs;
   if (!legs || legs.anchored) return out;
@@ -44,7 +39,7 @@ export function laneMoves(u, otherPos, size, walls = []) {
   for (const dir of [-1, 1]) {
     for (let d = 1; d <= walk; d++) {
       const p = u.pos + dir * d;
-      if (p < 1 || p > size || p === otherPos || wallsBetween(walls, p - dir, p).length) break;
+      if (p < 1 || p > size || p === otherPos) break;
       seen.add(p);
       out.push({ pos: p, how: 'walk' });
     }
@@ -58,12 +53,6 @@ export function laneMoves(u, otherPos, size, walls = []) {
     }
   }
   return out;
-}
-
-/** How far a shot has to go: to the target, or to the first wall in the way for direct fire. */
-function fireDist(s, g) {
-  const cover = g.blocked ? wallsBetween(s.walls, s.me.pos, s.foe.pos) : [];
-  return cover.length ? Math.ceil(Math.abs(cover[0].at + 0.5 - s.me.pos)) : Math.abs(s.me.pos - s.foe.pos);
 }
 
 function canFire(u, g, dist) {
@@ -92,7 +81,7 @@ function apply(s, a) {
   }
   if (a.type === 'fire') {
     const g = me.guns[a.gun];
-    if (!canFire(me, g, fireDist(s, g))) return false;
+    if (!canFire(me, g, Math.abs(me.pos - foe.pos))) return false;
     me.energy -= g.en;
     me.heat += g.heat;
     if (g.ammo) g.ammoLeft -= 1;
@@ -103,15 +92,6 @@ function apply(s, a) {
       s.minesLaid = (s.minesLaid || 0) + 1;
       return true;
     }
-    // Direct fire into cover hits the wall; beams burn through (chipping it)
-    const cover = wallsBetween(s.walls, me.pos, foe.pos);
-    if (g.blocked && cover.length) {
-      cover[0].hp -= g.dmg * g.burst;
-      s.wallDmg = (s.wallDmg || 0) + g.dmg * g.burst;
-      if (cover[0].hp <= 0) s.wallsBroken = (s.wallsBroken || 0) + 1;
-      return true;
-    }
-    if (g.beam) for (const w of cover) w.hp -= g.dmg * 0.3;
     let dmg = hitDamage(g, foe);
     if (g.dtype === 'heat' || g.heatFx) foe.heat += g.heatFx ?? Math.round(g.dmg * 0.5);
     if (g.dtype === 'energy' || g.drain) {
@@ -147,7 +127,7 @@ function apply(s, a) {
     foe.hp -= dmg;
     s.dealt += dmg;
     const next = foe.pos + (Math.sign(foe.pos - me.pos) || 1);
-    if (next >= 1 && next <= s.size && !wallsBetween(s.walls, foe.pos, next).length) foe.pos = next;
+    if (next >= 1 && next <= s.size) foe.pos = next;
     return true;
   }
   if (a.type === 'vent') {
@@ -161,7 +141,7 @@ function apply(s, a) {
 
 function canStomp(s) {
   const me = s.me;
-  return me.stompDmg > 0 && !me.stomped && me.heat <= me.heatCap && Math.abs(me.pos - s.foe.pos) === 1 && !wallsBetween(s.walls, me.pos, s.foe.pos).length;
+  return me.stompDmg > 0 && !me.stomped && me.heat <= me.heatCap && Math.abs(me.pos - s.foe.pos) === 1;
 }
 
 /** Every action `me` could take right now. */
@@ -169,11 +149,12 @@ function actionsFor(s) {
   const me = s.me;
   if (me.actions <= 0) return [];
   const list = [{ type: 'end' }];
+  const dist = Math.abs(me.pos - s.foe.pos);
   me.guns.forEach((g, i) => {
-    if (canFire(me, g, fireDist(s, g))) list.push({ type: 'fire', gun: i });
+    if (canFire(me, g, dist)) list.push({ type: 'fire', gun: i });
   });
   if (canStomp(s)) list.push({ type: 'stomp' });
-  for (const m of laneMoves(me, s.foe.pos, s.size, s.walls)) list.push({ type: 'move', pos: m.pos, how: m.how });
+  for (const m of laneMoves(me, s.foe.pos, s.size)) list.push({ type: 'move', pos: m.pos, how: m.how });
   if (me.actions === me.maxActions && me.heat > 0) list.push({ type: 'vent' });
   return list;
 }
@@ -196,21 +177,20 @@ function sequences(s, prefix = [], out = []) {
  * with regen and cooling: two different guns from here, or a move then a gun.
  * Returns 0 if it would start over its heat cap (turn lost).
  */
-function threat(u, target, size, walls = []) {
+function threat(u, target, size) {
   if (u.heat > u.heatCap) return 0;
   const v = clone(u);
   v.energy = Math.min(v.energyMax, v.energy + v.regen);
   v.heat = Math.max(0, v.heat - v.cool);
   const fireable = (from) => v.guns
     .filter((g) => !(g.ammo && g.ammoLeft <= 0) && !g.mine && Math.abs(from - target.pos) >= g.reach[0] && Math.abs(from - target.pos) <= g.reach[1] && v.energy >= g.en)
-    .filter((g) => !g.blocked || !wallsBetween(walls, from, target.pos).length)
     .map((g) => hitDamage(g, target))
     .sort((a, b) => b - a);
   const here = fireable(v.pos);
   let best = (here[0] || 0) + (here[1] || 0);
-  for (const m of laneMoves(v, target.pos, size, walls)) best = Math.max(best, fireable(m.pos)[0] || 0);
+  for (const m of laneMoves(v, target.pos, size)) best = Math.max(best, fireable(m.pos)[0] || 0);
   // Stomp from right next to it
-  if (v.stompDmg > 0 && Math.abs(v.pos - target.pos) === 1 && !wallsBetween(walls, v.pos, target.pos).length) best = Math.max(best, (here[0] || 0) + hitDamage({ dmg: v.stompDmg, burst: 1, dtype: 'phys' }, target));
+  if (v.stompDmg > 0 && Math.abs(v.pos - target.pos) === 1) best = Math.max(best, (here[0] || 0) + hitDamage({ dmg: v.stompDmg, burst: 1, dtype: 'phys' }, target));
   return best;
 }
 
@@ -222,19 +202,17 @@ function score(start, end, aggression) {
   let s = end.dealt;
   // Their answer next turn (none if they're over their heat cap: overheat)
   const foeLocked = foe.heat > foe.heatCap;
-  const reply = foeLocked ? 0 : threat(foe, me, end.size, end.walls);
+  const reply = foeLocked ? 0 : threat(foe, me, end.size);
   s -= reply * (0.7 - 0.4 * aggression);
   if (foeLocked) s += 12;
   // Our own next turn
-  const mine = threat(me, foe, end.size, end.walls);
-  if (me.heat > me.heatCap) s -= 15 + 0.8 * threat({ ...me, heat: 0 }, foe, end.size, end.walls);
+  const mine = threat(me, foe, end.size);
+  if (me.heat > me.heatCap) s -= 15 + 0.8 * threat({ ...me, heat: 0 }, foe, end.size);
   else s += 0.35 * mine;
-  // Nothing to shoot next turn (out of reach, or boxed in by cover): close in
+  // Nothing to shoot next turn (out of reach): close in
   if (!mine) s -= Math.abs(me.pos - foe.pos) * 1.2;
   // Mines near where the foe stands are worth something later
   s += (end.minesLaid || 0) * 6;
-  // Shooting cover is worth a little (less than hitting the mech)
-  s += (end.wallDmg || 0) * 0.15 + (end.wallsBroken || 0) * 8;
   // Taking a mine hit is bad (already in HP, weigh it a bit more)
   s -= Math.max(0, start.me.hp - me.hp) * 0.5;
   // Energy for next turn matters a little; wasted steps cost a little
@@ -244,11 +222,11 @@ function score(start, end, aggression) {
 }
 
 /**
- * Plan the rest of this turn. `state` = { size, me, foe, mines, walls: [{ at, hp }], stompHeat }, where me /
+ * Plan the rest of this turn. `state` = { size, me, foe, mines, stompHeat }, where me /
  * foe = { team, pos, hp, heat, heatCap, cool, energy, energyMax, regen,
  * actions, maxActions, freeUsed, frozen, shield, legs, def, res, stompDmg, stomped, guns:
  * [{ dmg, burst, en, heat, reach, ammo, ammoLeft, used, dtype, pierce,
- * heatFx, drain, push, pull, freeze, mine, blocked, beam }] }. Returns the action list.
+ * heatFx, drain, push, pull, freeze, mine }] }. Returns the action list.
  */
 export function planTurn(state, { difficulty = 0.5, aggression = 0, rnd = Math.random } = {}) {
   const start = { ...cloneState(state), dealt: 0 };
