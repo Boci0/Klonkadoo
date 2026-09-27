@@ -230,11 +230,12 @@ export class Game {
     b.weapons = (e.weapons || []).map((w) => ({ ...laneGun(w), ammoLeft: w.ammo || 0 }));
     b.specials = (e.specials || []).map((sp) => ({ ...sp, usesLeft: sp.uses }));
     // Enemy drones launch on their first turn (it costs them an action, like yours)
-    b.drones = (e.drones || []).map((d) => ({ ...d, off: true }));
+    b.drones = (e.drones || []).map((d) => ({ ...d, off: !e.droneOut }));
     b.forcefield = !!e.startForcefield;
     b.legs = laneLegs(e.legs);
     const floor = Math.max(1, Math.min(5, this.battleConfig.floor || 1));
-    b.stompDmg = Math.round((b.legs.stomp || 0) * G.dmgScale * G.enemyDmgScale * (1 + 0.1 * (floor - 1)));
+    // (a bit softer than yours: the planner stomps every time it's next to you)
+    b.stompDmg = Math.round((b.legs.stomp || 0) * G.dmgScale * G.enemyDmgScale * 0.75 * (1 + 0.1 * (floor - 1)));
     b.res = { ...(e.res || {}) };
     b.parts = e.parts || null;
     this._initRig(b, e.rig || G.enemyRig[['elite', 'miniboss', 'boss'].includes(this.battleConfig.nodeType) ? this.battleConfig.nodeType : 'combat']);
@@ -1351,7 +1352,8 @@ export class Game {
   _autoAct() {
     const p = this.player;
     const e = this.activeEnemy;
-    if (!this.canPlayerAct || !e) return;
+    if (!this.canPlayerAct) return;
+    if (!e) return this.endPlayerTurn(); // the next enemy drops in on their turn
     const docked = (this.playerDrones || []).findIndex((d) => d.off && p.energy >= droneUpkeep(d).en * 2);
     if (docked >= 0 && this.toggleDrone(docked).ok) return;
     const plan = planTurn(

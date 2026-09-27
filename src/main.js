@@ -27,6 +27,7 @@ import './platform/native.js';
 import './platform/desktop.js';
 import { withMech, tokenReward, enemyMech, enemyRig, CLEAN_WIN_KEYS, DTYPES, dtypeOf, droneUpkeep } from './meta/Mech.js';
 import { partIcon, ico } from './rendering/pixelIcons.js';
+import { pickNode, pickChoice, pickBuys, supplyValue } from './rogue/AutoRun.js';
 import { withMastery, masteryLevel, runXp } from './meta/Mastery.js';
 import { writeRun, readRun, clearRun, hasSavedRun, savedRunInfo, patchRunQuests } from './rogue/RunSave.js';
 
@@ -293,9 +294,117 @@ function setAutoBattle(on) {
     b.innerHTML = `${ico('auto')}${autoBattle ? 'AUTO ON' : 'AUTO'}`;
   }
 }
-/** A manual action: switch AUTO battle off (AUTO RUN keeps control). */
+/** A manual action: you take over (AUTO battle and AUTO RUN both stop). */
 function takeControl() {
-  if (autoBattle && !autoRun) setAutoBattle(false);
+  if (autoRun) stopAutoRun('YOU TOOK OVER');
+  else if (autoBattle) setAutoBattle(false);
+}
+
+// ---------- AUTO RUN ----------
+// Farms a Risk you've already beaten: picks the next map node, fights on
+// AUTO, takes the best reward / event choice / shop buys. It stops at the
+// Abyss (or when the run ends, or when you act yourself).
+
+let autoRunTimer = 0;
+let autoPending = null; // the node AUTO RUN just stepped into: { type, node }
+
+/** Can AUTO RUN farm this run? The Risk must be won once already, and not in the Abyss. */
+function autoRunAllowed() {
+  if (!run || run.runOver) return { ok: false, why: '' };
+  if (run.floor >= CONFIG.map.floors) return { ok: false, why: 'Not in the Abyss' };
+  const best = saveSystem.getBallStats(run.ballType).bestRiskWin ?? -1;
+  if (best < (run.risk ?? 0)) return { ok: false, why: `Win a run on Risk ${run.risk ?? 0} first` };
+  return { ok: true, why: '' };
+}
+
+function updateAutoRunBtn() {
+  const b = document.getElementById('btn-auto-run');
+  if (!b) return;
+  const can = autoRunAllowed();
+  b.disabled = !can.ok && !autoRun;
+  b.title = can.ok ? 'AUTO RUN: moves, fights and picks rewards for you until the Abyss' : can.why;
+  b.classList.toggle('btn-accent', autoRun);
+  b.classList.toggle('btn-outline', !autoRun);
+  b.innerHTML = `${ico(can.ok || autoRun ? 'auto' : 'lock')}${autoRun ? 'AUTO ON' : 'AUTO RUN'}`;
+}
+
+function startAutoRun() {
+  if (!autoRunAllowed().ok) return false;
+  autoRun = true;
+  autoPending = null;
+  setAutoBattle(true);
+  updateAutoRunBtn();
+  clearTimeout(autoRunTimer);
+  autoRunTimer = setTimeout(autoRunTick, 400);
+  return true;
+}
+
+function stopAutoRun(reason = '') {
+  if (!autoRun) return;
+  autoRun = false;
+  autoPending = null;
+  clearTimeout(autoRunTimer);
+  setAutoBattle(false);
+  updateAutoRunBtn();
+  if (reason) ui.toast(`<span class="feed-boon">${ico('auto')} AUTO RUN STOPPED: ${reason}</span>`);
+}
+
+/** One step of AUTO RUN; it reschedules itself. */
+function autoRunTick() {
+  if (!autoRun) return;
+  autoRunTimer = setTimeout(autoRunTick, 650);
+  if (battlePaused || !run) return;
+  if (run.runOver) return stopAutoRun();
+  // End-of-battle report: continue
+  const report = document.getElementById('battle-report');
+  if (report) {
+    report.querySelector('button')?.click();
+    return;
+  }
+  if (ui.nodeModal.classList.contains('open')) return autoModal();
+  if (state === State.BATTLE) return; // AUTO battle plays it
+  if (state === State.MINIGAME) return stopAutoRun('MINI-GAME');
+  if (state !== State.RUN_MAP) return;
+  // On the map: step to the best next node
+  const node = pickNode(map.getNextOptions(run.floor, run.currentNodeId), run, run.gold);
+  if (!node) return stopAutoRun('NOWHERE TO GO');
+  selectNode(node);
+  autoPending = { type: node.type, node };
+  if (['combat', 'elite', 'miniboss', 'boss'].includes(node.type)) {
+    autoPending = null;
+    startCombat(node);
+  } else if (node.type === 'minigame') {
+    autoPending = null;
+    ui.closeModal();
+    skipNode(node); // a skill game: AUTO passes it by
+  } else proceedFromNode(node);
+}
+
+/** A pop-up is open during AUTO RUN: make the call it asks for. */
+function autoModal() {
+  const pend = autoPending;
+  const node = pend?.node;
+  if (pend?.type === 'encounter' && node?.encounter) {
+    autoPending = null;
+    resolveEncounterChoice(pickChoice(node.encounter, run));
+    return;
+  }
+  if (pend?.type === 'shop') {
+    autoPending = null;
+    for (const i of pickBuys(node.shopItems || [], run, (sup) => run.price(sup.cost))) buySupply(i);
+    ui.closeModal();
+    proceedFromNode(null);
+    return;
+  }
+  if (pend?.type === 'rest') {
+    autoPending = null;
+    ui.closeModal();
+    resolveRest(run.hp < run.maxHp ? 'heal' : 'leave');
+    return;
+  }
+  // Anything else (a boon, a result card, a notice): take its main button
+  const btn = ui.modalActions.querySelector('.btn-primary:not(:disabled), .btn-accent:not(:disabled)') || ui.modalActions.querySelector('button:not(:disabled)');
+  btn?.click();
 }
 
 let mechHudSig = '';
@@ -631,7 +740,17 @@ function bindMapClicks() {
     if (!mapRenderer) return;
     const nextOptions = map.getNextOptions(run.floor, run.currentNodeId);
     const node = mapRenderer.hitNode(e.clientX, e.clientY, nextOptions);
-    if (node) selectNode(node);
+    if (node) {
+      takeControl();
+      selectNode(node);
+    }
+  };
+
+  const btnAuto = document.getElementById('btn-auto-run');
+  if (btnAuto) btnAuto.onclick = () => {
+    soundEngine.playUI();
+    if (autoRun) stopAutoRun();
+    else if (!startAutoRun()) soundEngine.play('error');
   };
 
   const btnZoomIn = document.getElementById('btn-zoom-in');
@@ -699,6 +818,15 @@ function proceedFromNode(node, leaveShop) {
       break;
     case 'treasure': {
       const offer = rollSupplies(2);
+      if (autoRun) {
+        // AUTO RUN: take the one worth more right now
+        const best = [...offer].sort((a, b) => supplyValue(b, run) - supplyValue(a, run))[0];
+        autoPending = null;
+        soundEngine.play('coin');
+        addFeedEntry(`<span class="feed-boon">CACHE: ${grantSupply(best, run)}</span>`);
+        finishNode(node);
+        break;
+      }
       ui.showTreasure(offer, (id) => {
         const s = getSupply(id);
         if (s) {
@@ -710,6 +838,22 @@ function proceedFromNode(node, leaveShop) {
       break;
     }
     case 'gamble':
+      if (autoRun) {
+        // AUTO RUN: the bet is worth it (keys) when there's gold for it
+        autoPending = null;
+        if (run.gold >= 15) {
+          run.gold -= 15;
+          if (Math.random() < 0.5) {
+            if (Math.random() < 0.5) {
+              saveSystem.addTokens(3);
+              run.tokensEarned = (run.tokensEarned || 0) + 3;
+              addFeedEntry('<span class="feed-gold">GAMBLE: +3 KEYS</span>');
+            } else addFeedEntry(`<span class="feed-gold">GAMBLE: +${run.gainGold(45)} GOLD</span>`);
+          } else addFeedEntry('<span class="feed-dmg">GAMBLE: LOST 15 GOLD</span>');
+        }
+        finishNode(node);
+        break;
+      }
       ui.showGamble(run, 15, () => {
         run.gold -= 15;
         if (Math.random() < 0.5) {
@@ -799,6 +943,7 @@ function returnToMap() {
   ui.showRunScreen(run, map, run.floor);
   ui.closeModal();
   buildFloorTabs();
+  updateAutoRunBtn();
   persistRun();
 }
 
@@ -947,7 +1092,9 @@ function startCombat(node) {
       aiDifficulty: Math.min(0.95, tier.aiDifficulty + arch.aiShift + riskData.aiBonus),
       thinkDelay,
       xPct,
-      weapons: mech.weapons,
+      // Risk: RANGEFINDERS
+      weapons: mech.weapons.map((w) => (riskData.enemyReach ? { ...w, reach: [w.reach[0], Math.min(CONFIG.lane.size - 1, w.reach[1] + riskData.enemyReach)] } : w)),
+      droneOut: !!riskData.droneOut, // Risk: NIGHTMARE
       rig: enemyRig(node.type, { cdCut: riskData.gunCdCut || 0 }),
       legs: mech.legs,
       res: mech.res,
@@ -1421,6 +1568,7 @@ function sectorCleared() {
     }
   }
   ui.updateRunHud(run);
+  stopAutoRun('SECTOR CLEARED'); // the Abyss is yours to choose
   persistRun('descend', { descend: { depth, next: depth + 1 } });
   ui.showDescend({ depth, next: depth + 1, rewards, hp: run.hp, maxHp: run.maxHp }, descend, () => endRun(true));
 }
@@ -1459,6 +1607,7 @@ function recordVictory() {
 }
 
 function endRun(victory) {
+  stopAutoRun();
   // Dying in the Abyss after clearing the sector still counts as a win
   const won = victory || !!run.victoryRecorded;
   run.runOver = true;

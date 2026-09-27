@@ -11,7 +11,7 @@
 //   - ending over its own heat cap (its next turn is lost)
 // STOMP kicks a mech right next to you.
 // Difficulty (0..1) = how often it takes the best line; otherwise it picks
-// among the next few. Everything runs on plain snapshots, never on the
+// a close second that still deals most of the damage (never a wasted turn). Everything runs on plain snapshots, never on the
 // live battle, so a plan can't change anything by itself.
 // ============================================================
 
@@ -269,11 +269,12 @@ function score(start, end, aggression) {
   const foe = end.foe;
   if (foe.hp <= 0) return 10000 + end.dealt;
   if (me.hp <= 0) return -10000;
-  let s = end.dealt;
+  // Pressure first: damage now is worth more than the damage it might dodge
+  let s = end.dealt * 1.2;
   // Their answer next turn (none if they're over their heat cap: overheat)
   const foeLocked = foe.heat > foe.heatCap || foe.jamNext;
   const reply = Math.max(0, (foeLocked ? 0 : threat(foe, me, end.size)) - (me.bubble || 0)); // a SHIELD soaks their answer
-  s -= reply * (0.7 - 0.4 * aggression);
+  s -= reply * (0.5 - 0.3 * aggression);
   if (foeLocked) s += 12;
   // Our own next turn
   const mine = threat(me, foe, end.size);
@@ -304,8 +305,9 @@ export function planTurn(state, { difficulty = 0.5, aggression = 0, rnd = Math.r
   const lines = sequences(start).map((l) => ({ ...l, score: score(start, l.state, aggression) }));
   if (!lines.length) return [{ type: 'end' }];
   lines.sort((a, b) => b.score - a.score);
-  // A sure kill is always taken; otherwise weaker enemies sometimes settle
-  if (lines[0].score >= 10000 || rnd() < 0.35 + 0.65 * difficulty) return lines[0].seq;
-  const pool = lines.slice(1, 4).filter((l) => l.score > lines[0].score - 30);
+  // A sure kill is always taken; otherwise weaker enemies sometimes settle for
+  // a close second (never a wasted turn: it has to be nearly as good)
+  if (lines[0].score >= 10000 || rnd() < 0.55 + 0.45 * difficulty) return lines[0].seq;
+  const pool = lines.slice(1, 4).filter((l) => l.score > lines[0].score - 8 && l.state.dealt >= lines[0].state.dealt * 0.6);
   return (pool.length ? pool[Math.floor(rnd() * pool.length)] : lines[0]).seq;
 }

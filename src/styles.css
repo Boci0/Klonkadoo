@@ -4550,3 +4550,7 @@ canvas {
 }
 .pcards-hint.hidden, .pcards-actions .hidden { display: none; }
 .pcards-actions { position: relative; width: min(360px, 92%); }
+
+/* AUTO RUN on the map bar (always visible) */
+.btn-auto-run { flex-shrink: 0; white-space: nowrap; }
+.btn-auto-run:disabled { opacity: 0.5; cursor: default; }

@@ -196,8 +196,8 @@ export const RETIRED_REFUND = { sp_shield: { keys: 4, scrap: 16 }, sp_aegis: { k
 const PART_BY_ID = Object.fromEntries(PARTS.map((p) => [p.id, p]));
 export const getPart = (id) => PART_BY_ID[id];
 
-export const STARTER_PARTS = ['fr_scout', 'lg_strider', 'wp_blaster', 'dr_gnat', 'md_plating'];
-export const STARTER_LOADOUT = { frame: 'fr_scout', legs: 'lg_strider', side1: 'wp_blaster', drone: 'dr_gnat', module1: 'md_plating' };
+export const STARTER_PARTS = ['fr_scout', 'lg_strider', 'wp_blaster', 'wp_scatter', 'dr_gnat', 'md_plating'];
+export const STARTER_LOADOUT = { frame: 'fr_scout', legs: 'lg_strider', side1: 'wp_blaster', side2: 'wp_scatter', drone: 'dr_gnat', module1: 'md_plating' };
 /** Positions on the battle lane (1..LANE_SIZE). */
 export const LANE_SIZE = 12;
 
@@ -592,7 +592,10 @@ export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMu
   const gunIds = slots.map(pick);
   if (L.heavy && tier !== 'combat') gunIds[0] = L.heavy;
   const G = CONFIG.gear;
-  const scale = G.dmgScale * G.enemyDmgScale * (1 + 0.1 * (f - 1));
+  // More guns than in 2.0 (and a drone): each hits a little softer, so the
+  // total stays close while the enemy covers more ranges
+  const spread = final || boss ? 0.5 : { combat: 0.5, elite: 0.48, miniboss: 0.52, boss: 0.5 }[tier];
+  const scale = G.dmgScale * G.enemyDmgScale * spread * (1 + 0.1 * (f - 1));
   const weapons = gunIds.map((id) => {
     const base = getPart(id);
     return { ...base, dmg: Math.max(2, Math.round(base.dmg * scale * atkMult)), backfire: base.backfire ? Math.round(base.backfire * scale) : 0, level: 1 };
@@ -607,8 +610,8 @@ export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMu
     const sum = mods.reduce((s, m) => s + (m.res?.[t] || 0), 0) + (getPart(legsId)?.res?.[t] || 0);
     return [t, Math.round(sum * k * 10) / 10];
   }));
-  // Drone: elites and up, hitting like their guns
-  const dr = tier !== 'combat' && L.drone ? getPart(L.drone) : null;
+  // Drone: elites from floor 3, mini-bosses and bosses; it hits like their guns
+  const dr = tier !== 'combat' && (tier !== 'elite' || f >= 3) && L.drone ? getPart(L.drone) : null;
   const drones = dr ? [{ ...dr, level: 1, dmg: dr.dmg ? Math.max(1, Math.round(dr.dmg * scale * atkMult)) : 0, heal: dr.heal ? Math.round(dr.heal * k) : 0 }] : [];
   return {
     weapons,

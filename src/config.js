@@ -184,7 +184,7 @@ export const CONFIG = {
     scrapPerLevel: 15,
     levels: [
       { name: 'HARDENED', desc: 'Enemies +15% HP.', hpPct: 15 },
-      { name: 'SHARPSHOOTERS', desc: 'Enemies aim better.', aiBonus: 0.08 },
+      { name: 'RANGEFINDERS', desc: 'Enemy guns reach 1 position further.', enemyReach: 1 },
       { name: 'SCARCITY', desc: '-20% gold.', minusGold: 20 },
       { name: 'BRUTAL', desc: 'Enemies +15% ATK.', atkPct: 15 },
       { name: 'THIN SUPPLIES', desc: 'Healing -25%.', minusHeal: 25 },
@@ -192,7 +192,7 @@ export const CONFIG = {
       { name: 'ELITE GUARD', desc: 'Elites & bosses +25% HP.', eliteHpPct: 25 },
       { name: 'GLASS ARMOR', desc: 'You take +15% damage.', plusDmgTaken: 15 },
       { name: 'VETERANS', desc: 'Enemies +20% HP and ATK.', hpPct: 20, atkPct: 20 },
-      { name: 'NIGHTMARE', desc: 'Elites & bosses +35% ATK, enemies aim even better.', eliteAtkPct: 35, aiBonus: 0.08 },
+      { name: 'NIGHTMARE', desc: 'Elites & bosses +35% ATK, and every enemy starts with its drone out.', eliteAtkPct: 35, droneOut: true },
     ],
     // Hidden Risk 11: unlocked by winning on Risk 10 without fighting a
     // single common hostile (elites, mini-bosses and the boss only).
