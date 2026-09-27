@@ -8,7 +8,7 @@
 import { CONFIG } from '../config.js';
 import {
   getPart, partChips, partNote, rarityColor, rarityName, TYPE_LABEL, reachLabel,
-  tierRange, tierOf, maxLevel, RARITY_ORDER, LANE_SIZE, DTYPES, DTYPE_KEYS,
+  tierRange, tierOf, maxLevel, RARITY_ORDER, LANE_SIZE, DTYPES, DTYPE_KEYS, dtypeOf, dmgLabel,
 } from '../meta/Mech.js';
 import { ico, partIcon } from '../rendering/pixelIcons.js';
 
@@ -97,6 +97,52 @@ export function statBarHtml(t, next = null) {
     </div>`;
 }
 
+/**
+ * A part as it is in this fight (live object from the battle: enemy guns
+ * carry their own damage, ammo and uses left). Same look as partCardHtml.
+ */
+export function battlePartHtml(w) {
+  const p = getPart(w.id) || w;
+  const t = DTYPES[dtypeOf(w)];
+  const C = [];
+  const add = (cond, icon, text, tip, color) => { if (cond) C.push({ icon, text, tip, color }); };
+  add(w.type === 'weapon', w.mount === 'top' ? 'top' : 'side', w.mount === 'top' ? 'TOP' : 'SIDE', 'Mount');
+  add(w.dmg && !w.drone, t.icon, dmgLabel(w.dmg), `${t.name} damage per hit`, t.color);
+  add(w.fx?.burst, 'ammo', `x${w.fx?.burst}`, 'Hits per shot');
+  add(w.reach, 'range', w.reach ? reachLabel(w.reach) : '', 'Range (positions)');
+  add(w.en, 'energy', `${w.en}`, 'Energy per use', DTYPES.energy.color);
+  add(w.heat, 'heat', `${w.heat}`, 'Heat per use', DTYPES.heat.color);
+  add(w.ammo, 'ammo', `${w.ammoLeft ?? w.ammo}/${w.ammo}`, 'Shots left', '#ffcd75');
+  add(w.uses, 'ammo', `${w.usesLeft ?? w.uses}/${w.uses}`, 'Uses left', '#ffcd75');
+  add(w.backfire, 'backfire', `-${Math.round(w.backfire || 0)}`, 'Backfire: HP it costs its user', '#ff5d73');
+  for (const [k, v] of Object.entries(w.fx?.resDrain || {})) add(true, 'resdrain', `-${v}`, `Strips ${DTYPES[k].name} resist`, DTYPES[k].color);
+  add(w.fx?.corrode, 'resdrain', `-${w.fx?.corrode}`, 'Strips PHYSICAL resist', DTYPES.phys.color);
+  add(w.fx?.drain, 'drain', `${w.fx?.drain}`, 'Drains energy', DTYPES.energy.color);
+  add(w.fx?.heat, 'heat', `+${w.fx?.heat}`, 'Heat into the target', DTYPES.heat.color);
+  add(w.fx?.push, 'push', `${w.fx?.push}`, 'Knocks back');
+  add(w.fx?.pull, 'pull', `${w.fx?.pull}`, 'Pulls in');
+  add(w.fx?.pierce, 'pierce', '', 'Ignores resists');
+  add(w.arc, 'arc', '', 'Lobbed: flies over cover');
+  // Drones and specials
+  add(p.type === 'drone' && w.dmg, t.icon, dmgLabel(w.dmg || 0), `${t.name} damage every turn, any range`, t.color);
+  add(w.heal, 'heal', `+${Math.round(w.heal || 0)}`, 'Repair every turn', '#a7f070');
+  add(w.forcefieldEvery, 'def', `1/${w.forcefieldEvery}`, 'Forcefield every few turns', '#a7f070');
+  add(w.ram, 'dmg', `${Math.round(w.ram || 0)}`, 'Ram damage');
+  add(w.range && w.special === 'hook', 'range', `2-${w.range}`, 'Hook range');
+  add(w.dist, 'move', `${w.dist}`, 'Dash distance');
+  const note = partNote(p);
+  const state = p.type === 'drone' ? (w.off ? 'DOCKED' : 'DEPLOYED') : TYPE_LABEL[p.type] || '';
+  return `<div class="pcard" style="--rar:${rarityColor(p.rarity)}">
+      <div class="pcard-head">
+        <img src="${partIcon(w.id)}" alt="">
+        <div><strong>${w.name}</strong><span><em>${state}</em></span></div>
+      </div>
+      <div class="rig-chips">${C.map(chipHtml).join('')}</div>
+      ${w.reach ? rangeBar(w) : ''}
+      ${note ? `<p class="rig-note">${note}</p>` : ''}
+    </div>`;
+}
+
 // ---------- Icon key ----------
 
 /** Every stat symbol and what it means (the Almanac ICONS tab, the Rig's ? button). */
@@ -163,6 +209,7 @@ function moveTip(x, y) {
 /** Show `html` in the floating tooltip near (x, y). */
 export function showTip(html, x, y) {
   const el = tip();
+  if (html == null) return moveTip(x, y); // same card: just follow the mouse
   el.innerHTML = html;
   el.classList.remove('hidden');
   tipW = el.offsetWidth; // measured once per card, not per mouse move

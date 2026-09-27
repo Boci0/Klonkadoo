@@ -1393,14 +1393,9 @@ export class Game {
       if (e.pointerType !== 'mouse' || !this.running) return;
       const w = this.renderer.clientToWorld(e.clientX, e.clientY);
       this.hoverPos = w.y > W.groundY - 220 && w.y < W.groundY + 60 ? posAt(w.x) : null;
-      // Hovering a mech shows its card (a tap pins it)
-      const onLane = w.y > W.groundY - 260 && w.y < W.groundY + 80;
-      const hit = onLane && [this.player, ...this.enemies].find((b) => b && b.hp > 0 && Math.abs(b.x - w.x) < W.width / L.size / 2);
-      this.hoverInspect = hit ? { ball: hit } : null;
     });
     this.canvas.addEventListener('pointerleave', () => {
       this.hoverPos = null;
-      this.hoverInspect = null;
     });
     this.canvas.addEventListener('pointerup', (e) => {
       if (!down || !this.running) return;
@@ -1623,7 +1618,7 @@ export class Game {
       gear: true,
       showHints: !!this.battleConfig?.showHints,
       fireTarget: this.activeEnemy,
-      inspected: this.inspected && this.inspected.ball.hp > 0 ? this.inspected : this.hoverInspect?.ball?.hp > 0 && this.previewGun == null ? this.hoverInspect : null,
+      inspected: this.inspected && this.inspected.ball.hp > 0 ? this.inspected : null,
       lane: {
         size: L.size,
         moves: this.turnSystem.phase === TurnPhase.PLAYER_AIM ? this.moveMap : null,

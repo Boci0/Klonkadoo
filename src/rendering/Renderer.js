@@ -15,6 +15,7 @@ import { CONFIG } from '../config.js';
 import { getTerrain, groundAt } from '../core/Terrain.js';
 import { fitCanvas, clientToWorld } from './viewport.js';
 import { partCanvas, iconCanvas } from './pixelIcons.js';
+import { showTip, hideTip, battlePartHtml } from '../ui/partCard.js';
 import { DTYPES, DTYPE_KEYS, dtypeOf, resistOf, legsLabel, reachLabel, LANE_SIZE, dmgLabel } from '../meta/Mech.js';
 import { mechLook, torsoCanvas, legsCanvas } from './mechSprite.js';
 
@@ -28,7 +29,7 @@ const SKY_CROP = 200; // world units of empty sky that wide phones may crop to d
 // Battle camera: frames the fighters and zooms in as they close in
 const CAM = {
   margin: 140, // world units kept on each side of the outermost fighters
-  minWidth: 560, // never zoom in further than this much arena
+  minWidth: 700, // never zoom in further than this much arena (about 1.8x on the lane)
   floorShown: 70, // world units of floor under the ground line once zoomed in
   headroom: 170, // sky kept above the highest fighter
   ease: 3, // how quickly the camera catches up (per second)
@@ -74,7 +75,13 @@ export class Renderer {
     document.body.appendChild(this._tooltip);
 
     this._onMouseMove = (e) => this._handleTooltipMove(e);
-    this._onMouseLeave = () => { this._tooltip.style.display = 'none'; };
+    this._onMouseLeave = () => {
+      this._tooltip.style.display = 'none';
+      if (this._gearTip) {
+        this._gearTip = null;
+        hideTip();
+      }
+    };
     canvas.addEventListener('mousemove', this._onMouseMove);
     canvas.addEventListener('mouseleave', this._onMouseLeave);
     // Touch has no hover: tapping a status tag shows its description briefly
@@ -204,6 +211,7 @@ export class Renderer {
     ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
     this._drawWeather(ctx, view, dt, floor);
     this._hoverZones = [];
+    this._gearZones = [];
     this._drawHpPanels(ctx, view, player, livingEnemies);
     this._drawOffscreenMarkers(ctx, view, [player, ...livingEnemies]);
     this._drawCallouts(ctx, view, dt);
@@ -224,14 +232,17 @@ export class Renderer {
    * slingshot doesn't slide under your finger).
    */
   _camera(base, balls, world, dt) {
-    // The lane always fits whole: no camera
-    if (world?.lane) {
-      this._cam = null;
-      return base;
-    }
     const fighters = balls.filter((b) => b && b.hp > 0);
     if (fighters.length) {
       const xs = fighters.map((b) => b.x);
+      // On the lane: the plates you can move to stay in view too (a teleport pick shows the whole lane)
+      const lane = world?.lane;
+      if (lane?.moves) {
+        for (const pos of lane.moves.keys()) {
+          const p = this._plate(pos, lane.size);
+          xs.push(p.x + p.w * 0.1, p.x + p.w * 0.9);
+        }
+      }
       const minX = Math.min(...xs) - CAM.margin;
       const maxX = Math.max(...xs) + CAM.margin;
       const topY = Math.min(...fighters.map((b) => b.y - b.radius)) - CAM.headroom;
@@ -1440,9 +1451,11 @@ export class Renderer {
    * who is armed at a glance (tap to inspect). Returns the width used.
    */
   _drawGunBadges(ctx, enemy, panelX, panelY) {
-    const guns = enemy.weapons || [];
+    // Its whole kit, like the HUD shows yours: guns, drone, specials (hover one for its numbers)
+    const guns = [...(enemy.weapons || []), ...(enemy.drones || []), ...(enemy.specials || [])];
     const inspected = this.worldRef?.inspected?.ball === enemy;
-    const size = 38;
+    const size = guns.length > 6 ? 30 : 38;
+    const s = size / 38;
     guns.forEach((g, i) => {
       const bx = panelX - (i + 1) * (size + 3);
       ctx.fillStyle = 'rgba(26, 28, 44, 0.92)';
@@ -1453,14 +1466,17 @@ export class Renderer {
       const gear = !!this.worldRef?.gear;
       const spent = g.ammo && g.ammoLeft <= 0;
       ctx.globalAlpha = spent ? 0.45 : 1;
-      ctx.drawImage(ic, Math.round(bx + (size - ic.width * 2.5) / 2), Math.round(panelY + 5 + (size - 3 - ic.height * 2.5) / 2), ic.width * 2.5, ic.height * 2.5);
+      const k = 2.5 * s;
+      ctx.drawImage(ic, Math.round(bx + (size - ic.width * k) / 2), Math.round(panelY + 5 + (size - 3 - ic.height * k) / 2), ic.width * k, ic.height * k);
       ctx.globalAlpha = 1;
-      if (g.ammo) {
+      const left = g.ammo ? g.ammoLeft : g.uses ? g.usesLeft : null;
+      if (left != null) {
         ctx.font = `700 13px ${FONT}`;
         ctx.textAlign = 'right';
-        ctx.fillStyle = g.ammoLeft > 0 ? '#ffcd75' : '#566c86';
-        ctx.fillText(`${g.ammoLeft}`, bx + size - 3, panelY + 18);
+        ctx.fillStyle = left > 0 ? '#ffcd75' : '#566c86';
+        ctx.fillText(`${left}`, bx + size - 3, panelY + 18);
       }
+      this._gearZones.push({ x: bx, y: panelY + 5, w: size, h: size, part: g, ball: enemy });
     });
     return guns.length ? guns.length * (size + 3) : 0;
   }
@@ -1508,6 +1524,23 @@ export class Renderer {
   }
 
   _handleTooltipMove(e) {
+    // Enemy gear badges: the part's card with its battle numbers
+    const rect = this.canvas.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    const gz = (this._gearZones || []).find((z) => cx >= z.x && cx <= z.x + z.w && cy >= z.y && cy <= z.y + z.h);
+    if (gz) {
+      if (this._gearTip !== gz.part) {
+        this._gearTip = gz.part;
+        showTip(battlePartHtml(gz.part), e.clientX, e.clientY);
+      } else showTip(null, e.clientX, e.clientY);
+      this._tooltip.style.display = 'none';
+      return;
+    }
+    if (this._gearTip) {
+      this._gearTip = null;
+      hideTip();
+    }
     for (const zone of this._hoverZones) {
       if (e.clientX >= zone.x && e.clientX <= zone.x + zone.w &&
           e.clientY >= zone.y && e.clientY <= zone.y + zone.h) {
