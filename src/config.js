@@ -13,14 +13,14 @@ export const CONFIG = {
   // in 'play' mode `donateUrl` only ever shows in the web build.
   store: 'github',
   update: {
-    repo: 'Boci0/Slingshot-OPS', // GitHub owner/repo the in-app updater checks
+    repo: 'Boci0/Klonkadoo', // GitHub owner/repo the in-app updater checks
   },
 
   // --- Support page (menu ♥) ---
   support: {
     playUrl: 'https://play.google.com/store/apps/details?id=com.slingshotops.game',
-    releasesUrl: 'https://github.com/Boci0/Slingshot-OPS/releases/latest',
-    webUrl: 'https://boci0.github.io/Slingshot-OPS/',
+    releasesUrl: 'https://github.com/Boci0/Klonkadoo/releases/latest',
+    webUrl: 'https://boci0.github.io/Klonkadoo/',
     feedbackEmail: 'bocidev.support@gmail.com',
     donateUrl: '', // e.g. 'https://ko-fi.com/yourname' (empty = hidden)
   },

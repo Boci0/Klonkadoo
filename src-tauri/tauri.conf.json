@@ -39,7 +39,7 @@
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMyQ0M0MzEwQTUyRjkwQUMKUldTc2tDK2xFRVBNd3YwTUVNbWUyRzBSakN5bTZER2xsRWc4Q0VQSnNac2ExWHFDRlRwY2U1ZGcK",
-      "endpoints": ["https://github.com/Boci0/Slingshot-OPS/releases/latest/download/latest.json"],
+      "endpoints": ["https://github.com/Boci0/Klonkadoo/releases/latest/download/latest.json"],
       "windows": {
         "installMode": "passive"
       }

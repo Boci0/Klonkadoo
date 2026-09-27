@@ -2,8 +2,8 @@
 
 > A turn-based mech roguelike in the spirit of Super Mechs, built with HTML5 Canvas & JavaScript. (Formerly *Slingshot Ops*.)
 
-[![Live Demo](https://img.shields.io/badge/Play_Now-Live_Demo-brightgreen?style=for-the-badge&logo=github)](https://boci0.github.io/Slingshot-OPS/)
-[![Download](https://img.shields.io/github/v/release/Boci0/Slingshot-OPS?style=for-the-badge&label=Download&logo=github)](https://github.com/Boci0/Slingshot-OPS/releases/latest)
+[![Live Demo](https://img.shields.io/badge/Play_Now-Live_Demo-brightgreen?style=for-the-badge&logo=github)](https://boci0.github.io/Klonkadoo/)
+[![Download](https://img.shields.io/github/v/release/Boci0/Klonkadoo?style=for-the-badge&label=Download&logo=github)](https://github.com/Boci0/Klonkadoo/releases/latest)
 <!-- Google Play badge (hidden while the game ships on GitHub only):
 [![Google Play](https://img.shields.io/badge/Android-Google_Play-3DDC84?style=for-the-badge&logo=googleplay&logoColor=white)](https://play.google.com/store/apps/details?id=com.slingshotops.game)
 -->
@@ -33,10 +33,10 @@
 
 ## Download
 
-Grab the latest build from **[Releases](https://github.com/Boci0/Slingshot-OPS/releases/latest)**:
+Grab the latest build from **[Releases](https://github.com/Boci0/Klonkadoo/releases/latest)**:
 
 - **Windows**: `Slingshot Ops_x.y.z_x64-setup.exe`. If SmartScreen appears, choose *More info → Run anyway*.
-- **Browser**: play instantly at https://boci0.github.io/Slingshot-OPS/
+- **Browser**: play instantly at https://boci0.github.io/Klonkadoo/
 
 The Windows app checks GitHub for new versions on launch (and via *Settings → Updates*) and updates itself in place. (Android builds stopped at 2.0.0.) The game runs in landscape. Feedback: bocidev.support@gmail.com
 
@@ -105,10 +105,10 @@ cd android && ./gradlew assembleDebug
 
 ```bash
 # Clone the repository
-git clone https://github.com/Boci0/Slingshot-OPS.git
+git clone https://github.com/Boci0/Klonkadoo.git
 
 # Navigate into the project folder
-cd Slingshot-OPS
+cd Klonkadoo
 
 # Install dependencies
 npm install
