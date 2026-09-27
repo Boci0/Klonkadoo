@@ -88,8 +88,8 @@ export const CONFIG = {
 
   // --- Gear combat: guns are the only damage ---
   gear: {
-    dmgScale: 2.2, // gun/drone damage vs the classic numbers (bodies no longer hit)
-    enemyDmgScale: 0.6, // enemy guns hit this much of a same-level player gun
+    dmgScale: 1.3, // gun/drone damage vs the classic numbers (bodies no longer hit)
+    enemyDmgScale: 0.4, // enemy guns hit this much of a same-level player gun
     exposedMult: 1.25, // rammed targets take +25% gun damage until their next turn
     // Damage types (Mech.DTYPES): Heat hits add heat and Energy hits drain energy,
     // dtypeLoad x the hit; whatever the reactor can't absorb spills into HP at dtypeSpill x
@@ -171,14 +171,14 @@ export const CONFIG = {
   // rate with the physics planner (EnemyAI): 0.4 ≈ 50%, 0.55 ≈ 67%, 0.7 ≈ 71%, 0.85 ≈ 96%.
   // HP +10% across the board to make room for gear (starter gear restores the old feel)
   enemyTiers: {
-    1: { hp: 79, atk: 0.95, def: 0, aiDifficulty: 0.36 },
-    2: { hp: 92, atk: 1.00, def: 1, aiDifficulty: 0.41 },
-    3: { hp: 106, atk: 1.05, def: 1, aiDifficulty: 0.45 },
-    4: { hp: 99, atk: 0.92, def: 2, aiDifficulty: 0.48 },
-    5: { hp: 110, atk: 0.98, def: 3, aiDifficulty: 0.51 },
-    elite: { hp: 123, atk: 1.05, def: 3, aiDifficulty: 0.55 },
-    miniboss: { hp: 176, atk: 1.02, def: 4, aiDifficulty: 0.62 },
-    boss: { hp: 220, atk: 1.08, def: 5, aiDifficulty: 0.70 },
+    1: { hp: 119, atk: 0.95, def: 0, aiDifficulty: 0.36 },
+    2: { hp: 138, atk: 1.00, def: 1, aiDifficulty: 0.41 },
+    3: { hp: 159, atk: 1.05, def: 1, aiDifficulty: 0.45 },
+    4: { hp: 149, atk: 0.92, def: 2, aiDifficulty: 0.48 },
+    5: { hp: 165, atk: 0.98, def: 3, aiDifficulty: 0.51 },
+    elite: { hp: 185, atk: 1.05, def: 3, aiDifficulty: 0.55 },
+    miniboss: { hp: 264, atk: 1.02, def: 4, aiDifficulty: 0.62 },
+    boss: { hp: 330, atk: 1.08, def: 5, aiDifficulty: 0.70 },
   },
 
   // --- Floor scaling (applies to every enemy, shown to the player) ---

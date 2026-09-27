@@ -58,6 +58,11 @@ export const blockedByWalls = (w) => !w.fx?.mine && !['lob', 'beam'].includes(vf
 /** STOMP as a hit: Physical, from the legs. */
 const STOMP_GUN = { id: 'stomp', name: 'STOMP', dtype: 'phys', fx: {} };
 
+/** On-screen size by frame: heavier frames stand bigger on the lane. */
+const MECH_R = 32;
+const FRAME_SIZE = { fr_scout: 0.9, fr_phantom: 0.95, fr_brawler: 1, fr_titan: 1.1, fr_colossus: 1.2, fr_leviathan: 1.28 };
+export const mechRadius = (parts) => Math.round(MECH_R * (FRAME_SIZE[(parts || []).find((id) => FRAME_SIZE[id])] || 1));
+
 /** World x of the centre of lane position `pos` (1..size). */
 export const posX = (pos) => ((pos - 0.5) * W.width) / L.size;
 /** Lane position under world x. */
@@ -211,7 +216,7 @@ export class Game {
     const arch = CONFIG.enemyArchetypes[e.archetype] || CONFIG.enemyArchetypes.standard;
     const b = new Ball({
       x: posX(pos),
-      y: W.groundY - (e.radius || B.radius),
+      y: W.groundY - mechRadius(e.parts),
       team: 'enemy',
       color: arch.color || C.enemy,
       darkColor: arch.darkColor || C.enemyDark,
@@ -221,7 +226,7 @@ export class Game {
       atk: e.atk,
       def: e.def,
       aiDifficulty: e.aiDifficulty,
-      radius: e.radius,
+      radius: mechRadius(e.parts),
     });
     b.pos = pos;
     b.rank = e.rank || null;
@@ -291,6 +296,8 @@ export class Game {
     for (const f of Game.MEMBER_FIELDS) p[f] = m[f];
     p.def = m.totalDef;
     p.displayName = m.name;
+    p.radius = mechRadius(m.parts);
+    p.y = W.groundY - p.radius;
     p.actionsLeft = 0;
     this.rigStats = m.rigStats;
     this.playerWeapons = m.weapons;
