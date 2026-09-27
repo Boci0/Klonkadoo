@@ -1,4 +1,4 @@
-SLINGSHOT OPS - THIRD-PARTY NOTICES
+KLONKADOO - THIRD-PARTY NOTICES
 ======================================
 
 This app bundles the following third-party software. Each is used under the

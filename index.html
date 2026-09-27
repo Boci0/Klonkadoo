@@ -6,12 +6,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#10111c" />
   <meta name="mobile-web-app-capable" content="yes" />
-  <title>SLINGSHOT OPS</title>
+  <title>KLONKADOO: Mech Roguelike</title>
   <link rel="icon" type="image/png" sizes="32x32" href="/Slingshot-OPS/favicon-32.png" />
   <link rel="icon" type="image/png" sizes="512x512" href="/Slingshot-OPS/icon-512.png" />
   <link rel="apple-touch-icon" href="/Slingshot-OPS/icon-512.png" />
-  <script type="module" crossorigin src="/Slingshot-OPS/assets/index-BW_BwDN7.js"></script>
-  <link rel="stylesheet" crossorigin href="/Slingshot-OPS/assets/index-BkG0hiQJ.css">
+  <script type="module" crossorigin src="/Slingshot-OPS/assets/index-Bd6Yzmcy.js"></script>
+  <link rel="stylesheet" crossorigin href="/Slingshot-OPS/assets/index-zRE9fsxY.css">
 </head>
 
 <body>
@@ -22,8 +22,8 @@
       <canvas id="menu-bg" class="menu-bg" aria-hidden="true"></canvas>
       <div class="menu-panel">
         <div class="menu-left">
-          <h1 class="game-title">SLINGSHOT<span>OPS</span></h1>
-          <p class="game-tagline">&gt; TACTICAL BALLISTIC ROGUELIKE_</p>
+          <h1 class="game-title">KLONKA<span>DOO</span></h1>
+          <p class="game-tagline">&gt; MECH ROGUELIKE_</p>
           <div id="menu-stats" class="menu-stats px-frame"></div>
           <button id="menu-daily" class="daily-card px-frame" type="button"></button>
         </div>
@@ -31,6 +31,7 @@
           <button id="btn-play" class="btn btn-primary btn-large btn-menu">&#9654; START OPERATION</button>
           <div class="menu-tiles">
             <button id="btn-gear" class="menu-tile" data-icon="gun"><span>RIG</span></button>
+            <button id="btn-almanac" class="menu-tile" data-icon="book"><span>ALMANAC</span></button>
             <button id="btn-medals" class="menu-tile" data-icon="star"><span>MEDALS</span></button>
           </div>
           <div class="menu-row">
@@ -115,11 +116,17 @@
         <button id="btn-audio-toggle" class="btn btn-outline btn-battle-small" title="Toggle Audio">SND ON</button>
       </div>
       <div id="mech-hud" class="mech-hud"></div>
+      <div id="team-bar" class="team-bar hidden"></div>
       <div class="battle-abilities">
         <button id="btn-barrier" class="ability-btn ability-barrier" aria-label="Barrier">
           <span class="ability-icon">2</span>
           <span class="ability-name">BARRIER</span>
           <span class="ability-cd" id="cd-barrier">READY</span>
+        </button>
+        <button id="btn-stomp" class="ability-btn ability-stomp" aria-label="Stomp">
+          <span class="ability-icon">F</span>
+          <span class="ability-name">STOMP</span>
+          <span class="ability-cd" id="cd-stomp"></span>
         </button>
         <button id="btn-vent" class="ability-btn ability-vent hidden" aria-label="Vent">
           <span class="ability-icon">V</span>
