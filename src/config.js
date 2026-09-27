@@ -276,7 +276,7 @@ export const CONFIG = {
 
   // --- Roguelike run modifiers ---
   run: {
-    maxHpBase: 100,
+    maxHpBase: 140,
     atkBase: 1,
     defBase: 0,
     maxDefCap: 15, // DEF cap = 60% damage reduction

@@ -97,36 +97,36 @@ export const PARTS = [
   { id: 'ar_void', type: 'armor', name: 'VOID CARAPACE', rarity: 'mythic', weight: 28, hp: 34, res: { phys: 3, heat: 3, energy: 3 }, startForcefield: true, color: '#ff5d73', desc: 'Start each battle with a Forcefield.' },
 
   // Weapons
-  { id: 'wp_blaster', type: 'weapon', name: 'PULSE BLASTER', rarity: 'common', dtype: 'phys', weight: 12, reach: [1, 3], dmg: 8, en: 8, heat: 6, color: '#73eff7' },
-  { id: 'wp_scatter', type: 'weapon', name: 'SCATTERGUN', rarity: 'common', dtype: 'phys', weight: 14, reach: [1, 2], dmg: 14, en: 10, heat: 10, color: '#ffcd75' },
-  { id: 'wp_acid', type: 'weapon', name: 'ACID SPRAYER', rarity: 'common', dtype: 'heat', weight: 12, reach: [1, 2], dmg: 5, en: 6, heat: 4, fx: { corrode: 1 }, color: '#a7f070', desc: 'Strips 1 DEF per hit.' },
-  { id: 'wp_smg', type: 'weapon', name: 'AUTO SMG', rarity: 'common', dtype: 'phys', weight: 12, reach: [1, 2], dmg: 3, en: 6, heat: 12, fx: { burst: 3 }, color: '#f4f4f4', desc: 'Fires 3 rounds. Runs hot.' },
-  { id: 'wp_repulsor', type: 'weapon', name: 'REPULSOR', rarity: 'common', dtype: 'phys', weight: 10, reach: [1, 2], dmg: 4, en: 8, heat: 6, fx: { push: 2 }, color: '#41a6f6', desc: 'Pushes the target back 2 positions.' },
-  { id: 'wp_rifle', type: 'weapon', name: 'LONG RIFLE', rarity: 'rare', dtype: 'phys', weight: 18, reach: [3, 7], dmg: 14, en: 10, heat: 12, color: '#f4f4f4' },
-  { id: 'wp_flamer', type: 'weapon', name: 'FLAMER', rarity: 'rare', dtype: 'heat', weight: 16, reach: [1, 2], dmg: 6, en: 6, heat: 14, fx: { burn: 2 }, color: '#ef7d57', desc: 'Burns for 2 turns.' },
-  { id: 'wp_mortar', type: 'weapon', name: 'MORTAR', rarity: 'rare', dtype: 'phys', weight: 22, reach: [3, 9], dmg: 15, en: 14, heat: 10, arc: true, fx: { splash: 1 }, color: '#ef7d57', desc: 'Lobbed over cover.' },
-  { id: 'wp_cryo', type: 'weapon', name: 'CRYO CANNON', rarity: 'rare', dtype: 'heat', weight: 18, reach: [2, 4], dmg: 8, en: 12, heat: 2, fx: { freeze: true }, color: '#73eff7', desc: 'Chills: their next move is 1 position shorter.' },
-  { id: 'wp_beam', type: 'weapon', name: 'LASER BEAM', rarity: 'rare', dtype: 'energy', weight: 16, reach: [1, 5], dmg: 7, en: 12, heat: 14, fx: { line: true }, color: '#ff5d73', desc: 'Burns through cover.' },
-  { id: 'wp_emp', type: 'weapon', name: 'EMP BURST', rarity: 'rare', dtype: 'energy', weight: 14, reach: [1, 3], dmg: 4, en: 10, heat: 6, fx: { drain: 14 }, color: '#c46fd6', desc: 'Drains 14 of their energy.' },
-  { id: 'wp_grapple', type: 'weapon', name: 'GRAPPLE HOOK', rarity: 'rare', dtype: 'phys', weight: 12, reach: [2, 6], dmg: 4, en: 8, heat: 4, fx: { pull: 2 }, color: '#94b0c2', desc: 'Pulls the target 2 positions toward you.' },
-  { id: 'wp_minelauncher', type: 'weapon', name: 'MINE LAUNCHER', rarity: 'rare', dtype: 'phys', weight: 16, reach: [2, 8], dmg: 16, en: 8, heat: 6, ammo: 3, arc: true, fx: { mine: true }, color: '#ef7d57', desc: 'Plants a mine next to the target: it blasts whoever steps there. 3 mines.' },
-  { id: 'wp_rocket', type: 'weapon', name: 'ROCKET LAUNCHER', rarity: 'rare', dtype: 'phys', weight: 20, reach: [2, 8], dmg: 20, en: 10, heat: 10, ammo: 2, arc: true, fx: { splash: 1 }, color: '#ffcd75', desc: 'Lobbed. 2 rockets per battle.' },
-  { id: 'wp_tesla', type: 'weapon', name: 'TESLA COIL', rarity: 'epic', dtype: 'energy', weight: 20, reach: [1, 3], dmg: 11, en: 16, heat: 12, fx: { chain: 2 }, color: '#c46fd6', desc: 'Arcs to an enemy within 2 positions.' },
-  { id: 'wp_missiles', type: 'weapon', name: 'MISSILE POD', rarity: 'epic', dtype: 'phys', weight: 24, reach: [1, 11], dmg: 12, en: 12, heat: 8, ammo: 3, arc: true, color: '#ff5d73', desc: 'Any range, over cover. 3 salvos.' },
-  { id: 'wp_rail', type: 'weapon', name: 'RAIL LANCE', rarity: 'epic', dtype: 'energy', weight: 26, reach: [4, 11], dmg: 22, en: 20, heat: 18, fx: { pierce: true }, color: '#41a6f6', desc: 'Ignores DEF.' },
-  { id: 'wp_heatray', type: 'weapon', name: 'HEAT RAY', rarity: 'epic', dtype: 'heat', weight: 18, reach: [1, 4], dmg: 6, en: 10, heat: 8, fx: { heat: 16 }, color: '#ef7d57', desc: 'Pumps 16 heat into the target.' },
-  { id: 'wp_howitzer', type: 'weapon', name: 'SIEGE HOWITZER', rarity: 'legendary', dtype: 'phys', weight: 34, reach: [5, 11], dmg: 32, en: 24, heat: 16, ammo: 2, arc: true, fx: { splash: 1 }, color: '#ffcd75', desc: 'Lobbed. 2 shells per battle.' },
-  { id: 'wp_scythe', type: 'weapon', name: 'PLASMA SCYTHE', rarity: 'legendary', dtype: 'energy', weight: 24, reach: [1, 1], dmg: 34, en: 12, heat: 16, color: '#c46fd6', desc: 'A brutal energy blade: huge damage, right next to the enemy only.' },
-  { id: 'wp_sniper', type: 'weapon', name: 'SNIPER CANNON', rarity: 'legendary', dtype: 'phys', weight: 26, reach: [6, 11], dmg: 38, en: 20, heat: 24, ammo: 3, color: '#f4f4f4', desc: 'Huge hit at long range. 3 shots.' },
-  { id: 'wp_nova', type: 'weapon', name: 'NOVA LANCE', rarity: 'mythic', dtype: 'energy', weight: 30, reach: [1, 11], dmg: 28, en: 26, heat: 20, ammo: 2, fx: { pierce: true }, color: '#ff5d73', desc: 'Any range. Ignores resists. 2 shots.' },
+  { id: 'wp_blaster', type: 'weapon', name: 'PULSE BLASTER', rarity: 'common', dtype: 'phys', weight: 12, reach: [1, 3], dmg: 12, en: 8, heat: 6, color: '#73eff7' },
+  { id: 'wp_scatter', type: 'weapon', name: 'SCATTERGUN', rarity: 'common', dtype: 'phys', weight: 14, reach: [1, 2], dmg: 15, en: 10, heat: 10, color: '#ffcd75' },
+  { id: 'wp_acid', type: 'weapon', name: 'ACID SPRAYER', rarity: 'common', dtype: 'heat', weight: 12, reach: [1, 2], dmg: 9, en: 6, heat: 4, fx: { corrode: 1 }, color: '#a7f070', desc: 'Strips 1 DEF per hit.' },
+  { id: 'wp_smg', type: 'weapon', name: 'AUTO SMG', rarity: 'common', dtype: 'phys', weight: 12, reach: [1, 2], dmg: 5, en: 6, heat: 12, fx: { burst: 3 }, color: '#f4f4f4', desc: 'Fires 3 rounds. Runs hot.' },
+  { id: 'wp_repulsor', type: 'weapon', name: 'REPULSOR', rarity: 'common', dtype: 'phys', weight: 10, reach: [1, 2], dmg: 9, en: 8, heat: 6, fx: { push: 2 }, color: '#41a6f6', desc: 'Pushes the target back 2 positions.' },
+  { id: 'wp_rifle', type: 'weapon', name: 'LONG RIFLE', rarity: 'rare', dtype: 'phys', weight: 18, reach: [3, 7], dmg: 15, en: 10, heat: 12, color: '#f4f4f4' },
+  { id: 'wp_flamer', type: 'weapon', name: 'FLAMER', rarity: 'rare', dtype: 'heat', weight: 16, reach: [1, 2], dmg: 10, en: 6, heat: 14, fx: { burn: 2 }, color: '#ef7d57', desc: 'Burns for 2 turns.' },
+  { id: 'wp_mortar', type: 'weapon', name: 'MORTAR', rarity: 'rare', dtype: 'phys', weight: 22, reach: [3, 9], dmg: 14, en: 14, heat: 10, arc: true, fx: { splash: 1 }, color: '#ef7d57', desc: 'Lobbed over cover.' },
+  { id: 'wp_cryo', type: 'weapon', name: 'CRYO CANNON', rarity: 'rare', dtype: 'heat', weight: 18, reach: [2, 4], dmg: 11, en: 12, heat: 2, fx: { freeze: true }, color: '#73eff7', desc: 'Chills: their next move is 1 position shorter.' },
+  { id: 'wp_beam', type: 'weapon', name: 'LASER BEAM', rarity: 'rare', dtype: 'energy', weight: 16, reach: [1, 5], dmg: 13, en: 12, heat: 14, fx: { line: true }, color: '#ff5d73', desc: 'Burns through cover.' },
+  { id: 'wp_emp', type: 'weapon', name: 'EMP BURST', rarity: 'rare', dtype: 'energy', weight: 14, reach: [1, 3], dmg: 8, en: 10, heat: 6, fx: { drain: 14 }, color: '#c46fd6', desc: 'Drains 14 of their energy.' },
+  { id: 'wp_grapple', type: 'weapon', name: 'GRAPPLE HOOK', rarity: 'rare', dtype: 'phys', weight: 12, reach: [2, 6], dmg: 9, en: 8, heat: 4, fx: { pull: 2 }, color: '#94b0c2', desc: 'Pulls the target 2 positions toward you.' },
+  { id: 'wp_minelauncher', type: 'weapon', name: 'MINE LAUNCHER', rarity: 'rare', dtype: 'phys', weight: 16, reach: [2, 8], dmg: 17, en: 8, heat: 6, ammo: 3, arc: true, fx: { mine: true }, color: '#ef7d57', desc: 'Plants a mine next to the target: it blasts whoever steps there. 3 mines.' },
+  { id: 'wp_rocket', type: 'weapon', name: 'ROCKET LAUNCHER', rarity: 'rare', dtype: 'phys', weight: 20, reach: [2, 8], dmg: 19, en: 10, heat: 10, ammo: 2, arc: true, fx: { splash: 1 }, color: '#ffcd75', desc: 'Lobbed. 2 rockets per battle.' },
+  { id: 'wp_tesla', type: 'weapon', name: 'TESLA COIL', rarity: 'epic', dtype: 'energy', weight: 20, reach: [1, 3], dmg: 16, en: 16, heat: 12, fx: { chain: 2 }, color: '#c46fd6', desc: 'Arcs to an enemy within 2 positions.' },
+  { id: 'wp_missiles', type: 'weapon', name: 'MISSILE POD', rarity: 'epic', dtype: 'phys', weight: 24, reach: [1, 11], dmg: 16, en: 12, heat: 8, ammo: 3, arc: true, color: '#ff5d73', desc: 'Any range, over cover. 3 salvos.' },
+  { id: 'wp_rail', type: 'weapon', name: 'RAIL LANCE', rarity: 'epic', dtype: 'energy', weight: 26, reach: [4, 11], dmg: 20, en: 20, heat: 18, fx: { pierce: true }, color: '#41a6f6', desc: 'Ignores DEF.' },
+  { id: 'wp_heatray', type: 'weapon', name: 'HEAT RAY', rarity: 'epic', dtype: 'heat', weight: 18, reach: [1, 4], dmg: 11, en: 10, heat: 8, fx: { heat: 16 }, color: '#ef7d57', desc: 'Pumps 16 heat into the target.' },
+  { id: 'wp_howitzer', type: 'weapon', name: 'SIEGE HOWITZER', rarity: 'legendary', dtype: 'phys', weight: 34, reach: [5, 11], dmg: 24, en: 24, heat: 16, ammo: 2, arc: true, fx: { splash: 1 }, color: '#ffcd75', desc: 'Lobbed. 2 shells per battle.' },
+  { id: 'wp_scythe', type: 'weapon', name: 'PLASMA SCYTHE', rarity: 'legendary', dtype: 'energy', weight: 24, reach: [1, 1], dmg: 24, en: 12, heat: 16, color: '#c46fd6', desc: 'A brutal energy blade: huge damage, right next to the enemy only.' },
+  { id: 'wp_sniper', type: 'weapon', name: 'SNIPER CANNON', rarity: 'legendary', dtype: 'phys', weight: 26, reach: [6, 11], dmg: 23, en: 20, heat: 24, ammo: 3, color: '#f4f4f4', desc: 'Huge hit at long range. 3 shots.' },
+  { id: 'wp_nova', type: 'weapon', name: 'NOVA LANCE', rarity: 'mythic', dtype: 'energy', weight: 30, reach: [1, 11], dmg: 24, en: 26, heat: 20, ammo: 2, fx: { pierce: true }, color: '#ff5d73', desc: 'Any range. Ignores resists. 2 shots.' },
 
   // Drones: act every turn, any range, free to run
-  { id: 'dr_gnat', type: 'drone', name: 'GNAT DRONE', rarity: 'common', dtype: 'phys', weight: 6, dmg: 3, color: '#94b0c2' },
+  { id: 'dr_gnat', type: 'drone', name: 'GNAT DRONE', rarity: 'common', dtype: 'phys', weight: 6, dmg: 4, color: '#94b0c2' },
   { id: 'dr_hornet', type: 'drone', name: 'HORNET DRONE', rarity: 'rare', dtype: 'phys', weight: 9, dmg: 5, color: '#ffcd75' },
   { id: 'dr_medic', type: 'drone', name: 'MEDIC DRONE', rarity: 'rare', weight: 8, heal: 5, color: '#a7f070', desc: 'Repairs you every turn it is deployed (grows with its level only). It never attacks.' },
   { id: 'dr_guardian', type: 'drone', name: 'GUARDIAN DRONE', rarity: 'epic', weight: 10, forcefieldEvery: 3, color: '#a7f070', desc: 'Forcefield every 3rd turn.' },
-  { id: 'dr_reaper', type: 'drone', name: 'REAPER DRONE', rarity: 'legendary', dtype: 'energy', weight: 12, dmg: 9, fx: { crit: 0.2 }, color: '#ffcd75', desc: '20% crit chance.' },
-  { id: 'dr_seraph', type: 'drone', name: 'SERAPH DRONE', rarity: 'mythic', dtype: 'energy', weight: 13, dmg: 11, fx: { crit: 0.25 }, color: '#ff5d73', desc: '25% crit chance.' },
+  { id: 'dr_reaper', type: 'drone', name: 'REAPER DRONE', rarity: 'legendary', dtype: 'energy', weight: 12, dmg: 7, fx: { crit: 0.2 }, color: '#ffcd75', desc: '20% crit chance.' },
+  { id: 'dr_seraph', type: 'drone', name: 'SERAPH DRONE', rarity: 'mythic', dtype: 'energy', weight: 13, dmg: 8, fx: { crit: 0.25 }, color: '#ff5d73', desc: '25% crit chance.' },
 
   // Modules: passive bonuses
   { id: 'md_target', type: 'module', name: 'TARGETING CPU', rarity: 'common', weight: 4, crit: 0.03 },
@@ -434,7 +434,7 @@ export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMu
   const gunIds = slots.map(pick);
   if (L.heavy && tier !== 'combat') gunIds[0] = L.heavy;
   const G = CONFIG.gear;
-  const scale = G.dmgScale * G.enemyDmgScale * (1 + 0.1 * (f - 1)) * (nodeType === 'boss' ? 1.2 : 1);
+  const scale = G.dmgScale * G.enemyDmgScale * (1 + 0.1 * (f - 1));
   const weapons = gunIds.map((id) => {
     const base = getPart(id);
     return { ...base, dmg: Math.max(2, Math.round(base.dmg * scale * atkMult)), level: 1 };
