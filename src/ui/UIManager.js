@@ -208,8 +208,10 @@ export class UIManager {
    */
   showBallSelect(onStart) {
     const b = OPERATOR;
-    const owned = saveSystem.getLoadoutParts();
+    const owned = saveSystem.getLoadoutParts(0); // mech 1 leads
     const t = loadoutTotals(owned);
+    // Garage mechs 2 and 3 come along (SWAP in battle, drop in after a knock-out)
+    const team = saveSystem.getTeamLoadouts().slice(1);
     // One row of part icons (names on hover / tap), in the order you'd read a rig
     const order = ['frame', 'legs', 'weapon1', 'weapon2', 'drone', 'armor', 'module1', 'module2'];
     const parts = order.map((slotId) => {
@@ -237,6 +239,7 @@ export class UIManager {
             <span title="Heat cap, cooling per turn">${ico('heat')}${t.heatCap}<em>-${t.cool}</em></span>
           </div>
           <div class="deploy-parts">${icons}</div>
+          ${team.length ? `<div class="deploy-team"><span>TEAM</span>${team.map((ps, i) => `<img src="${mechDataUrl(ps.filter(Boolean).map((o) => o.id), skinColors(b, 'default').color, skinColors(b, 'default').darkColor)}" alt="Mech ${i + 2}" title="Mech ${i + 2}">`).join('')}</div>` : ''}
           <p class="deploy-hint" id="deploy-hint">${t.overweight ? '<span class="bad">Over the load limit: fix it on the RIG screen.</span>' : ''}</p>
           <div class="deploy-mastery" id="ball-mastery"></div>
           <div class="deploy-risk"><p id="deploy-risk" class="risk-summary"></p><button class="btn btn-outline risk-rules-btn" data-act="rules">RULES</button></div>

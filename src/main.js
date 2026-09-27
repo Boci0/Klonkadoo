@@ -203,6 +203,12 @@ function bindAbilityButtons() {
     if (why && why !== 'NO STOMP') game.renderer.addCallout(game.player, why, '#94b0c2');
   };
   document.getElementById('btn-stomp')?.addEventListener('click', triggerStomp);
+  document.getElementById('team-bar')?.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-swap]');
+    if (!b || state !== State.BATTLE || battlePaused) return;
+    if (game.swapPlayer(Number(b.dataset.swap))) haptics.impact('medium');
+    else soundEngine.play('error');
+  });
 
   document.getElementById('btn-retreat-battle')?.addEventListener('click', () => {
     if (!canRetreatFromBattle()) return;
@@ -334,7 +340,33 @@ function updateGearHud(el, endBtn, ventBtn) {
   }));
 }
 
+/** Team bar: every team mech with its HP; tap a benched one to SWAP (the whole turn). */
+let teamBarSig = '';
+function updateTeamBar() {
+  const el = document.getElementById('team-bar');
+  if (!el) return;
+  const team = game.team || [];
+  el.classList.toggle('hidden', team.length < 2);
+  if (team.length < 2) return;
+  const full = game.canPlayerAct && game.player.actionsLeft >= CONFIG.gear.actions;
+  const rows = team.map((m, i) => {
+    const active = i === game.teamIndex;
+    const hp = active ? game.player.hp : m.hp;
+    const max = active ? game.player.maxHp : m.maxHp;
+    const state = active ? 'on' : hp <= 0 ? 'ko' : full ? 'ready' : '';
+    return { i, state, hp: Math.max(0, Math.round(hp)), pct: Math.max(0, Math.min(100, (hp / max) * 100)), name: m.name };
+  });
+  const sig = JSON.stringify(rows);
+  if (sig === teamBarSig) return;
+  teamBarSig = sig;
+  el.innerHTML = rows.map((r) => `<button class="team-chip ${r.state}" data-swap="${r.i}" ${r.state === 'ready' ? '' : 'disabled'}>
+    <b>${r.name}</b><span>${r.state === 'on' ? 'FIGHTING' : r.state === 'ko' ? 'KNOCKED OUT' : r.state === 'ready' ? 'SWAP' : 'BENCH'}</span>
+    <i><em style="width:${r.pct}%"></em></i><small>${r.hp}</small>
+  </button>`).join('');
+}
+
 function updateAbilityHud() {
+  updateTeamBar();
   const btnBarrier = document.getElementById('btn-barrier');
   const cdBarrier = document.getElementById('cd-barrier');
   const br = game.abilities?.barrier;
@@ -401,8 +433,13 @@ function startNewRun(skin = 'default') {
   const ballType = OPERATOR.id;
   runSeed = Math.floor(Math.random() * 100000) + 1;
   saveSystem.setSelectedBall(ballType); // Risk is per ball
-  const perm = withMastery(withMech({}, saveSystem.getLoadoutParts()), masteryLevel(saveSystem.getMasteryXp(ballType)).level);
+  const mastery = masteryLevel(saveSystem.getMasteryXp(ballType)).level;
+  const [lead, ...rest] = saveSystem.getTeamLoadouts();
+  const perm = withMastery(withMech({}, lead), mastery);
   run = new RunState(perm, ballType);
+  // Garage mechs 2 and 3 join the team, each with its own HP for the run
+  run.team = rest.map((parts) => ({ perm: withMastery(withMech({}, parts), mastery), hp: 0 }));
+  run.team.forEach((m, i) => (m.hp = run.member(i + 1).maxHp));
   run.skin = skin;
   run.risk = saveSystem.getDifficultyLevel(); // locked for the run (restored on resume)
   // One random operation condition per run
@@ -886,6 +923,11 @@ function startCombat(node) {
       res: run.res,
       damageReductionPct: run.damageReductionPct,
     },
+    // Garage mechs 2 and 3 (SWAP in, or drop in after a knock-out)
+    team: (run.team || []).map((_, i) => {
+      const s = run.member(i + 1);
+      return { rigStats: s.perm, hp: s.hp, maxHp: s.maxHp, atk: s.atk * (run.condition === 'glass_war' ? 1.3 : 1), def: s.def, totalDef: s.totalDef, res: { ...(s.perm.res || {}) }, damageReductionPct: run.damageReductionPct };
+    }),
     enemies,
     nodeType: node.type,
     ballType: OPERATOR.id,
@@ -964,15 +1006,31 @@ function onBattleEnd(won, node) {
   const damageTaken = game.battleStats.playerDamageTaken;
   pendingBoon = null;
 
-  // Write battle HP back into the run (roguelike persistence)
-  run.hp = Math.max(0, Math.min(run.maxHp, game.player.hp));
+  // Write battle HP back into the run (roguelike persistence): every team
+  // mech keeps its own; one knocked out in a won fight limps on at 1 HP
+  const teamHp = game.teamHp();
+  run.hp = Math.max(0, Math.min(run.maxHp, teamHp[0]));
+  (run.team || []).forEach((m, i) => (m.hp = teamHp[i + 1] ?? m.hp));
+  if (won) {
+    run.hp = Math.max(1, run.hp);
+    (run.team || []).forEach((m) => (m.hp = Math.max(1, m.hp)));
+  }
   run.shieldHp = Math.max(0, Math.round(game.player.shieldHp || 0));
 
   // Per-class + lifetime stats (skins, medals)
   saveSystem.addBattleStats(run.ballType, game.battleStats.track);
   ui.celebrateMedals(checkMedals(saveSystem));
-  if (won) run.onCombatWon();
-  else {
+  if (won) {
+    run.onCombatWon();
+    // Garage slots: mech 2 after the first floor 5 boss, mech 3 after the first Abyss boss
+    if (node.type === 'boss') {
+      const slot = run.floor >= CONFIG.map.floors ? 3 : run.floor === CONFIG.map.floors - 1 ? 2 : 0;
+      if (slot && saveSystem.unlockGarageSlot(slot)) {
+        addFeedEntry(`<span class="feed-boon">GARAGE: MECH ${slot} UNLOCKED</span>`);
+        game.renderer.showBanner(`MECH ${slot} UNLOCKED`, '#ffcd75');
+      }
+    }
+  } else {
     run.onCombatLost();
     lostAnyCombat = true;
   }
@@ -1233,7 +1291,7 @@ function calculateAndApplyMinigameRewards(result) {
   if (isAllPerfect) {
     gold = run.gainGold(40);
     healText = 'Full HP Recovery';
-    run.hp = run.maxHp;
+    run.healFull();
 
     keys = 3;
     addFeedEntry(`<span class="feed-heal">FLAWLESS DRILL: FULL HP & ${keys} KEYS</span>`);
@@ -1617,4 +1675,4 @@ setTimeout(() => ui.checkUpdates(), 1500);
 
 // Expose for debugging
 // Debug handle for the dev server only; release builds don't expose game state
-if (import.meta.env.DEV) window.__SLINGSHOT__ = { game, saveSystem, ui, get run() { return run; }, get map() { return map; }, sectorCleared, descend, endRun, startCombat };
+if (import.meta.env.DEV) window.__SLINGSHOT__ = { game, saveSystem, ui, get run() { return run; }, get map() { return map; }, sectorCleared, descend, endRun, startCombat, startNewRun };

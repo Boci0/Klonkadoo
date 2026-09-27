@@ -147,17 +147,15 @@ export class Game {
     const p = this.player;
     p.pos = L.playerStart;
     p.shieldHp = config.player.shieldHp || 0;
-    if (config.player.hp !== undefined) p.hp = Math.max(1, Math.min(p.maxHp, config.player.hp));
-    p.legs = laneLegs(mech.legs);
-    p.stompDmg = (p.legs.stomp || 0) * G.dmgScale;
-    p.parts = mech.parts || null;
-    p.def = config.player.totalDef ?? 0;
-    p.res = { phys: 0, heat: 0, energy: 0, ...(config.player.res || {}) };
-    p.forcefield = !!mech.startForcefield;
-    this._initRig(p, mech.rig || G.baseRig);
-    this.playerWeapons = (mech.weapons || []).map((w) => ({ ...laneGun(w), dmg: w.dmg * G.dmgScale, ammoLeft: w.ammo || 0 }));
-    // Drones start docked: DEPLOY (an action) launches one for the rest of the battle
-    this.playerDrones = (mech.drones || []).map((d) => ({ ...d, dmg: d.dmg ? d.dmg * G.dmgScale : d.dmg, off: true }));
+
+    // The team: mech 1 plus up to 2 more from the garage (config.team). One
+    // fights at a time; SWAP (the whole turn) or a knock-out brings in another.
+    this.team = [
+      this._memberFrom({ ...config.player, rigStats: this.rigStats }, 0),
+      ...(config.team || []).map((t, i) => this._memberFrom(t, i + 1)),
+    ];
+    this.teamIndex = -1;
+    this._loadMember(0);
 
     // One enemy on the lane, the rest in reserve
     const defs = (config.enemies || []).map((e) => ({ ...e }));
@@ -235,6 +233,107 @@ export class Game {
     b.parts = e.parts || null;
     this._initRig(b, e.rig || G.enemyRig[['elite', 'miniboss', 'boss'].includes(this.battleConfig.nodeType) ? this.battleConfig.nodeType : 'combat']);
     return b;
+  }
+
+  // ---------- The player's team ----------
+
+  /** One team mech's battle record from its run stats ({ rigStats, hp, maxHp, atk, def, totalDef, res }). */
+  _memberFrom(src, index) {
+    const mech = src.rigStats?.mech || {};
+    const maxHp = src.maxHp || B.maxHp;
+    const legs = laneLegs(mech.legs);
+    const rig = mech.rig || G.baseRig;
+    return {
+      index,
+      name: `MECH ${index + 1}`,
+      rigStats: src.rigStats || {},
+      maxHp,
+      hp: src.hp !== undefined ? Math.max(0, Math.min(maxHp, src.hp)) : maxHp,
+      atk: src.atk ?? 1,
+      def: src.def ?? 0,
+      totalDef: src.totalDef ?? src.def ?? 0,
+      res: { phys: 0, heat: 0, energy: 0, ...(src.res || {}) },
+      legs,
+      stompDmg: (legs.stomp || 0) * G.dmgScale,
+      parts: mech.parts || null,
+      forcefield: !!mech.startForcefield,
+      energyMax: rig.energy,
+      energy: rig.energy,
+      regen: rig.regen,
+      heatCap: rig.heatCap,
+      heat: 0,
+      cool: rig.cool,
+      weapons: (mech.weapons || []).map((w) => ({ ...laneGun(w), dmg: w.dmg * G.dmgScale, ammoLeft: w.ammo || 0 })),
+      // Drones start docked: DEPLOY (an action) launches one for the rest of the battle
+      drones: (mech.drones || []).map((d) => ({ ...d, dmg: d.dmg ? d.dmg * G.dmgScale : d.dmg, off: true })),
+      burnTicks: 0,
+      burnDmg: 0,
+      isFrozen: false,
+    };
+  }
+
+  static MEMBER_FIELDS = ['maxHp', 'hp', 'def', 'res', 'legs', 'stompDmg', 'parts', 'forcefield', 'energyMax', 'energy', 'regen', 'heatCap', 'heat', 'cool', 'burnTicks', 'burnDmg', 'isFrozen'];
+
+  /** Put the active mech's state back into its team record. */
+  _saveMember() {
+    const m = this.team[this.teamIndex];
+    if (!m) return;
+    for (const f of Game.MEMBER_FIELDS) m[f] = this.player[f];
+    m.def = this.player.def;
+  }
+
+  /** Make team mech `i` the one on the lane (same Ball, same position). */
+  _loadMember(i) {
+    this._saveMember();
+    const m = this.team[i];
+    const p = this.player;
+    this.teamIndex = i;
+    for (const f of Game.MEMBER_FIELDS) p[f] = m[f];
+    p.def = m.totalDef;
+    p.displayName = m.name;
+    p.actionsLeft = 0;
+    this.rigStats = m.rigStats;
+    this.playerWeapons = m.weapons;
+    this.playerDrones = m.drones;
+    if (this.collisionSystem.stats) {
+      this.collisionSystem.stats.playerAtk = m.atk;
+      this.collisionSystem.stats.playerDef = m.def;
+      this.collisionSystem.stats.playerTotalDef = m.totalDef;
+      this.collisionSystem.stats.playerRes = p.res; // same object: Acid hits strip it
+    }
+  }
+
+  /** Team mechs that could come in now. */
+  get benchReady() {
+    return this.team.filter((m, i) => i !== this.teamIndex && m.hp > 0);
+  }
+
+  /** HP of every team mech (by team index) for the run to keep. */
+  teamHp() {
+    this._saveMember();
+    return this.team.map((m) => Math.max(0, Math.round(m.hp)));
+  }
+
+  /** A team mech drops onto the active one's position (after a SWAP or a knock-out). */
+  _playerDropIn(i, why) {
+    this._loadMember(i);
+    const p = this.player;
+    p.x = posX(p.pos);
+    p.anim = { from: p.x, to: p.x, t: 0, dur: 0.6, jump: true };
+    this.projectiles = this.projectiles.filter((pr) => pr.target !== p); // shots at the old mech are gone
+    this.renderer.showBanner(`${p.displayName} ${why}`, '#41a6f6');
+    soundEngine.play('alarm');
+    this.renderer.addScreenShake(8);
+  }
+
+  /** SWAP: another team mech takes over. It costs the whole turn. */
+  swapPlayer(i) {
+    const m = this.team[i];
+    if (!this.canPlayerAct || this.player.actionsLeft < G.actions || !m || i === this.teamIndex || m.hp <= 0) return false;
+    this._playerDropIn(i, 'SWAPS IN');
+    this.player.actionsLeft = 0;
+    this._afterAction(this.player, 0.7);
+    return true;
   }
 
   addHitStop(seconds) {
@@ -853,7 +952,6 @@ export class Game {
       }
       if (w.fx?.freeze) target.isFrozen = true;
       if (w.fx?.corrode) target.res = { ...target.res, phys: Math.max(-(target.def || 0), (target.res?.phys || 0) - w.fx.corrode) };
-      if (w.fx?.leech && yours) this.player.hp = Math.min(this.player.maxHp, this.player.hp + Math.round(dmg * w.fx.leech));
       if (yours) this._reportHit(w, dmg);
       this._callout(target, `${dmg}${crit ? '!' : ''}`, color);
       this.events.emit('damage', { attacker: owner, victim: target, damage: dmg, killed, crit });
@@ -866,7 +964,6 @@ export class Game {
     }
     const dmg = this.collisionSystem.calculatePlayerDamage(rawDmg, { dtype: type, bypassDef: !!w.fx?.pierce }) + this._reactorFx(this.player, w, rawDmg);
     const killed = this.player.takeDamage(dmg);
-    if (w.fx?.leech && owner.hp > 0) owner.hp = Math.min(owner.maxHp, owner.hp + Math.round(dmg * w.fx.leech));
     if (w.fx?.burn) {
       this.player.burnTicks = Math.max(this.player.burnTicks || 0, w.fx.burn);
       this.player.burnDmg = Math.max(this.player.burnDmg || 0, 6);
@@ -1140,6 +1237,13 @@ export class Game {
 
   _checkBattleEnd() {
     if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
+    if (this.player.hp <= 0 && this.benchReady.length) {
+      // Knocked out: the next team mech drops in on the same position
+      const next = this.team.findIndex((m, i) => i !== this.teamIndex && m.hp > 0);
+      this.player.hp = 0;
+      this.waitTimer = Math.max(this.waitTimer || 0, 0.5);
+      return this._playerDropIn(next, 'DROPS IN');
+    }
     if (this.player.hp <= 0) {
       this.winner = 'enemy';
       soundEngine.play('lose');

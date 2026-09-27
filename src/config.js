@@ -132,7 +132,7 @@ export const CONFIG = {
       color: '#f57c00', darkColor: '#e65100',
     },
     vampire: {
-      name: 'SIPHON UNIT', desc: 'Plasma Scythe: heals on every hit, up close.',
+      name: 'REAPER UNIT', desc: 'Plasma Scythe: huge damage, right next to you.',
       hpMult: 1.2, atkMult: 1.05, defBonus: 0, aiShift: 0.025,
       color: '#d32f2f', darkColor: '#8b0000',
     },

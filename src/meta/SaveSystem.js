@@ -506,7 +506,7 @@ export class SaveSystem {
    * converted into scrap so nothing earned is lost.
    */
   _ensureMech() {
-    if (this.data.mech) return;
+    if (this.data.mech) return this._ensureGarage();
     const oldGear = this.data.gear;
     const legacyScrap = (oldGear?.scrap || 0) + (oldGear?.items || []).reduce((sum, it) => {
       const base = { common: 2, rare: 5, epic: 12, legendary: 30 }[it.rarity] || 2;
@@ -518,9 +518,70 @@ export class SaveSystem {
       const want = STARTER_LOADOUT[slot.id];
       loadout[slot.id] = want ? owned.find((o) => o.id === want)?.uid || null : null;
     }
-    this.data.mech = { owned, loadout, scrap: legacyScrap, tokens: 0, cratesOpened: 0 };
+    this.data.mech = { owned, loadouts: [loadout], editing: 0, garageSlots: 1, scrap: legacyScrap, tokens: 0, cratesOpened: 0 };
     delete this.data.gear;
+    this._ensureGarage();
     this.save();
+  }
+
+  /**
+   * The garage: up to 3 mechs (loadouts). Mech 1 always fights; mechs 2 and
+   * 3 unlock (first floor-5 boss, first Abyss boss) and join the team once
+   * they have a frame. `mech.loadout` stays readable as the one being edited.
+   */
+  _ensureGarage() {
+    const m = this.data.mech;
+    if (!Array.isArray(m.loadouts)) {
+      const own = Object.getOwnPropertyDescriptor(m, 'loadout');
+      m.loadouts = [(own && 'value' in own ? own.value : null) || {}];
+    }
+    delete m.loadout;
+    m.garageSlots = Math.max(1, Math.min(3, m.garageSlots || 1));
+    while (m.loadouts.length < m.garageSlots) m.loadouts.push(Object.fromEntries(SLOTS.map((s) => [s.id, null])));
+    m.editing = Math.max(0, Math.min(m.garageSlots - 1, m.editing || 0));
+    Object.defineProperty(m, 'loadout', { get: () => m.loadouts[m.editing], enumerable: false, configurable: true });
+  }
+
+  /** Garage slots unlocked (1..3). */
+  garageSize() {
+    return this.data.mech.garageSlots;
+  }
+
+  /** Unlock garage slot `n` (2 or 3). Returns true if it was new. */
+  unlockGarageSlot(n) {
+    const m = this.data.mech;
+    if (m.garageSlots >= n) return false;
+    m.garageSlots = Math.min(3, n);
+    this._ensureGarage();
+    this.save();
+    return true;
+  }
+
+  /** Which garage mech the Rig screen edits. */
+  setEditing(i) {
+    const m = this.data.mech;
+    if (i < 0 || i >= m.garageSlots) return false;
+    m.editing = i;
+    this.save();
+    return true;
+  }
+
+  /** Every part fitted on any garage mech. */
+  getWornUids() {
+    return new Set(this.data.mech.loadouts.flatMap((lo) => Object.values(lo)).filter(Boolean));
+  }
+
+  /** Index of the garage mech wearing `uid`, or -1. */
+  wornBy(uid) {
+    return this.data.mech.loadouts.findIndex((lo) => Object.values(lo).includes(uid));
+  }
+
+  /** The team for a run: part lists of every unlocked mech that has a frame (mech 1 first). */
+  getTeamLoadouts() {
+    const m = this.data.mech;
+    return m.loadouts.slice(0, m.garageSlots)
+      .map((lo) => SLOTS.map((s) => this.getOwnedPart(lo[s.id])))
+      .filter((parts, i) => i === 0 || parts.some((o) => o && getPart(o.id)?.type === 'frame'));
   }
 
   getMech() {
@@ -532,9 +593,9 @@ export class SaveSystem {
   }
 
   /** Parts in the loadout, one per slot (nulls for empty slots). */
-  getLoadoutParts() {
-    const m = this.data.mech;
-    return SLOTS.map((s) => this.getOwnedPart(m.loadout[s.id]));
+  getLoadoutParts(i = this.data.mech.editing) {
+    const lo = this.data.mech.loadouts[i] || {};
+    return SLOTS.map((s) => this.getOwnedPart(lo[s.id]));
   }
 
   addTokens(n) {
@@ -558,7 +619,7 @@ export class SaveSystem {
     m.cratesOpened += 1;
     // Past the cap, the weakest spare part is salvaged automatically
     if (m.owned.length > INVENTORY_CAP) {
-      const worn = new Set(Object.values(m.loadout));
+      const worn = this.getWornUids();
       const spare = m.owned.filter((o) => !worn.has(o.uid) && o.uid !== part.uid).sort((a, b) => salvageValue(a) - salvageValue(b));
       if (spare[0]) this.salvagePart(spare[0].uid, false);
     }
@@ -573,15 +634,17 @@ export class SaveSystem {
     const owned = this.getOwnedPart(uid);
     if (!slot || (uid && (!owned || getPart(owned.id).type !== slot.type))) return false;
     if (slot.id === 'frame' && !uid) return false; // a mech always has a frame
-    // A part can only sit in one slot
-    for (const k of Object.keys(m.loadout)) if (m.loadout[k] === uid) m.loadout[k] = null;
+    // Mech 1 always fights, so its frame can't be taken for another mech
+    if (m.editing !== 0 && m.loadouts[0].frame === uid) return false;
+    // A part can only sit in one slot on one mech
+    for (const lo of m.loadouts) for (const k of Object.keys(lo)) if (lo[k] === uid) lo[k] = null;
     m.loadout[slotId] = uid;
     this.save();
     return true;
   }
 
   unequipSlot(slotId) {
-    if (slotId === 'frame') return false;
+    if (slotId === 'frame' && this.data.mech.editing === 0) return false;
     this.data.mech.loadout[slotId] = null;
     this.save();
     return true;
@@ -590,7 +653,7 @@ export class SaveSystem {
   salvagePart(uid, save = true) {
     const m = this.data.mech;
     const owned = this.getOwnedPart(uid);
-    if (!owned || Object.values(m.loadout).includes(uid)) return 0;
+    if (!owned || this.getWornUids().has(uid)) return 0;
     const value = salvageValue(owned);
     m.owned = m.owned.filter((o) => o.uid !== uid);
     m.scrap += value;

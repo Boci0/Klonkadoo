@@ -91,7 +91,18 @@ export class RigScreen {
     const used = Math.ceil(t.weight / 4);
     const meter = Array.from({ length: Math.max(blocks, used) }, (_, i) => `<i class="${i < used ? (i >= blocks ? 'over' : 'on') : ''}"></i>`).join('');
 
+    // Garage: up to 3 mechs; locked slots say how to earn them
+    const garage = [0, 1, 2].map((i) => {
+      const open = i < m.garageSlots;
+      const lock = i === 1 ? 'Beat a floor 5 boss' : 'Beat an Abyss boss';
+      const framed = open && m.loadouts[i]?.frame;
+      return `<button class="rig-gtab ${i === m.editing ? 'on' : ''} ${open ? '' : 'locked'}" data-garage="${i}" ${open ? '' : `disabled title="${lock}"`}>
+        MECH ${i + 1}${open ? (framed || i === 0 ? '' : ' <em>NO FRAME</em>') : ` <em>${ico('lock')} ${lock.toUpperCase()}</em>`}
+      </button>`;
+    }).join('');
+
     this.body.innerHTML = `
+      <div class="rig-garage">${garage}</div>
       <div class="rig-bay">
         <div class="rig-col">${LEFT.map(tile).join('')}</div>
         <div class="rig-stage">
@@ -109,6 +120,12 @@ export class RigScreen {
       </div>
       <div class="rig-side" id="rig-side"></div>`;
 
+    this.body.querySelectorAll('[data-garage]').forEach((b) => b.addEventListener('click', () => {
+      if (!saveSystem.setEditing(Number(b.dataset.garage))) return;
+      soundEngine.play('select');
+      this.focus = null;
+      this._renderLoadout();
+    }));
     this.body.querySelectorAll('[data-slot]').forEach((b) => b.addEventListener('click', () => {
       soundEngine.play('select');
       this.slot = b.dataset.slot;
@@ -123,14 +140,15 @@ export class RigScreen {
     const side = document.getElementById('rig-side');
     const slot = SLOTS.find((s) => s.id === this.slot);
     const inSlot = bySlot[this.slot];
-    const worn = new Set(Object.values(m.loadout));
+    const worn = saveSystem.getWornUids(); // on any garage mech
     const fits = m.owned.filter((o) => getPart(o.id)?.type === slot.type)
       .sort((a, b) => (b.uid === inSlot?.uid) - (a.uid === inSlot?.uid) || RANK[getPart(b.id).rarity] - RANK[getPart(a.id).rarity] || b.level - a.level);
     if (!fits.some((o) => o.uid === this.focus)) this.focus = inSlot?.uid || fits[0]?.uid || null;
 
     const tiles = fits.map((o) => {
       const p = getPart(o.id);
-      const mark = o.uid === inSlot?.uid ? '<i class="rig-mark here">&#10003;</i>' : worn.has(o.uid) ? '<i class="rig-mark">&#9679;</i>' : '';
+      const on = saveSystem.wornBy(o.uid);
+      const mark = o.uid === inSlot?.uid ? '<i class="rig-mark here">&#10003;</i>' : on === m.editing ? '<i class="rig-mark">&#9679;</i>' : on >= 0 ? `<i class="rig-mark other" title="On mech ${on + 1}">${on + 1}</i>` : '';
       return `<button class="rig-item ${o.uid === this.focus ? 'sel' : ''}" data-uid="${o.uid}" style="--rar:${rarityColor(p.rarity)}">
         <img src="${partIcon(p.id)}" alt=""><i class="rig-lv">${o.level}</i>${mark}
       </button>`;
@@ -161,7 +179,7 @@ export class RigScreen {
     const current = bySlot[this.slot];
     // Load after equipping this part here
     const after = t.weight - (current ? getPart(current.id).weight || 0 : 0) + (p.weight || 0)
-      - (!inThis && worn.has(owned.uid) ? p.weight || 0 : 0);
+      - (!inThis && saveSystem.wornBy(owned.uid) === m.editing ? p.weight || 0 : 0);
     const capAfter = p.type === 'frame' ? p.capacity : t.capacity;
     const tooHeavy = !inThis && after > capAfter;
     const cost = upgradeCost(owned);

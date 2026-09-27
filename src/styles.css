@@ -2726,6 +2726,33 @@ canvas {
 }
 
 .rig-mark.here { color: var(--p-lime); }
+.rig-mark.other { color: var(--p-yellow); }
+
+/* Garage: one tab per mech (locked ones say how to earn them) */
+.rig-body:has(> .rig-garage) { grid-template-rows: auto minmax(0, 1fr); }
+.rig-garage {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 6px;
+}
+.rig-gtab {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--p-steel);
+  background: #1f2440;
+  border: 3px solid #333c57;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rig-gtab em { font-style: normal; font-size: 9px; color: var(--p-slate); }
+.rig-gtab em img, .rig-gtab em canvas { width: 10px; height: 10px; vertical-align: -1px; }
+.rig-gtab.on { color: var(--p-white); border-color: var(--p-yellow); background: #30375a; }
+.rig-gtab.locked { opacity: 0.55; cursor: default; }
 
 .rig-empty {
   grid-column: 1 / -1;
@@ -3754,6 +3781,45 @@ canvas {
 
 .ability-vent { --ab: #73eff7; }
 .ability-stomp { --ab: #f4f4f4; }
+
+/* Team bar (garage mechs in this fight): tap a benched one to SWAP */
+.team-bar {
+  position: absolute;
+  left: calc(8px + var(--safe-left));
+  top: calc(84px + var(--safe-top));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: auto;
+}
+.team-bar.hidden { display: none; }
+.team-chip {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  gap: 2px 8px;
+  width: 150px;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 10px;
+  text-align: left;
+  color: var(--p-steel);
+  background: rgba(26, 28, 44, 0.85);
+  border: 3px solid #333c57;
+  cursor: default;
+}
+.team-chip b { color: var(--p-white); font-weight: normal; }
+.team-chip span { justify-self: end; font-size: 9px; }
+.team-chip i { grid-column: 1; display: block; height: 5px; margin-top: 3px; background: #333c57; }
+.team-chip i em { display: block; height: 100%; background: var(--p-lime); }
+.team-chip small { justify-self: end; font-size: 9px; }
+.team-chip.on { border-color: #41a6f6; }
+.team-chip.on span { color: #41a6f6; }
+.team-chip.ko { opacity: 0.45; }
+.team-chip.ko i em { background: var(--p-red, #ff5d73); }
+.team-chip.ready { cursor: pointer; border-color: var(--p-yellow); }
+.team-chip.ready span { color: var(--p-yellow); }
+.team-chip.ready:hover { background: #30375a; }
 .ability-stomp.hidden { display: none; }
 .ability-end { --ab: var(--p-lime); }
 
@@ -4246,4 +4312,22 @@ canvas {
   gap: 3px 10px;
   font-size: 11px;
   color: var(--text);
+}
+
+/* Deploy: the rest of the team (garage mechs 2 and 3) */
+.deploy-team {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--p-steel);
+}
+.deploy-team img {
+  width: 44px;
+  height: auto;
+  image-rendering: pixelated;
+  background: #1f2440;
+  border: 2px solid #333c57;
+  padding: 2px;
 }
