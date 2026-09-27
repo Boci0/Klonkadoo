@@ -4669,3 +4669,13 @@ canvas {
   .rig-strip.mods .rig-slot { height: 28px; max-height: 28px; }
   .rig-strip.mods .rig-slot img { width: 20px; }
 }
+
+/* Almanac: the part's effect in one short line (the card has everything; no hover needed) */
+.alm-desc {
+  margin: 2px 0 0 !important;
+  font-size: 11px !important;
+  color: var(--p-silver) !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

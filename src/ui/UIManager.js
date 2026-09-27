@@ -814,11 +814,13 @@ export class UIManager {
     const cards = list.slice(page * per, page * per + per).map((p) => {
       const has = owned.has(p.id);
       const lo = { id: p.id, level: 1 };
-      return `<div class="alm-card ${has ? 'owned' : ''}" style="--rar:${rarityColor(p.rarity)}" data-tip-part="${p.id}">
+      const note = partNote(p);
+      return `<div class="alm-card ${has ? 'owned' : ''}" style="--rar:${rarityColor(p.rarity)}">
         <img class="alm-icon" src="${partIcon(p.id)}" alt="">
         <div class="alm-body">
           <div class="alm-head"><b>${p.name}</b>${tierDots(lo)}<em>${has ? '&#10003;' : ''}</em></div>
           <div class="rig-chips">${partChips(lo).slice(0, 7).map(chipHtml).join('')}</div>
+          ${note ? `<p class="alm-desc" title="${note}">${note}</p>` : ''}
         </div>
       </div>`;
     }).join('');
@@ -839,11 +841,6 @@ export class UIManager {
       soundEngine.playUI();
       this.showAlmanac(type, Number(b.dataset.page));
     }));
-    // Hover a card for the full card (desc included); tap works on phones
-    if (!this._almTips) {
-      this._almTips = true;
-      bindHoverTips(this.modalBody, '.alm-card[data-tip-part]', (el) => partCardHtml({ id: el.dataset.tipPart, level: 1 }));
-    }
     this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => {
       this.nodeModal.querySelector('.modal-content')?.classList.remove('modal-almanac');
       hideTip();
