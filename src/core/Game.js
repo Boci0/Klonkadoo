@@ -532,7 +532,7 @@ export class Game {
     const shut = u.heat > u.heatCap;
     this._callout(u, shut ? 'SHUTDOWN: TURN LOST' : 'OVERHEATED: TURN LOST', '#ff5d73');
     this.addHitStop(0.12);
-    soundEngine.play('alarm');
+    soundEngine.playOverheat();
     if (u === this.player) haptics.impact('heavy');
     return false;
   }

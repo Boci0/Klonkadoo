@@ -750,24 +750,33 @@ export class SaveSystem {
    * the same tier (never the part itself). Returns [] if there aren't enough.
    */
   transformFodder(uid) {
-    const owned = this.getOwnedPart(uid);
-    const info = owned && transformInfo(owned);
-    if (!info) return [];
-    const worn = this.getWornUids();
-    const pool = this.data.mech.owned
-      .filter((o) => o.uid !== uid && !worn.has(o.uid) && tierOf(o) === tierOf(owned))
-      .sort((a, b) => salvageValue(a) - salvageValue(b));
-    return pool.length >= info.parts ? pool.slice(0, info.parts) : [];
+    const info = transformInfo(this.getOwnedPart(uid) || {});
+    const pool = this.transformPool(uid);
+    return info && pool.length >= info.parts ? pool.slice(0, info.parts) : [];
   }
 
-  /** TRANSFORM: a part at max level becomes the next tier at LV 1. Returns true on success. */
-  transformPart(uid) {
+  /** Every spare part a transform could melt (same tier, not worn), cheapest first. */
+  transformPool(uid) {
+    const owned = this.getOwnedPart(uid);
+    if (!owned || !transformInfo(owned)) return [];
+    const worn = this.getWornUids();
+    return this.data.mech.owned
+      .filter((o) => o.uid !== uid && !worn.has(o.uid) && tierOf(o) === tierOf(owned))
+      .sort((a, b) => salvageValue(a) - salvageValue(b));
+  }
+
+  /**
+   * TRANSFORM: a part at max level becomes the next tier at LV 1, melting
+   * `pick` (uids you chose) or else the cheapest spares. Returns true on success.
+   */
+  transformPart(uid, pick = null) {
     const m = this.data.mech;
     const owned = this.getOwnedPart(uid);
     const info = owned && transformInfo(owned);
     if (!info || owned.level < maxLevel(owned) || m.scrap < info.scrap) return false;
-    const fodder = this.transformFodder(uid);
-    if (fodder.length < info.parts) return false;
+    const pool = this.transformPool(uid);
+    const fodder = pick ? pool.filter((o) => pick.includes(o.uid)) : pool.slice(0, info.parts);
+    if (fodder.length !== info.parts) return false;
     const eat = new Set(fodder.map((o) => o.uid));
     m.owned = m.owned.filter((o) => !eat.has(o.uid));
     m.scrap -= info.scrap;

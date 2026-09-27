@@ -290,10 +290,7 @@ export class RigScreen {
     box.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () => {
       const act = b.dataset.act;
       // TRANSFORM melts parts: show exactly which ones first
-      if (act === 'transform' && !b.dataset.sure) return this._confirmTransform(owned, fodder, tf, () => {
-        b.dataset.sure = '1';
-        b.click();
-      });
+      if (act === 'transform') return this._confirmTransform(owned, tf);
       // Equipping an overweight part is allowed (you just can't deploy), the button warns first
       const ok = act === 'equip' ? saveSystem.equipPart(this.slot, owned.uid)
         : act === 'unequip' ? saveSystem.unequipSlot(this.slot)
@@ -311,32 +308,54 @@ export class RigScreen {
     }));
   }
 
-  /** Which spare parts a transform melts, and a last chance to say no. */
-  _confirmTransform(owned, fodder, tf, onYes) {
+  /** TRANSFORM: pick which spare parts of the same tier to melt (the cheapest are picked to start). */
+  _confirmTransform(owned, tf) {
     soundEngine.playUI();
     const p = getPart(owned.id);
+    const pool = saveSystem.transformPool(owned.uid);
+    const picked = new Set(pool.slice(0, tf.parts).map((o) => o.uid));
     const box = document.createElement('div');
     box.className = 'rig-key';
-    box.innerHTML = `<div class="rig-key-panel tf-panel" style="--rar:${rarityColor(tf.to)}">
-        <div class="drops-title"><strong>TRANSFORM ${p.name}</strong><span></span></div>
-        <div class="tf-row">
-          <span class="tf-part"><img src="${partIcon(p.id)}" alt=""><i class="tdot" style="--c:${rarityColor(tierOf(owned))}"></i></span>
-          <b>&#9654;</b>
-          <span class="tf-part"><img src="${partIcon(p.id)}" alt=""><i class="tdot" style="--c:${rarityColor(tf.to)}"></i> ${rarityName(tf.to)} LV 1</span>
-        </div>
-        <p class="rig-note">Melts these spare parts (+ ${ico('scrap')}${tf.scrap}):</p>
-        <div class="tf-fodder">${fodder.map((o) => `<span class="rig-item" style="--rar:${rarityColor(tierOf(o))}" data-tip-uid="${o.uid}"><img src="${partIcon(o.id)}" alt=""><i class="rig-lv">${o.level}</i></span>`).join('')}</div>
-        <div class="rig-actions"><button class="btn btn-outline" data-act="no">CANCEL</button><button class="btn btn-accent" data-act="yes">&#9650; TRANSFORM</button></div>
-      </div>`;
     this.body.appendChild(box);
-    box.querySelector('[data-act="no"]').addEventListener('click', () => {
-      soundEngine.playUI();
-      box.remove();
-    });
-    box.querySelector('[data-act="yes"]').addEventListener('click', () => {
-      box.remove();
-      onYes();
-    });
+    const draw = () => {
+      const ok = picked.size === tf.parts;
+      box.innerHTML = `<div class="rig-key-panel tf-panel" style="--rar:${rarityColor(tf.to)}">
+          <div class="drops-title"><strong>TRANSFORM ${p.name}</strong><span></span></div>
+          <div class="tf-row">
+            <span class="tf-part"><img src="${partIcon(p.id)}" alt=""><i class="tdot" style="--c:${rarityColor(tierOf(owned))}"></i></span>
+            <b>&#9654;</b>
+            <span class="tf-part"><img src="${partIcon(p.id)}" alt=""><i class="tdot" style="--c:${rarityColor(tf.to)}"></i> ${rarityName(tf.to)} LV 1</span>
+          </div>
+          <p class="rig-note">Pick ${tf.parts} spare ${rarityName(tierOf(owned))} parts to melt <b class="tf-count ${ok ? 'ok' : ''}">${picked.size}/${tf.parts}</b> · ${ico('scrap')}${tf.scrap}</p>
+          <div class="tf-fodder">${pool.map((o) => `<button class="rig-item ${picked.has(o.uid) ? 'picked' : ''}" data-pick="${o.uid}" data-tip-uid="${o.uid}" style="--rar:${rarityColor(tierOf(o))}"><img src="${partIcon(o.id)}" alt=""><i class="rig-lv">${o.level}</i>${picked.has(o.uid) ? '<i class="rig-badge here">&#10003;</i>' : ''}</button>`).join('')}</div>
+          <div class="rig-actions"><button class="btn btn-outline" data-act="no">CANCEL</button><button class="btn ${ok ? 'btn-accent' : 'btn-disabled'}" data-act="yes" ${ok ? '' : 'disabled'}>&#9650; TRANSFORM</button></div>
+        </div>`;
+      box.querySelectorAll('[data-pick]').forEach((el) => el.addEventListener('click', () => {
+        const uid = el.dataset.pick;
+        if (picked.has(uid)) picked.delete(uid);
+        else if (picked.size < tf.parts) picked.add(uid);
+        else return soundEngine.play('error');
+        soundEngine.play('select');
+        hideTip();
+        draw();
+      }));
+      box.querySelector('[data-act="no"]').addEventListener('click', () => {
+        soundEngine.playUI();
+        hideTip();
+        box.remove();
+      });
+      box.querySelector('[data-act="yes"]').addEventListener('click', () => {
+        hideTip();
+        box.remove();
+        const done = saveSystem.transformPart(owned.uid, [...picked]);
+        soundEngine.play(done ? 'coin' : 'error');
+        if (!done) return;
+        haptics.impact('heavy');
+        this.render();
+        this._flashTransform(owned);
+      });
+    };
+    draw();
   }
 
   /** A short burst over the detail card after a transform. */

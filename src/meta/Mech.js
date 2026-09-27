@@ -550,7 +550,7 @@ export function tokenReward(nodeType, risk = 0) {
  */
 export const ENEMY_LOADOUTS = {
   standard: { legs: ['lg_strider', 'lg_hopper'], mods: ['md_plating', 'md_physres'], drone: 'dr_gnat', guns: [['wp_blaster', 'wp_scatter', 'wp_smg'], ['wp_rifle', 'wp_acid'], ['wp_mortar', 'wp_rocket']] },
-  tank: { specials: ['sp_charge'], legs: ['lg_treads'], mods: ['md_titanplate', 'md_heavyplate'], drone: 'dr_guardian', guns: [['wp_scatter'], ['wp_repulsor'], ['wp_shredder'], ['wp_concussion']] },
+  tank: { specials: ['sp_charge'], legs: ['lg_treads'], mods: ['md_composite', 'md_heavyplate'], drone: 'dr_guardian', guns: [['wp_scatter'], ['wp_repulsor'], ['wp_shredder'], ['wp_concussion']] },
   striker: { specials: ['sp_teleport'], legs: ['lg_catapult', 'lg_strider'], mods: ['md_physres'], drone: 'dr_hornet', guns: [['wp_rifle'], ['wp_blaster'], ['wp_rocket']], heavy: 'wp_sniper' },
   vampire: { specials: ['sp_hook', 'sp_charge'], legs: ['lg_coil', 'lg_strider'], mods: ['md_aegis'], drone: 'dr_medic', guns: [['wp_scythe'], ['wp_smg'], ['wp_grapple']] },
   pyromancer: { legs: ['lg_treads', 'lg_jumpjets'], mods: ['md_composite', 'md_heatres'], drone: 'dr_hornet', guns: [['wp_blowtorch', 'wp_flamer'], ['wp_thermal', 'wp_rupturer', 'wp_scorcher'], ['wp_napalm']], heavy: 'wp_meltdown' },

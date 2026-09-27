@@ -115,7 +115,7 @@ export const CONFIG = {
     },
     tank: {
       name: 'WALL UNIT', desc: 'Titanium hull on treads or clamps. Scattergun and Repulsor: keep your distance.',
-      hpMult: 1.5, atkMult: 0.9, defBonus: 1, aiShift: -0.025,
+      hpMult: 1.25, atkMult: 0.9, defBonus: 1, aiShift: -0.025,
       color: '#4a6572', darkColor: '#263238',
     },
     striker: {

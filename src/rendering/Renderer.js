@@ -742,15 +742,28 @@ export class Renderer {
         ctx.drawImage(ic, Math.round(-6 - recoil), Math.round(-h / 2), w, h);
         const hot = ball.heatCap ? ball.heat / ball.heatCap : 0;
         if (hot > 0.75) {
-          // Overheating barrel: a pulsing red glow along the gun
-          ctx.globalAlpha = alpha * (0.25 + 0.2 * Math.sin(now / 90)) * Math.min(1, (hot - 0.75) * 4);
-          ctx.fillStyle = '#ff5d73';
-          ctx.fillRect(Math.round(-6 - recoil), Math.round(-h / 2), w, h);
+          // Running hot: the muzzle glows (steam puffs are drawn after, upright)
+          const glow = Math.min(1, (hot - 0.75) * 4);
+          ctx.globalAlpha = alpha * glow * 0.9;
+          ctx.fillStyle = hot > 1 ? '#ff5d73' : '#ef7d57';
+          ctx.fillRect(Math.round(w - 10 - recoil), Math.round(-3), 4, 6);
         }
         ctx.globalAlpha = alpha;
         if (since < 110) flash(w - 2 - recoil, 0, g.color || '#ffcd75');
         ctx.restore();
         g._muzzle = { x: mx + Math.cos(g._ang) * (w - 6), y: my + Math.sin(g._ang) * (w - 6) };
+        if (hot > 0.75) {
+          // Steam rising off the barrel: a few pixel puffs, thicker the hotter it runs
+          const glow = Math.min(1, (hot - 0.75) * 4);
+          for (let j = 0; j < 3; j++) {
+            const ph = (now / 900 + j / 3 + i * 0.17) % 1;
+            const size = Math.round(4 + ph * 6);
+            ctx.globalAlpha = alpha * glow * (1 - ph) * 0.55;
+            ctx.fillStyle = '#dfe6ee';
+            ctx.fillRect(Math.round(g._muzzle.x + Math.sin(ph * 6 + j) * 4 - size / 2), Math.round(g._muzzle.y - 6 - ph * 26), size, size);
+          }
+          ctx.globalAlpha = 1;
+        }
       });
       if (layer !== 'front') drones = [];
       drones.forEach((d, i) => {

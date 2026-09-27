@@ -250,6 +250,13 @@ class SoundEngine {
     this._tone({ type: 'triangle', freq: 180, to: 90, dur: 0.4, vol: 0.12 });
   }
 
+  /** Overheated (turn lost): a short steam hiss and a low clunk, not a siren. */
+  playOverheat() {
+    if (!this._ready() || !this._throttle('overheat', 400)) return;
+    this._noise({ dur: 0.35, vol: 0.14, filter: 'highpass', freq: 3000, to: 1400 });
+    this._tone({ type: 'triangle', freq: 110, to: 70, dur: 0.18, vol: 0.12 });
+  }
+
   /** STOMP: the heaviest thud in the game. */
   playStomp() {
     if (!this._ready()) return;

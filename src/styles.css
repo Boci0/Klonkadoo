@@ -4680,9 +4680,19 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 }
 
 /* TRANSFORM confirm: before / after, and the parts it melts */
-.tf-panel { width: min(460px, 100%); display: flex; flex-direction: column; gap: 8px; }
+.tf-panel { width: min(640px, 100%); display: flex; flex-direction: column; gap: 8px; }
 .tf-row { display: flex; align-items: center; justify-content: center; gap: 14px; font-size: 12px; color: var(--p-silver); }
 .tf-part { display: inline-flex; align-items: center; gap: 6px; }
 .tf-part img { width: 40px; image-rendering: pixelated; }
 .tf-fodder { display: flex; flex-wrap: wrap; gap: 5px; }
 .tf-fodder .rig-item { width: 48px; height: 48px; }
+
+.tf-fodder .rig-item { cursor: pointer; }
+.tf-fodder .rig-item.picked { border-color: var(--p-lime); background: #1f3a2c; }
+.tf-count { font-weight: normal; color: #ff5d73; }
+.tf-count.ok { color: var(--p-lime); }
+@media (max-height: 560px) {
+  .tf-fodder .rig-item { width: 34px; height: 34px; }
+  .tf-fodder .rig-item img { width: 24px; }
+  .tf-part img { width: 28px; }
+}
