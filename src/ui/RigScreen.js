@@ -289,6 +289,11 @@ export class RigScreen {
 
     box.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () => {
       const act = b.dataset.act;
+      // TRANSFORM melts parts: show exactly which ones first
+      if (act === 'transform' && !b.dataset.sure) return this._confirmTransform(owned, fodder, tf, () => {
+        b.dataset.sure = '1';
+        b.click();
+      });
       // Equipping an overweight part is allowed (you just can't deploy), the button warns first
       const ok = act === 'equip' ? saveSystem.equipPart(this.slot, owned.uid)
         : act === 'unequip' ? saveSystem.unequipSlot(this.slot)
@@ -304,6 +309,34 @@ export class RigScreen {
       if (inv) inv.scrollTop = scroll;
       if (ok && act === 'transform') this._flashTransform(owned);
     }));
+  }
+
+  /** Which spare parts a transform melts, and a last chance to say no. */
+  _confirmTransform(owned, fodder, tf, onYes) {
+    soundEngine.playUI();
+    const p = getPart(owned.id);
+    const box = document.createElement('div');
+    box.className = 'rig-key';
+    box.innerHTML = `<div class="rig-key-panel tf-panel" style="--rar:${rarityColor(tf.to)}">
+        <div class="drops-title"><strong>TRANSFORM ${p.name}</strong><span></span></div>
+        <div class="tf-row">
+          <span class="tf-part"><img src="${partIcon(p.id)}" alt=""><i class="tdot" style="--c:${rarityColor(tierOf(owned))}"></i></span>
+          <b>&#9654;</b>
+          <span class="tf-part"><img src="${partIcon(p.id)}" alt=""><i class="tdot" style="--c:${rarityColor(tf.to)}"></i> ${rarityName(tf.to)} LV 1</span>
+        </div>
+        <p class="rig-note">Melts these spare parts (+ ${ico('scrap')}${tf.scrap}):</p>
+        <div class="tf-fodder">${fodder.map((o) => `<span class="rig-item" style="--rar:${rarityColor(tierOf(o))}" data-tip-uid="${o.uid}"><img src="${partIcon(o.id)}" alt=""><i class="rig-lv">${o.level}</i></span>`).join('')}</div>
+        <div class="rig-actions"><button class="btn btn-outline" data-act="no">CANCEL</button><button class="btn btn-accent" data-act="yes">&#9650; TRANSFORM</button></div>
+      </div>`;
+    this.body.appendChild(box);
+    box.querySelector('[data-act="no"]').addEventListener('click', () => {
+      soundEngine.playUI();
+      box.remove();
+    });
+    box.querySelector('[data-act="yes"]').addEventListener('click', () => {
+      box.remove();
+      onYes();
+    });
   }
 
   /** A short burst over the detail card after a transform. */
@@ -345,7 +378,7 @@ export class RigScreen {
     const legs = part('legs');
     // The mech itself: legs on the pedestal, torso (frame + armor) on the legs
     const legsSprite = legsCanvas(legs?.id || 'lg_strider', look.color, look.darkColor);
-    const torso = torsoCanvas(frame?.id || 'fr_scout', armor?.id || null, look.color, look.darkColor);
+    const torso = torsoCanvas(frame?.id || 'fr_scout', armor, look.color, look.darkColor);
     const legsTop = 40 - (legsSprite.height - 2);
     const torsoTop = legsTop + 2 - torso.height;
     const gunX = Math.ceil(torso.width / 2) + 1;

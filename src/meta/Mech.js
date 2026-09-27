@@ -431,7 +431,10 @@ export function loadoutTotals(ownedParts) {
     energy: 0, regen: 0, heatCap: 0, cool: 0, hasFrame: false,
     legs: null, // the fitted legs part (movement rules), null = DEFAULT_LEGS
   };
-  const parts = ownedParts.filter(Boolean).map(partStats).filter(Boolean);
+  const seen = new Set();
+  const parts = ownedParts.filter(Boolean).map(partStats).filter(Boolean)
+    // A `unique` module counts once (older saves may still wear two)
+    .filter((p) => !(p.unique && seen.has(p.id)) && (seen.add(p.id), true));
   for (const p of parts) {
     if (p.type === 'frame') t.hasFrame = true;
     for (const f of ['energy', 'regen', 'heatCap', 'cool']) t[f] += p[f] || 0;

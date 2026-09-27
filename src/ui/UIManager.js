@@ -57,15 +57,19 @@ export class UIManager {
       soundEngine.playUI();
       // A suspended run resumes with the rig it started with
       if (this.cb.savedRun?.()) return this.cb.onPlay();
-      // An overloaded rig can't deploy
-      const t = loadoutTotals(saveSystem.getLoadoutParts());
-      if (t.overweight) {
+      // An overloaded mech (any mech on the team) can't deploy
+      const heavy = this._overloadedMech();
+      if (heavy) {
+        const { i, t } = heavy;
         soundEngine.play('error');
         this.showConfirm({
-          title: 'RIG OVERLOADED',
-          text: `${ico('load')} ${t.weight}/${t.capacity} kg: ${t.overKg - CONFIG.gear.overweightMax} kg past the limit. Lighten your rig to deploy.`,
+          title: `MECH ${i + 1} OVERLOADED`,
+          text: `${ico('load')} ${t.weight}/${t.capacity} kg: ${t.overKg - CONFIG.gear.overweightMax} kg past the limit. Lighten it to deploy.`,
           confirmLabel: 'OPEN RIG',
-          onConfirm: () => this.showMech(),
+          onConfirm: () => {
+            saveSystem.setEditing(i);
+            this.showMech();
+          },
         });
         return;
       }
@@ -747,9 +751,9 @@ export class UIManager {
     // Icon tiles: your first gun, medal star (with counts)
     const owned = MEDALS.filter((m) => saveSystem.hasMedal(m.id)).length;
     const gun = saveSystem.getLoadoutParts().find((o) => o && getPart(o.id).type === 'weapon');
-    const rig = loadoutTotals(saveSystem.getLoadoutParts());
+    const heavy = !!this._overloadedMech(); // any team mech over the limit
     const tiles = {
-      'btn-gear': { img: gun ? `<img class="pxi" src="${partIcon(gun.id)}" alt="">` : ico('gun'), label: 'RIG', count: rig.overweight ? '!' : '', warn: rig.overweight },
+      'btn-gear': { img: gun ? `<img class="pxi" src="${partIcon(gun.id)}" alt="">` : ico('gun'), label: 'RIG', count: heavy ? '!' : '', warn: heavy },
       'btn-almanac': { img: ico('book'), label: 'ALMANAC', count: `${new Set(saveSystem.getMech().owned.map((o) => o.id)).size}/${PARTS.length}` },
       'btn-medals': { img: ico('star'), label: 'MEDALS', count: `${owned}/${MEDALS.length}` },
     };
@@ -787,6 +791,18 @@ export class UIManager {
       this.toast(`<span class="feed-boon">MEDAL: ${m.name}</span> <span class="feed-gold">+${m.keys} KEYS</span>`);
     }
     if (list?.length) soundEngine.play('confirm');
+  }
+
+  /** The first team mech (one that deploys) over the load limit: { i, t }, or null. */
+  _overloadedMech() {
+    const m = saveSystem.getMech();
+    for (let i = 0; i < m.garageSlots; i++) {
+      const parts = saveSystem.getLoadoutParts(i);
+      if (i > 0 && !parts.some((o) => o && getPart(o.id)?.type === 'frame')) continue; // no frame: stays home
+      const t = loadoutTotals(parts);
+      if (t.overweight) return { i, t };
+    }
+    return null;
   }
 
   /** Rig screen (loadout + supply pods). */

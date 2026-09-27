@@ -124,6 +124,8 @@ export const ICON_KEY = [
   ['move', 'MOVE', 'How far the legs walk / jump, or how far a charge dashes'],
   ['heal', 'REPAIR', 'HP restored'],
   ['star', 'CRIT', 'Chance for a 1.75x hit'],
+  ['gun', 'GUN BONUS', 'Extra damage on all your guns'],
+  ['gold', 'GOLD', 'More gold from fights'],
   ['lock', 'LOCKED', 'Anchored (can\'t move), or one per mech'],
 ];
 
