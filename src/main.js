@@ -198,6 +198,20 @@ function bindAbilityButtons() {
     if (!canRetreatFromBattle()) return;
     soundEngine.playUI();
     battlePaused = true;
+    takeControl();
+    // Bosses and mini-bosses: you can leave, but it's a lost fight (the run ends)
+    if (isBossFight()) {
+      ui.showConfirm({
+        title: 'LEAVE THE BOSS FIGHT?',
+        text: 'Leaving a boss fight counts as a <strong class="accent">loss</strong>: the run ends here.',
+        confirmLabel: 'LEAVE (LOSS)',
+        cancelLabel: 'KEEP FIGHTING',
+        danger: true,
+        onConfirm: forfeitBossFight,
+        onCancel: () => { battlePaused = false; },
+      });
+      return;
+    }
     ui.showRetreatConfirm(retreatCost(), {
       onConfirm: retreatFromBattle,
       onCancel: () => { battlePaused = false; },
@@ -287,12 +301,9 @@ let autoRun = false;
 function setAutoBattle(on) {
   autoBattle = !!on;
   game.autoPlayer = autoBattle;
-  const b = document.getElementById('btn-auto');
-  if (b) {
-    b.classList.toggle('btn-accent', autoBattle);
-    b.classList.toggle('btn-outline', !autoBattle);
-    b.innerHTML = `${ico('auto')}${autoBattle ? 'AUTO ON' : 'AUTO'}`;
-  }
+  document.getElementById('btn-auto')?.classList.toggle('on', autoBattle);
+  const cd = document.getElementById('cd-auto');
+  if (cd) cd.textContent = autoBattle ? 'ON' : 'OFF';
 }
 /** A manual action: you take over (AUTO battle and AUTO RUN both stop). */
 function takeControl() {
@@ -450,7 +461,7 @@ function updateGearHud(el, endBtn, ventBtn) {
     const hot = ready && st.overheats;
     return `<button class="mech-chip gear-gun ${ready ? 'ready' : 'cooling'} ${hot ? 'overheat' : ''}" data-gun="${i}" style="--c:${w.color}" aria-label="${w.name}">
       <img src="${partIcon(w.id)}" alt="">${ammo}
-      <span class="gun-dmg" style="color:${DTYPES[dtypeOf(w)].color}">${w.fx?.mine ? 'MINE' : st.dmg ? `~${st.dmg}` : ''}</span>
+      <span class="gun-dmg" style="color:${DTYPES[dtypeOf(w)].color}">${w.fx?.mine ? 'MINE' : st.dmg ? `${ico(DTYPES[dtypeOf(w)].icon)}${st.dmg}` : ''}</span>
       <span class="gun-cost"><i class="c-en">${w.en || 0}</i><i class="c-heat">${w.heat || 0}</i></span>
       <span class="gun-why">${ready ? (hot ? 'OVERHEAT' : 'FIRE') : why}</span></button>`;
   }).join('') + drones.map((d, i) => {
@@ -892,10 +903,28 @@ function cancelNodeSelection() {
   ui.renderMap(run, map, run.floor);
 }
 
-/** Can the player flee the current battle? Bosses must be fought. */
+/** A boss or mini-boss fight (including the ones a floor forces on you). */
+function isBossFight() {
+  const type = (activeNode || run?.currentNode)?.type;
+  return state === State.BATTLE && (type === 'miniboss' || type === 'boss');
+}
+
+/** Can the player leave the current battle? Bosses can be left too, as a loss. */
 function canRetreatFromBattle() {
-  const type = activeNode?.type;
-  return state === State.BATTLE && type !== 'miniboss' && type !== 'boss' && !!prevPosition;
+  return state === State.BATTLE && (isBossFight() || !!prevPosition);
+}
+
+/** Leave a boss / mini-boss fight: it counts as a lost fight, so the run ends. */
+function forfeitBossFight() {
+  game.abortBattle();
+  battlePaused = false;
+  run.hp = 0;
+  run.onCombatLost();
+  lostAnyCombat = true;
+  addFeedEntry('<span class="feed-enemy-ability">LEFT THE BOSS FIGHT: RUN LOST</span>');
+  soundEngine.play('retreat');
+  ui.updateRunHud(run);
+  endRun(false);
 }
 
 function retreatCost() {
@@ -907,7 +936,7 @@ function retreatCost() {
  * The hostile tile stays uncleared so it can be retried later.
  */
 function retreatFromBattle() {
-  if (!canRetreatFromBattle()) return;
+  if (!canRetreatFromBattle() || isBossFight()) return;
   const cost = retreatCost();
   game.abortBattle();
   battlePaused = false;

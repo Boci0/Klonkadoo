@@ -21,7 +21,7 @@ import {
   upgradeCost, salvageValue, loadoutTotals, INVENTORY_CAP, slotAccepts, maxLevel, tierOf, transformInfo,
   PACK_SIZE, packCost,
 } from '../meta/Mech.js';
-import { partCardHtml, statBarHtml, bindHoverTips, hideTip } from './partCard.js';
+import { partCardHtml, statBarHtml, bindHoverTips, hideTip, iconKeyHtml } from './partCard.js';
 
 const RANK = { common: 0, rare: 1, epic: 2, legendary: 3, mythic: 4 };
 // Where each slot tile sits around the bay
@@ -137,6 +137,7 @@ export class RigScreen {
     this.body.querySelectorAll('[data-slot]').forEach((b) => b.addEventListener('click', () => {
       soundEngine.play('select');
       this.slot = b.dataset.slot;
+      this.invSlot = null;
       this.focus = null;
       this._renderLoadout();
     }));
@@ -167,21 +168,54 @@ export class RigScreen {
       .sort((a, b) => (b.uid === inSlot?.uid) - (a.uid === inSlot?.uid) || RANK[tierOf(b)] - RANK[tierOf(a)] || b.level - a.level);
     if (!fits.some((o) => o.uid === this.focus)) this.focus = inSlot?.uid || fits[0]?.uid || null;
 
-    const tiles = fits.map((o) => {
+    const tile = (o) => {
       const p = getPart(o.id);
       const on = saveSystem.wornBy(o.uid);
-      const mark = o.uid === inSlot?.uid ? '<i class="rig-mark here">&#10003;</i>' : on === m.editing ? '<i class="rig-mark">&#9679;</i>' : on >= 0 ? `<i class="rig-mark other" title="On mech ${on + 1}">${on + 1}</i>` : '';
+      // Equipped: in this slot (bright), elsewhere on this mech, or on another garage mech
+      const where = o.uid === inSlot?.uid ? 'here' : on === m.editing ? 'mine' : on >= 0 ? 'other' : '';
+      const mark = where === 'here' ? '<i class="rig-badge here" title="Equipped here">&#10003; ON</i>'
+        : where === 'mine' ? '<i class="rig-badge mine" title="Equipped in another slot">&#10003;</i>'
+          : where === 'other' ? `<i class="rig-badge other" title="On mech ${on + 1}">M${on + 1}</i>` : '';
       const ready = o.level >= maxLevel(o) && transformInfo(o) ? '<i class="rig-mark up" title="Ready to transform">&#9650;</i>' : '';
-      return `<button class="rig-item ${o.uid === this.focus ? 'sel' : ''}" data-uid="${o.uid}" data-tip-uid="${o.uid}" style="--rar:${rarityColor(tierOf(o))}">
+      return `<button class="rig-item ${o.uid === this.focus ? 'sel' : ''} ${where ? `worn ${where}` : ''}" data-uid="${o.uid}" data-tip-uid="${o.uid}" style="--rar:${rarityColor(tierOf(o))}">
         <img src="${partIcon(p.id)}" alt=""><i class="rig-lv">${o.level}</i>${mark}${ready}
       </button>`;
-    }).join('');
+    };
     const what = slot.kind ? slot.name.toLowerCase() : TYPE_LABEL[slot.type].toLowerCase();
 
     side.innerHTML = `
-      <div class="rig-side-head"><b>${slot.name}</b><span>${fits.length}</span></div>
-      <div class="rig-inv">${tiles || `<p class="rig-empty">${ico('pod', '#41a6f6')} Open pods to find ${what}s</p>`}</div>
+      <div class="rig-side-head"><b>${slot.name}</b><span id="rig-pager"></span><em title="What the icons mean"><button class="rig-key-btn" data-act="key">?</button></em></div>
+      <div class="rig-inv" id="rig-inv"></div>
       <div class="rig-detail" id="rig-detail"></div>`;
+    this._renderDetail(m, bySlot, t, worn);
+
+    // No scrolling: as many tiles as fit the space left, arrows for the rest
+    const inv = document.getElementById('rig-inv');
+    const cols = Math.max(1, Math.floor((inv.clientWidth + 5) / 57));
+    const rows = Math.max(1, Math.floor((inv.clientHeight + 5) / 57));
+    const per = cols * rows;
+    const pages = Math.max(1, Math.ceil(fits.length / per));
+    if (this.invSlot !== this.slot) {
+      // A new slot opens on the page with the focused part
+      this.invSlot = this.slot;
+      this.invPage = Math.max(0, Math.floor(fits.findIndex((o) => o.uid === this.focus) / per));
+    }
+    this.invPage = Math.max(0, Math.min(pages - 1, this.invPage || 0));
+    inv.innerHTML = fits.slice(this.invPage * per, this.invPage * per + per).map(tile).join('')
+      || `<p class="rig-empty">${ico('pod', '#41a6f6')} Open pods to find ${what}s</p>`;
+    const pager = document.getElementById('rig-pager');
+    pager.innerHTML = pages > 1
+      ? `<button data-inv="-1" ${this.invPage ? '' : 'disabled'}>&#9664;</button>${this.invPage + 1}/${pages} · ${fits.length}<button data-inv="1" ${this.invPage < pages - 1 ? '' : 'disabled'}>&#9654;</button>`
+      : `${fits.length}`;
+    pager.querySelectorAll('[data-inv]').forEach((b) => b.addEventListener('click', () => {
+      soundEngine.playUI();
+      this.invPage += Number(b.dataset.inv);
+      this._renderSide(m, bySlot, t);
+    }));
+    side.querySelector('[data-act="key"]').addEventListener('click', () => {
+      soundEngine.playUI();
+      this._showIconKey();
+    });
 
     side.querySelectorAll('[data-uid]').forEach((b) => {
       b.addEventListener('click', () => {
@@ -199,7 +233,22 @@ export class RigScreen {
       });
     });
     this._renderStats(bySlot, t);
-    this._renderDetail(m, bySlot, t, worn);
+  }
+
+  /** What every stat icon means, over the Rig. */
+  _showIconKey() {
+    let box = document.getElementById('rig-key');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'rig-key';
+      box.className = 'rig-key';
+      this.body.appendChild(box);
+    }
+    box.innerHTML = `<div class="rig-key-panel"><div class="drops-title"><strong>ICONS</strong><span></span><button class="btn btn-outline" data-act="close">&#10005;</button></div>${iconKeyHtml()}</div>`;
+    box.querySelector('[data-act="close"]').addEventListener('click', () => {
+      soundEngine.playUI();
+      box.remove();
+    });
   }
 
   _renderDetail(m, bySlot, t, worn) {

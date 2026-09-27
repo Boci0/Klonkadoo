@@ -942,17 +942,25 @@ export class Renderer {
     if (ins.weapon === undefined) guns = [...guns, ...((isPlayer ? world.playerDrones : ball.drones) || []).map((d) => ({ ...d, drone: true }))];
     if (ins.weapon === undefined) guns = [...guns, ...((isPlayer ? world.playerSpecials : ball.specials) || []).map((sp) => ({ ...sp, specialRow: true }))];
 
-    // Sized for phones: the world is drawn at roughly 0.6x on a small screen
+    // Laid out at full size, then drawn at K: a compact card beside the mech
+    const K = 0.58;
     const head = 142; // name, small line, big stats
     // Rows shrink so a full mech (6 guns, drone, specials) still fits the screen
-    const rowH = Math.max(40, Math.min(72, Math.floor((W.height - head - 40) / Math.max(1, guns.length))));
+    const rowH = Math.max(40, Math.min(72, Math.floor((W.height / K - head - 60) / Math.max(1, guns.length))));
     const S = rowH >= 64 ? 5 : rowH >= 50 ? 4 : 3; // gun icon scale
     const big = Math.round(rowH * 0.42); // row font size
     const w = 600;
     const h = head + Math.max(1, guns.length) * rowH + 8;
-    const x = Math.round(Math.max(8, Math.min(W.width - w - 8, ball.x - w / 2)));
-    const above = ball.y - ball.radius - 30 - h;
-    const y = Math.round(above > 60 ? above : Math.min(W.height - h - 8, ball.y + ball.radius + 30));
+    const cw = w * K;
+    const ch = h * K;
+    const px = Math.round(Math.max(8, Math.min(W.width - cw - 8, ball.x - cw / 2)));
+    const above = ball.y - ball.radius - 20 - ch;
+    const py = Math.round(above > 40 ? above : Math.max(8, Math.min(W.height - ch - 8, ball.y + ball.radius + 20)));
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.scale(K, K);
+    const x = 0;
+    const y = 0;
     ctx.fillStyle = '#000';
     ctx.fillRect(x + 5, y + 5, w, h);
     ctx.fillStyle = 'rgba(26, 28, 44, 0.97)';
@@ -1092,6 +1100,7 @@ export class Renderer {
       ctx.globalAlpha = 1;
     });
     ctx.textBaseline = 'alphabetic';
+    ctx.restore();
   }
 
   /** The mech's torso (frame + armor, in its paint) standing on its legs. */

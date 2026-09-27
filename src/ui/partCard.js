@@ -97,6 +97,40 @@ export function statBarHtml(t, next = null) {
     </div>`;
 }
 
+// ---------- Icon key ----------
+
+/** Every stat symbol and what it means (the Almanac ICONS tab, the Rig's ? button). */
+export const ICON_KEY = [
+  ['range', 'RANGE', 'How far a gun reaches, in lane positions (1 = right next to you)'],
+  ['dmg', 'PHYSICAL', 'Physical damage per hit (the hit rolls between the two numbers)'],
+  ['heat', 'HEAT', 'Explosive damage, the heat a shot adds to you, or your heat cap'],
+  ['energy', 'ENERGY', 'Electric damage, the energy a shot costs, or your energy pool'],
+  ['regen', 'REGEN', 'Energy you get back each turn'],
+  ['cool', 'COOLING', 'Heat you lose each turn (VENT cools twice as much)'],
+  ['hp', 'HP', 'Health. Going over the weight cap costs some'],
+  ['def', 'RESIST', 'Cuts damage of its colour\'s type (white = all types)'],
+  ['load', 'WEIGHT', 'Kilograms. Every mech carries up to 1000'],
+  ['side', 'SIDE GUN', 'Fits the 4 side slots'],
+  ['top', 'TOP GUN', 'Heavy or lobbed: fits the 2 top slots'],
+  ['ammo', 'AMMO / USES', 'Shots or uses per battle; on guns "x3" = hits per shot'],
+  ['arc', 'LOBBED', 'Flies over cover'],
+  ['pierce', 'PIERCE', 'Ignores resists'],
+  ['backfire', 'BACKFIRE', 'HP each shot costs you'],
+  ['resdrain', 'STRIP', 'Takes away the target\'s resist for the rest of the fight'],
+  ['drain', 'DRAIN', 'Burns the target\'s energy; past zero it hits HP'],
+  ['push', 'KNOCKBACK', 'Pushes the target away (into the edge: it slams)'],
+  ['pull', 'PULL', 'Drags the target toward you'],
+  ['stomp', 'STOMP', 'Legs kick a mech right next to you and knock it back'],
+  ['move', 'MOVE', 'How far the legs walk / jump, or how far a charge dashes'],
+  ['heal', 'REPAIR', 'HP restored'],
+  ['star', 'CRIT', 'Chance for a 1.75x hit'],
+  ['lock', 'LOCKED', 'Anchored (can\'t move), or one per mech'],
+];
+
+export function iconKeyHtml() {
+  return `<div class="icon-key">${ICON_KEY.map(([icon, name, text]) => `<div class="icon-key-row">${ico(icon)}<b>${name}</b><span>${text}</span></div>`).join('')}</div>`;
+}
+
 // ---------- Hover tooltip ----------
 
 let tipEl = null;

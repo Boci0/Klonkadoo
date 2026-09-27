@@ -23,7 +23,7 @@ import { mechDataUrl } from '../rendering/mechSprite.js';
 import { MEDALS, medalProgress, checkMedals } from '../meta/Medals.js';
 import { masteryLevel, MILESTONES, MAX_MASTERY } from '../meta/Mastery.js';
 import { getPart, loadoutTotals, SLOTS, PARTS, rarityColor, rarityName, describePart, CLEAN_WIN_KEYS, DTYPES, DTYPE_KEYS, tierOf, partChips, partNote } from '../meta/Mech.js';
-import { partCardHtml, bindHoverTips, chipHtml, tierDots } from './partCard.js';
+import { partCardHtml, bindHoverTips, chipHtml, tierDots, hideTip, iconKeyHtml } from './partCard.js';
 import { getSupply } from '../rogue/Supplies.js';
 import { RigScreen } from './RigScreen.js';
 import { ico, partIcon } from '../rendering/pixelIcons.js';
@@ -800,37 +800,64 @@ export class UIManager {
    * Almanac: every part in the game, by type, with its level-1 stats and
    * what it does (the same lines the Rig screen shows). Parts you own are ticked.
    */
-  showAlmanac(type = 'weapon') {
+  showAlmanac(type = 'weapon', page = 0) {
     const owned = new Set(saveSystem.getMech().owned.map((o) => o.id));
-    const TABS = [['weapon', 'GUNS'], ['legs', 'LEGS'], ['frame', 'FRAMES'], ['drone', 'DRONES'], ['module', 'MODS'], ['special', 'SPECIALS']];
+    const TABS = [['weapon', 'GUNS'], ['legs', 'LEGS'], ['frame', 'FRAMES'], ['drone', 'DRONES'], ['module', 'MODS'], ['special', 'SPECIALS'], ['icons', '? ICONS']];
     const RANK = { common: 0, rare: 1, epic: 2, legendary: 3, mythic: 4 };
     const list = PARTS.filter((p) => p.type === type).sort((a, b) => RANK[a.rarity] - RANK[b.rarity] || a.name.localeCompare(b.name));
-    const cards = list.map((p) => {
+    // No scrolling: as many cards as fit the screen, the rest on the next page
+    const cols = window.innerWidth >= 1000 ? 3 : 2;
+    const rows = Math.max(1, Math.floor((window.innerHeight - 230) / 96));
+    const per = cols * rows;
+    const pages = Math.max(1, Math.ceil(list.length / per));
+    page = Math.max(0, Math.min(pages - 1, page));
+    const cards = list.slice(page * per, page * per + per).map((p) => {
       const has = owned.has(p.id);
       const lo = { id: p.id, level: 1 };
-      return `<div class="alm-card ${has ? 'owned' : ''}" style="--rar:${rarityColor(p.rarity)}">
-        <img src="${partIcon(p.id)}" alt="">
+      return `<div class="alm-card ${has ? 'owned' : ''}" style="--rar:${rarityColor(p.rarity)}" data-tip-part="${p.id}">
+        <img class="alm-icon" src="${partIcon(p.id)}" alt="">
         <div class="alm-body">
           <div class="alm-head"><b>${p.name}</b>${tierDots(lo)}<em>${has ? '&#10003;' : ''}</em></div>
-          <div class="rig-chips">${partChips(lo).map(chipHtml).join('')}</div>
-          ${partNote(p) ? `<p class="rig-note">${partNote(p)}</p>` : ''}
+          <div class="rig-chips">${partChips(lo).slice(0, 7).map(chipHtml).join('')}</div>
         </div>
       </div>`;
     }).join('');
     const tabs = TABS.map(([t, label]) => `<button class="btn ${t === type ? 'btn-accent' : 'btn-outline'} alm-tab" data-alm="${t}">${label}</button>`).join('');
     const found = PARTS.filter((p) => owned.has(p.id)).length;
-    this.openModal(`ALMANAC ${found}/${PARTS.length}`, `<div class="alm-tabs">${tabs}</div><p class="dim-text alm-note">Stats at level 1 of the lowest tier. Dots = the tiers a part can TRANSFORM through (max level, then melt spare parts of its tier).</p><div class="alm-list">${cards}</div>`,
-      '<div class="btn-row"><button class="btn btn-accent" data-act="close">CLOSE</button></div>', { wide: true });
+    const pager = pages > 1
+      ? `<button class="btn btn-outline" data-page="${page - 1}" ${page ? '' : 'disabled'}>&#9664;</button><b class="alm-page">${page + 1}/${pages}</b><button class="btn btn-outline" data-page="${page + 1}" ${page < pages - 1 ? '' : 'disabled'}>&#9654;</button>`
+      : '';
+    const body = type === 'icons' ? iconKeyHtml() : `<div class="alm-list" style="--cols:${cols}">${cards}</div>`;
+    this.openModal(`ALMANAC ${found}/${PARTS.length}`, `<div class="alm-tabs">${tabs}</div>${body}`,
+      `<div class="btn-row alm-actions">${pager}<button class="btn btn-accent" data-act="close">CLOSE</button></div>`, { wide: true });
+    this.nodeModal.querySelector('.modal-content')?.classList.add('modal-almanac');
     this.modalBody.querySelectorAll('[data-alm]').forEach((b) => b.addEventListener('click', () => {
       soundEngine.playUI();
       this.showAlmanac(b.dataset.alm);
     }));
-    this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => this.closeModal());
+    this.modalActions.querySelectorAll('[data-page]').forEach((b) => b.addEventListener('click', () => {
+      soundEngine.playUI();
+      this.showAlmanac(type, Number(b.dataset.page));
+    }));
+    // Hover a card for the full card (desc included); tap works on phones
+    if (!this._almTips) {
+      this._almTips = true;
+      bindHoverTips(this.modalBody, '.alm-card[data-tip-part]', (el) => partCardHtml({ id: el.dataset.tipPart, level: 1 }));
+    }
+    this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => {
+      this.nodeModal.querySelector('.modal-content')?.classList.remove('modal-almanac');
+      hideTip();
+      this.closeModal();
+    });
   }
 
-  showMedals() {
+  showMedals(page = 0) {
     const owned = MEDALS.filter((m) => saveSystem.hasMedal(m.id)).length;
-    const rows = MEDALS.map((m) => {
+    // No scrolling: a page of medals that fits, arrows for the rest
+    const per = Math.max(3, Math.floor((window.innerHeight - 190) / 58));
+    const pages = Math.max(1, Math.ceil(MEDALS.length / per));
+    page = Math.max(0, Math.min(pages - 1, page));
+    const rows = MEDALS.slice(page * per, page * per + per).map((m) => {
       const done = saveSystem.hasMedal(m.id);
       const [cur, max] = medalProgress(m, saveSystem);
       const pct = Math.round((Math.min(cur, max) / max) * 100);
@@ -840,11 +867,18 @@ export class UIManager {
           <strong>${m.name}</strong><span>${m.desc}</span>
           ${done ? '' : `<div class="medal-bar"><i style="width:${pct}%"></i></div>`}
         </div>
-        <em class="medal-tp">${done ? 'EARNED' : `${Math.min(cur, max)}/${max}`}<br>+${m.keys} KEYS</em>
+        <em class="medal-tp">${done ? 'EARNED' : `${Math.min(cur, max)}/${max}`}<br>+${m.keys} ${ico('key')}</em>
       </div>`;
     }).join('');
+    const pager = pages > 1
+      ? `<button class="btn btn-outline" data-page="${page - 1}" ${page ? '' : 'disabled'}>&#9664;</button><b class="alm-page">${page + 1}/${pages}</b><button class="btn btn-outline" data-page="${page + 1}" ${page < pages - 1 ? '' : 'disabled'}>&#9654;</button>`
+      : '';
     this.openModal(`MEDALS ${owned}/${MEDALS.length}`, `<div class="medal-list">${rows}</div>`,
-      `<div class="btn-row"><button class="btn btn-accent" data-act="close">CLOSE</button></div>`);
+      `<div class="btn-row alm-actions">${pager}<button class="btn btn-accent" data-act="close">CLOSE</button></div>`);
+    this.modalActions.querySelectorAll('[data-page]').forEach((b) => b.addEventListener('click', () => {
+      soundEngine.playUI();
+      this.showMedals(Number(b.dataset.page));
+    }));
     this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => this.closeModal());
   }
 
@@ -1007,6 +1041,7 @@ export class UIManager {
 
   openModal(title, bodyHTML, actionsHTML, { wide = false } = {}) {
     this.nodeModal.querySelector('.modal-content')?.classList.toggle('modal-wide', wide);
+    this.nodeModal.querySelector('.modal-content')?.classList.remove('modal-almanac');
     this.modalTitle.textContent = title;
     this.modalBody.innerHTML = bodyHTML;
     this.modalActions.innerHTML = actionsHTML;
@@ -1573,8 +1608,8 @@ export class UIManager {
   }
 
   showBattleHud(run, nodeType) {
-    // Bosses can't be fled; everything else can
-    document.getElementById('btn-retreat-battle')?.classList.toggle('hidden', nodeType === 'miniboss' || nodeType === 'boss');
+    // Every fight can be left; leaving a boss or mini-boss counts as a loss
+    document.getElementById('btn-retreat-battle')?.classList.remove('hidden');
     document.getElementById('battle-floor').textContent = run.floor >= CONFIG.map.floors ? `ABYSS ${run.floor - CONFIG.map.floors + 1}` : `FLOOR ${run.floor + 1}`;
     document.getElementById('battle-node').textContent =
       nodeType === 'boss' ? 'BOSS' : nodeType === 'miniboss' ? 'MINI-BOSS' : nodeType === 'elite' ? 'ELITE' : 'COMBAT';

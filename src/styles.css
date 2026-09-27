@@ -2087,8 +2087,6 @@ canvas {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 58vh;
-  overflow-y: auto;
 }
 
 .medal-row {
@@ -2750,7 +2748,7 @@ canvas {
 .rig-inv {
   flex: 1;
   min-height: 56px;
-  overflow-y: auto;
+  overflow: hidden; /* paged, never scrolled */
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
   grid-auto-rows: 52px;
@@ -3722,7 +3720,7 @@ canvas {
 .drops-title span { font-size: 12px; color: var(--p-silver); }
 .drops-title .btn { margin-left: auto; min-height: 28px; padding: 4px 10px calc(4px + var(--px)); font-size: 12px; }
 
-.drops-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.drops-list { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 6px; }
 
 .drops-row { display: flex; align-items: center; gap: 10px; }
 
@@ -4312,14 +4310,17 @@ canvas {
 
 .alm-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr));
+  gap: 6px;
 }
 
 .alm-card {
   display: flex;
+  align-items: center;
   gap: 10px;
-  padding: 8px;
+  height: 90px;
+  padding: 6px 8px;
+  overflow: hidden;
   background: var(--bg-card);
   border: var(--px) solid var(--p-steel);
   border-left-color: var(--rar);
@@ -4330,13 +4331,18 @@ canvas {
   opacity: 1;
 }
 
-.alm-card img {
-  width: 44px;
+/* The part is the biggest thing on the card; stat icons stay text-sized */
+.alm-card > .alm-icon {
+  width: 56px;
   height: auto;
   flex: none;
-  align-self: flex-start;
   image-rendering: pixelated;
 }
+
+.alm-card .rig-chips { font-size: 12px; gap: 2px 8px; }
+.modal-content.modal-almanac { width: min(1100px, 100%); }
+.alm-actions { align-items: center; }
+.alm-page { min-width: 48px; text-align: center; font-size: 13px; }
 
 .alm-body {
   min-width: 0;
@@ -4554,3 +4560,109 @@ canvas {
 /* AUTO RUN on the map bar (always visible) */
 .btn-auto-run { flex-shrink: 0; white-space: nowrap; }
 .btn-auto-run:disabled { opacity: 0.5; cursor: default; }
+
+/* Equipped parts in the Rig list: a bright frame and a badge you can't miss */
+.rig-item.worn.here { border-color: var(--p-lime); background: #1f3a2c; box-shadow: inset 0 0 0 2px var(--p-green); }
+.rig-item.worn.mine { border-color: var(--p-green); background: #22332c; }
+.rig-item.worn.other { opacity: 0.7; }
+.rig-item.sel.worn.here { border-color: var(--p-yellow); }
+.rig-badge {
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  padding: 1px 3px;
+  font-style: normal;
+  font-family: var(--font-display);
+  font-size: 7px;
+  line-height: 1.3;
+  color: var(--p-ink);
+  background: var(--p-lime);
+}
+.rig-badge.mine { background: var(--p-green); color: var(--p-white); }
+.rig-badge.other { background: var(--p-yellow); }
+
+/* Icon key: every stat symbol, three columns, no scrolling */
+.icon-key {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 4px 14px;
+  font-size: 12px;
+}
+.icon-key-row { display: grid; grid-template-columns: 22px 92px 1fr; align-items: center; gap: 6px; }
+.icon-key-row .pxi { height: 18px; margin: 0; }
+.icon-key-row b { font-family: var(--font-display); font-size: 8px; color: var(--p-yellow); font-weight: normal; }
+.icon-key-row span { color: var(--p-silver); line-height: 1.25; }
+
+/* AUTO sits with the other turn buttons; lit while it plays for you */
+.ability-auto { --ab: var(--p-yellow); }
+.ability-auto.on { opacity: 1; color: var(--p-ink); background: var(--ab); box-shadow: var(--bevel), inset 0 calc(var(--px) * -2) 0 rgba(0, 0, 0, 0.3); }
+.ability-auto.on .ability-cd { color: var(--p-ink) !important; }
+.gun-dmg .pxi { height: 10px; margin-right: 1px; }
+
+/* Rig list pager and the icon key button */
+.rig-side-head #rig-pager { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--p-silver); }
+.rig-side-head #rig-pager button, .rig-key-btn {
+  min-width: 26px;
+  height: 24px;
+  padding: 0 6px;
+  font-family: var(--font-display);
+  font-size: 9px;
+  color: var(--p-white);
+  background: var(--bg-card);
+  border: 2px solid var(--p-steel);
+  cursor: pointer;
+}
+.rig-side-head #rig-pager button:disabled { opacity: 0.35; cursor: default; }
+.rig-side-head em { font-style: normal; margin-left: 8px; }
+.rig-key-btn { color: var(--p-yellow); border-color: var(--p-yellow); }
+.rig-key {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: rgba(8, 9, 16, 0.9);
+}
+.rig-key-panel {
+  width: min(1000px, 100%);
+  padding: 12px;
+  background: var(--bg-panel);
+  border: var(--px) solid var(--p-steel);
+  box-shadow: var(--bevel);
+}
+.rig-key-panel .drops-title { margin-bottom: 8px; }
+/* Many chips: they shrink before they can reach the turn buttons */
+.battle-hud.gear .mech-hud { max-width: calc(100vw - 196px - 330px - var(--safe-left) - var(--safe-right)); }
+.battle-hud.gear .mech-hud > .mech-chip { flex: 0 1 66px; min-width: 44px; }
+
+.alm-actions .btn[data-page] { flex: 0 0 56px; }
+
+/* Short screens: smaller drop tiles so the whole pod list fits without scrolling */
+@media (max-height: 560px) {
+  .drops-item { width: 24px; height: 24px; }
+  .drops-item img { width: 18px; }
+  .drops-list { gap: 2px; }
+  .drops-items { gap: 2px !important; }
+  .icon-key { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px 10px; font-size: 10px; }
+  .icon-key-row { grid-template-columns: 16px 1fr; gap: 4px; }
+  .icon-key-row b { display: none; }
+  .icon-key-row .pxi { height: 13px; }
+  .drops-info .rig-note, .drops-info .rig-range { display: none; }
+}
+
+/* Short screens: slimmer bay tiles so the mech stays visible */
+@media (max-height: 560px) {
+  .rig-col .rig-slot { max-height: 46px; padding: 2px; }
+  .rig-col .rig-slot img { width: 28px; }
+  .rig-slot-name { font-size: 8px; }
+  .rig-stage .rig-core-slots { bottom: 3px; }
+  .rig-stage .rig-slot { height: 24px; padding: 0 6px 0 3px; }
+  .rig-stage .rig-slot img { width: 20px; }
+  .rig-stage .rig-slot .rig-slot-name { display: none; }
+  .rig-strip .rig-slot { height: 32px; max-height: 32px; }
+  .rig-strip .rig-slot img { width: 22px; }
+  .rig-strip.mods .rig-slot { height: 28px; max-height: 28px; }
+  .rig-strip.mods .rig-slot img { width: 20px; }
+}
