@@ -146,7 +146,7 @@ export const PARTS = [
   { id: 'wp_rocket', type: 'weapon', mount: 'top', name: 'ROCKET LAUNCHER', rarity: 'rare', dtype: 'phys', weight: 90, reach: [3, 7], dmg: 19, en: 8, heat: 13, ammo: 2, arc: true, fx: { splash: 1 }, color: '#ffcd75', desc: 'Lobbed. 2 rockets per battle.' },
   { id: 'wp_concussion', type: 'weapon', mount: 'top', name: 'CONCUSSION MORTAR', rarity: 'rare', dtype: 'phys', weight: 90, reach: [4, 8], dmg: 9, en: 8, heat: 12, arc: true, fx: { push: 2 }, color: '#94b0c2', desc: 'A lobbed blast that knocks the target back 2 (into the edge: it slams).' },
   { id: 'wp_napalm', type: 'weapon', mount: 'top', name: 'NAPALM LAUNCHER', rarity: 'rare', dtype: 'heat', weight: 80, reach: [3, 6], dmg: 8, en: 5, heat: 22, arc: true, fx: { heat: 12, napalm: 2 }, color: '#ff5d73', desc: "+12 heat, and sets the target's plate on fire for 2 turns: +8 heat to whoever stands or lands there." },
-  { id: 'wp_harpoon', type: 'weapon', mount: 'top', name: 'HARPOON CANNON', rarity: 'rare', dtype: 'phys', weight: 85, reach: [4, 8], dmg: 13, en: 8, heat: 12, fx: { pull: 3 }, color: '#94b0c2', icon: 'wp_grapple', desc: 'Reels the target 3 positions toward you: sets up stomps, rams and short guns.' },
+  { id: 'wp_harpoon', type: 'weapon', mount: 'top', name: 'HARPOON CANNON', rarity: 'rare', dtype: 'phys', weight: 85, reach: [4, 8], dmg: 13, en: 8, heat: 12, fx: { pull: 3 }, color: '#94b0c2', icon: 'wp_grapple', desc: 'Reels the target 3 positions toward you: sets up stomps, rams, short guns and mines in its way.' },
   { id: 'wp_arcmortar', type: 'weapon', mount: 'top', name: 'ARC MORTAR', rarity: 'epic', dtype: 'energy', weight: 95, reach: [3, 7], dmg: 11, en: 20, heat: 6, arc: true, fx: { drain: 10 }, color: '#73eff7', icon: 'wp_mortar', desc: 'A lobbed EMP shell: flies over cover and drains 10 energy.' },
   { id: 'wp_missiles', type: 'weapon', mount: 'top', name: 'MISSILE POD', rarity: 'epic', dtype: 'phys', weight: 110, reach: [3, 6], dmg: 16, en: 6, heat: 9, ammo: 3, arc: true, color: '#ff5d73', desc: 'A mid-range salvo. 3 salvos.' },
   { id: 'wp_rail', type: 'weapon', mount: 'top', name: 'RAIL LANCE', rarity: 'epic', dtype: 'energy', weight: 115, reach: [5, 8], dmg: 20, en: 28, heat: 7, backfire: 3, fx: { pierce: true }, color: '#41a6f6', desc: 'Ignores resists.' },
@@ -163,9 +163,9 @@ export const PARTS = [
   { id: 'sp_ram', type: 'special', name: 'RAM BOOSTER', rarity: 'epic', weight: 48, special: 'charge', dist: 5, ram: 18, uses: 2, en: 8, heat: 14, color: '#ef7d57', desc: 'Dash up to 5 toward the enemy and ram it hard: Physical damage and a knockback.' },
   { id: 'sp_teleport', type: 'special', name: 'TELEPORTER', rarity: 'epic', weight: 40, special: 'teleport', uses: 1, en: 14, heat: 4, color: '#c46fd6', desc: 'Blink to any free position.' },
   { id: 'sp_blink', type: 'special', name: 'BLINK DRIVE', rarity: 'legendary', weight: 48, special: 'teleport', uses: 2, en: 16, heat: 4, color: '#73eff7', icon: 'sp_teleport', desc: 'Blink to any free position. 2 uses.' },
-  { id: 'sp_hook', type: 'special', name: 'GRAPPLING HOOK', rarity: 'rare', weight: 32, special: 'hook', range: 6, uses: 2, en: 8, heat: 6, color: '#94b0c2', desc: 'Yanks the enemy right next to you from up to 6 away. No damage.' },
-  { id: 'sp_tether', type: 'special', name: 'MAG TETHER', rarity: 'epic', weight: 40, special: 'hook', range: 7, drain: 12, uses: 2, en: 12, heat: 6, color: '#73eff7', icon: 'sp_hook', desc: 'Yanks the enemy right next to you from up to 7 away and drains 12 of its energy.' },
-  { id: 'sp_winch', type: 'special', name: 'HARPOON WINCH', rarity: 'epic', weight: 40, special: 'hook', range: 8, uses: 2, en: 10, heat: 8, color: '#ffcd75', icon: 'sp_hook', desc: 'Yanks the enemy right next to you from up to 8 away. No damage.' },
+  { id: 'sp_hook', type: 'special', name: 'GRAPPLING HOOK', rarity: 'rare', weight: 32, special: 'hook', range: 6, uses: 2, en: 8, heat: 6, color: '#94b0c2', desc: 'Yanks the enemy right next to you from up to 6 away (a mine in the way stops it there, and goes off). No damage.' },
+  { id: 'sp_tether', type: 'special', name: 'MAG TETHER', rarity: 'epic', weight: 40, special: 'hook', range: 7, drain: 12, uses: 2, en: 12, heat: 6, color: '#73eff7', icon: 'sp_hook', desc: 'Yanks the enemy right next to you from up to 7 away and drains 12 of its energy (a mine in the way stops it there, and goes off).' },
+  { id: 'sp_winch', type: 'special', name: 'HARPOON WINCH', rarity: 'epic', weight: 40, special: 'hook', range: 8, uses: 2, en: 10, heat: 8, color: '#ffcd75', icon: 'sp_hook', desc: 'Yanks the enemy right next to you from up to 8 away (a mine in the way stops it there, and goes off). No damage.' },
 
   // Drones: act every turn, any range, once deployed
   { id: 'dr_gnat', type: 'drone', name: 'GNAT DRONE', rarity: 'common', dtype: 'phys', weight: 30, upkeep: { en: 3, heat: 1 }, dmg: 4, color: '#94b0c2' },
@@ -597,7 +597,13 @@ export function tokenReward(nodeType) {
 export function riskEase(level = 0) {
   const E = CONFIG.risk.ease;
   const t = Math.max(0, Math.min(1, level / E.fullAt));
-  return { hp: E.hp + (1 - E.hp) * t, atk: E.atk + (1 - E.atk) * t, ai: E.ai * (1 - t) };
+  const ai = E.ai * (1 - t);
+  // A tuned per-level curve (enemy HP and damage) wins over the straight line
+  if (E.curve) {
+    const k = E.curve[Math.max(0, Math.min(E.curve.length - 1, level))];
+    return { hp: k, atk: k, ai };
+  }
+  return { hp: E.hp + (1 - E.hp) * t, atk: E.atk + (1 - E.atk) * t, ai };
 }
 
 // ---------- Enemy mechs ----------
@@ -660,9 +666,10 @@ export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMu
   // total stays close while the enemy covers more ranges
   const spread = final || boss ? 0.5 : { combat: 0.5, elite: 0.48, miniboss: 0.52, boss: 0.5 }[tier];
   const scale = G.dmgScale * G.enemyDmgScale * spread * (1 + 0.1 * (f - 1));
+  const frac = (v) => Math.round(v * 100) / 100; // enemy numbers stay fractional: Risk and floor % always count
   const weapons = gunIds.map((id) => {
     const base = getPart(id);
-    return { ...base, dmg: Math.max(2, Math.round(base.dmg * scale * atkMult)), backfire: base.backfire ? Math.round(base.backfire * scale) : 0, level: 1 };
+    return { ...base, dmg: frac(base.dmg * scale * atkMult), backfire: base.backfire ? frac(base.backfire * scale) : 0, level: 1 };
   }).sort((a, b) => (a.mount === 'top') - (b.mount === 'top'));
 
   const legsId = pick(L.legs);
@@ -676,7 +683,7 @@ export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMu
   }));
   // Drone: elites from floor 3, mini-bosses and bosses; it hits like their guns
   const dr = tier !== 'combat' && (tier !== 'elite' || f >= 3) && L.drone ? getPart(L.drone) : null;
-  const drones = dr ? [{ ...dr, level: 1, dmg: dr.dmg ? Math.max(1, Math.round(dr.dmg * scale * atkMult)) : 0, heal: dr.heal ? Math.round(dr.heal * k) : 0 }] : [];
+  const drones = dr ? [{ ...dr, level: 1, dmg: dr.dmg ? frac(dr.dmg * scale * atkMult) : 0, heal: dr.heal ? Math.round(dr.heal * k) : 0 }] : [];
   return {
     weapons,
     drones,
@@ -687,7 +694,7 @@ export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMu
     // Specials: elites and up; ram hits like their guns
     specials: (tier === 'combat' ? [] : L.specials || []).map((id) => {
       const sp = getPart(id);
-      return { ...sp, level: 1, ram: sp.ram ? Math.round(sp.ram * scale * atkMult) : 0 };
+      return { ...sp, level: 1, ram: sp.ram ? frac(sp.ram * scale * atkMult) : 0 };
     }),
   };
 }

@@ -160,7 +160,8 @@ export class Game {
       ...(config.team || []).map((t, i) => this._memberFrom(t, i + 1)),
     ];
     this.teamIndex = -1;
-    this._loadMember(0);
+    // Knocked-out mechs sit the fight out: the first one standing starts
+    this._loadMember(Math.max(0, this.team.findIndex((m) => m.hp > 0)));
 
     // One enemy on the lane, the rest in reserve
     const defs = (config.enemies || []).map((e) => ({ ...e }));
@@ -236,7 +237,7 @@ export class Game {
     b.legs = laneLegs(e.legs);
     const floor = Math.max(1, Math.min(5, this.battleConfig.floor || 1));
     // (a bit softer than yours: the planner stomps every time it's next to you)
-    b.stompDmg = Math.round((b.legs.stomp || 0) * G.dmgScale * G.enemyDmgScale * 0.75 * (1 + 0.1 * (floor - 1)));
+    b.stompDmg = (b.legs.stomp || 0) * G.dmgScale * G.enemyDmgScale * 0.75 * (1 + 0.1 * (floor - 1));
     b.res = { ...(e.res || {}) };
     b.parts = e.parts || null;
     this._initRig(b, e.rig || G.enemyRig[['elite', 'miniboss', 'boss'].includes(this.battleConfig.nodeType) ? this.battleConfig.nodeType : 'combat']);
@@ -336,7 +337,7 @@ export class Game {
   /** HP of every team mech (by team index) for the run to keep. */
   teamHp() {
     this._saveMember();
-    return this.team.map((m) => Math.max(0, Math.round(m.hp)));
+    return this.team.map((m) => (m.hp > 0 ? Math.ceil(m.hp) : 0)); // a sliver of HP still counts as standing
   }
 
   /** A team mech drops onto the active one's position (after a SWAP or a knock-out). */

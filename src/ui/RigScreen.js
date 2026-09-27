@@ -521,8 +521,15 @@ export class RigScreen {
     }).join('');
     this.body.innerHTML = `
       <div class="rig-pods">${pods}</div>
-      <p class="rig-foot">${ico('key')} Win fights to earn keys · ${saveSystem.getMech().owned.length}/${INVENTORY_CAP} parts · ${PARTS.length} to find</p>
+      <div class="rig-foot-row">
+        <p class="rig-foot">${ico('key')} Win fights to earn keys · ${saveSystem.getMech().owned.length}/${INVENTORY_CAP} parts · ${PARTS.length} to find</p>
+        <button class="btn btn-outline rig-salvage-btn" data-act="bulk-salvage" title="Turn spare parts into scrap, by tier">${ico('scrap')}SALVAGE SPARES${saveSystem.getSalvagePrefs().auto ? ' <em>AUTO</em>' : ''}</button>
+      </div>
       <div class="rig-reveal hidden" id="rig-reveal"></div>`;
+    this.body.querySelector('[data-act="bulk-salvage"]')?.addEventListener('click', () => {
+      soundEngine.playUI();
+      this._showSalvage();
+    });
     this.body.querySelectorAll('[data-pod]').forEach((b) => b.addEventListener('click', () => this._openPod(b.dataset.pod)));
     this.body.querySelectorAll('[data-pack]').forEach((b) => b.addEventListener('click', () => this._openPod(b.dataset.pack, { pack: true })));
     this.body.querySelectorAll('[data-drops]').forEach((b) => b.addEventListener('click', () => {
@@ -532,6 +539,75 @@ export class RigScreen {
   }
 
   /** Every part a pod can give, by rarity, with the chance per rarity and per item. */
+  /**
+   * SALVAGE SPARES: pick the tiers, see exactly what goes and the scrap it
+   * pays, then confirm. Equipped parts are never touched; by default your
+   * best copy of every part and anything upgraded are kept too. AUTO applies
+   * the same tiers to new pod drops you already own as good or better.
+   */
+  _showSalvage() {
+    const box = document.getElementById('rig-reveal');
+    if (!box) return;
+    const draw = () => {
+      const prefs = saveSystem.getSalvagePrefs();
+      const list = saveSystem.salvageCandidates(prefs);
+      const total = list.reduce((s, o) => s + salvageValue(o), 0);
+      const tierBtns = Object.keys(RANK).map((r) => {
+        const on = prefs.tiers.includes(r);
+        const n = saveSystem.salvageCandidates({ ...prefs, tiers: [r] }).length;
+        return `<button class="salv-tier ${on ? 'on' : ''}" data-tier="${r}" style="--rar:${rarityColor(r)}" title="${on ? 'Salvaging' : 'Keeping'} ${rarityName(r).toLowerCase()} spares">${rarityName(r)}<i>${n}</i></button>`;
+      }).join('');
+      const opt = (key, label, tip) => `<button class="salv-opt ${prefs[key] ? 'on' : ''}" data-opt="${key}" title="${tip}"><b>${prefs[key] ? '&#10003;' : ''}</b>${label}</button>`;
+      // No scrolling: as many icons as fit, then a count
+      const SHOW = 28;
+      const icons = list.slice(0, SHOW).map((o) => `<span class="salv-item" data-tip-uid="${o.uid}" style="--rar:${rarityColor(tierOf(o))}"><img src="${partIcon(o.id)}" alt=""><i>${o.level}</i></span>`).join('');
+      box.style.removeProperty('--rar');
+      box.classList.remove('mythic');
+      box.innerHTML = `<div class="drops-panel salv-panel" style="--pod:#94b0c2">
+          <div class="drops-title"><strong>${ico('scrap')}SALVAGE SPARES</strong><span>Equipped parts are never salvaged</span><button class="btn btn-outline" data-act="close">&#10005;</button></div>
+          <div class="salv-tiers">${tierBtns}</div>
+          <div class="salv-opts">
+            ${opt('keepBest', 'KEEP MY BEST COPY OF EACH PART', 'Your highest tier (then level) copy of every part stays')}
+            ${opt('keepLeveled', 'KEEP UPGRADED PARTS', 'Parts above LV 1 stay: you spent scrap on them')}
+            ${opt('auto', 'AUTO: SALVAGE NEW POD DUPLICATES', 'New pod drops in the chosen tiers that you already own as good or better turn straight into scrap')}
+          </div>
+          <div class="salv-list">${icons || '<p class="dim-text">Nothing to salvage with these settings.</p>'}${list.length > SHOW ? `<span class="salv-more">+${list.length - SHOW}</span>` : ''}</div>
+          <div class="rig-actions">
+            <button class="btn ${list.length ? 'btn-danger' : 'btn-disabled'}" data-act="go" ${list.length ? '' : 'disabled'}>SALVAGE ${list.length} ${ico('scrap')}+${total}</button>
+          </div>
+        </div>`;
+      box.querySelector('[data-act="close"]').addEventListener('click', () => {
+        soundEngine.playUI();
+        box.classList.add('hidden');
+        this.render();
+      });
+      box.querySelectorAll('[data-tier]').forEach((b) => b.addEventListener('click', () => {
+        const t = b.dataset.tier;
+        const tiers = prefs.tiers.includes(t) ? prefs.tiers.filter((x) => x !== t) : [...prefs.tiers, t];
+        saveSystem.setSalvagePrefs({ tiers });
+        soundEngine.playUI();
+        draw();
+      }));
+      box.querySelectorAll('[data-opt]').forEach((b) => b.addEventListener('click', () => {
+        saveSystem.setSalvagePrefs({ [b.dataset.opt]: !prefs[b.dataset.opt] });
+        soundEngine.playUI();
+        draw();
+      }));
+      box.querySelector('[data-act="go"]')?.addEventListener('click', () => {
+        const got = saveSystem.salvageMany(list.map((o) => o.uid));
+        hideTip();
+        soundEngine.play('confirm');
+        haptics.impact('medium');
+        this._renderWallet();
+        draw();
+        const btn = box.querySelector('[data-act="go"]');
+        if (btn) btn.innerHTML = `${ico('scrap')}+${got} SCRAP`;
+      });
+    };
+    draw();
+    box.classList.remove('hidden');
+  }
+
   _showDrops(podId) {
     const crate = CRATES.find((c) => c.id === podId);
     const box = document.getElementById('rig-reveal');
@@ -594,6 +670,7 @@ export class RigScreen {
               <b>${rarityName(tier)}</b>
               <strong>${p.name}</strong>
               <i class="pcard-type">${TYPE_LABEL[p.type]}</i>
+              ${o.autoSalvaged ? `<i class="pcard-scrap" title="Auto-salvaged: you already own one as good or better">${ico('scrap')}+${o.autoSalvaged} SCRAP</i>` : ''}
             </span>
           </button>`;
         }).join('')}
@@ -642,7 +719,8 @@ export class RigScreen {
     box.querySelector('[data-act="fit"]').addEventListener('click', () => {
       soundEngine.playUI();
       // The best card: prefer an empty slot it fits
-      const owned = [...got].sort((a, b) => RANK[tierOf(b)] - RANK[tierOf(a)])[0];
+      const owned = [...got].filter((o) => !o.autoSalvaged).sort((a, b) => RANK[tierOf(b)] - RANK[tierOf(a)])[0];
+      if (!owned) return this.render(); // everything turned into scrap
       const p = getPart(owned.id);
       const m = saveSystem.getMech();
       const slots = SLOTS.filter((s) => slotAccepts(s, p));

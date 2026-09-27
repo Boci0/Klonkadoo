@@ -1,7 +1,7 @@
 // ============================================================
 // balance-sim — headless runs for balance checks (no browser, no renderer).
 //
-//   node tools/balance-sim.mjs [runs=400] [--skill=0.3] [--risk=0] [--gear=starter|mid]
+//   node tools/balance-sim.mjs [runs=400] [--skill=0.3] [--risk=0] [--gear=starter|mid] [--team=1-3] [--gearLvl=max] [--tierUp=N]
 //
 // Both sides are played by the game's own planner (ai/LaneAI.js) with its own
 // action rules; enemies are built by Mech.enemyMech with main.js's HP formula.
@@ -14,7 +14,7 @@
 
 import { CONFIG } from '../src/config.js';
 import { planTurn, applyAction } from '../src/ai/LaneAI.js';
-import { enemyMech, enemyRig, withMech, getPart, legsRules, riskEase } from '../src/meta/Mech.js';
+import { enemyMech, enemyRig, withMech, getPart, legsRules, riskEase, tierRange, maxLevel, RARITY_ORDER } from '../src/meta/Mech.js';
 import { withMastery } from '../src/meta/Mastery.js';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => (a.startsWith('--') ? a.slice(2).split('=') : ['runs', a])));
@@ -25,6 +25,12 @@ const MASTERY = Number(args.mastery || 1);
 const G = CONFIG.gear;
 // Try other easing without editing config: --easeHp=0.55 --easeAtk=0.55 --easeAi=-0.15
 for (const k of ['Hp', 'Atk', 'Ai']) if (args[`ease${k}`] != null) CONFIG.risk.ease[k.toLowerCase()] = Number(args[`ease${k}`]);
+// ...and enemy HP / damage overall: --enemyHp=0.8 --enemyDmg=0.5
+if (args.enemyHp != null) G.enemyHpScale = Number(args.enemyHp);
+if (args.easeFull != null) CONFIG.risk.ease.fullAt = Number(args.easeFull);
+// --curve=0.5,0.7,... : enemy HP/damage multiplier per Risk level (CONFIG.risk.ease.curve)
+if (args.curve) CONFIG.risk.ease.curve = args.curve.split(',').map(Number);
+if (args.enemyDmg != null) G.enemyDmgScale = Number(args.enemyDmg);
 const SIZE = CONFIG.lane?.size || 12;
 
 // ---------- Loadouts ----------
@@ -64,7 +70,7 @@ function playerUnit(perm, hp, maxHp) {
     team: 'player', pos: 3, hp, maxHp,
     heat: 0, heatCap: m.rig.heatCap, cool: m.rig.cool, energy: m.rig.energy, energyMax: m.rig.energy, regen: m.rig.regen,
     actions: G.actions, maxActions: G.actions, legs,
-    def: perm.defBonus || 0, res: { phys: 0, heat: 0, energy: 0, ...(perm.res || {}) },
+    def: (perm.defBonus || 0) * (1 - riskData().defPierce), res: Object.fromEntries(Object.entries({ phys: 0, heat: 0, energy: 0, ...(perm.res || {}) }).map(([k, v]) => [k, v * (1 - riskData().defPierce)])),
     stompDmg: (legs.stomp || 0) * G.dmgScale * atk,
     shield: !!m.startForcefield, specials: m.specials.map((sp) => ({ kind: sp.special, uses: sp.uses, en: sp.en || 0, heat: sp.heat || 0, range: sp.range || 0, dist: sp.dist || 0, ram: (sp.ram || 0) * G.dmgScale * atk, away: !!sp.away, drain: sp.drain || 0 })),
     guns: m.weapons.map((w) => gunOf(w, w.dmg * G.dmgScale * atk * 1.0375)), // +5% crit x1.75
@@ -108,8 +114,8 @@ function enemyTeam(type, floor, rnd) {
     const arch = CONFIG.enemyArchetypes[archetype];
     const boss = type === 'boss' && i === 0;
     const mech = enemyMech(type, archetype, floor, rnd, { atkMult, boss });
-    const rig = enemyRig(type);
-    const maxHp = Math.round(tier.hp * arch.hpMult * hpMult * floorHp * waveHp * (type === 'boss' && i > 0 ? 0.55 : 1));
+    const rig = enemyRig(type, { cdCut: risk.gunCdCut || 0 });
+    const maxHp = Math.round(tier.hp * G.enemyHpScale * arch.hpMult * hpMult * floorHp * waveHp * (type === 'boss' && i > 0 ? 0.55 : 1));
     out.push({
       team: 'enemy', pos: 9, hp: maxHp, maxHp, heat: 0, heatCap: rig.heatCap, cool: rig.cool, energy: rig.energy, energyMax: rig.energy, regen: rig.regen,
       actions: G.actions, maxActions: G.actions, legs: mech.legs,
@@ -127,9 +133,21 @@ function enemyTeam(type, floor, rnd) {
 }
 
 function riskData() {
-  const t = { hpPct: 0, atkPct: 0, eliteHpPct: 0, eliteAtkPct: 0, minusHeal: 0, plusDmgTaken: 0, aiBonus: 0 };
-  for (const r of CONFIG.risk.levels.slice(0, RISK)) for (const k of Object.keys(t)) t[k] += r[k] || 0;
+  const t = { hpPct: 0, atkPct: 0, eliteHpPct: 0, eliteAtkPct: 0, minusHeal: 0, plusDmgTaken: 0, aiBonus: 0, defPierce: 0, gunCdCut: 0, allElite: false };
+  // Risk 11 = the secret OBLIVION on top of all ten
+  const rules = [...CONFIG.risk.levels.slice(0, RISK), ...(RISK > CONFIG.risk.levels.length ? [CONFIG.risk.secret] : [])];
+  for (const r of rules) for (const k of Object.keys(t)) t[k] = typeof t[k] === 'boolean' ? t[k] || !!r[k] : t[k] + (r[k] || 0);
   return t;
+}
+
+/** An owned part: --gearLvl=max levels it to its tier cap, --tierUp=N transforms it N tiers (as far as it goes). */
+function ownedPart(id) {
+  const base = getPart(id);
+  const top = RARITY_ORDER.indexOf(tierRange(base)[1]);
+  const tier = RARITY_ORDER[Math.min(top, RARITY_ORDER.indexOf(base.rarity) + Number(args.tierUp || 0))];
+  const o = { id, level: 1, tier };
+  if (args.gearLvl === 'max') o.level = maxLevel(o);
+  return o;
 }
 
 // ---------- One battle ----------
@@ -189,11 +207,19 @@ function fixPlayerHit(p, before) {
   return before;
 }
 
-/** One fight against an enemy team. Returns { won, hpLeft, turns }. */
-function battle(perm, hp, maxHp, type, floor, rnd, rules) {
-  const p = playerUnit(perm, hp, maxHp);
+/**
+ * One fight against an enemy team with your team ([{ perm, hp, maxHp }]; HP is
+ * written back). When a mech is knocked out, the next one drops in on the same
+ * spot; knocked-out mechs stay down until a Safe Zone (main.js).
+ * Returns { won, turns }.
+ */
+function battle(team, type, floor, rnd, rules) {
   const heal = rules.healMult;
   const foes = enemyTeam(type, floor, rnd);
+  let idx = team.findIndex((m) => m.hp > 0);
+  if (idx < 0) return { won: false, turns: 0 };
+  let p = playerUnit(team[idx].perm, team[idx].hp, team[idx].maxHp);
+  const writeBack = () => (team[idx].hp = Math.max(0, p.hp));
   let turns = 0;
   for (const e of foes) {
     const mines = [];
@@ -202,11 +228,9 @@ function battle(perm, hp, maxHp, type, floor, rnd, rules) {
     let pt = 0;
     let et = 0;
     let first = true;
-    while (p.hp > 0 && e.hp > 0 && turns < 60) {
+    while (e.hp > 0 && turns < 60) {
       turns += 1;
-      if (first ? true : upkeep(p)) {
-        playTurn(p, e, mines, SKILL, rnd);
-      }
+      if (first || upkeep(p)) playTurn(p, e, mines, SKILL, rnd);
       first = false;
       pt += 1;
       drones(p, e, pt, heal);
@@ -214,14 +238,36 @@ function battle(perm, hp, maxHp, type, floor, rnd, rules) {
       if (upkeep(e)) playTurn(e, p, mines, e.difficulty, rnd);
       et += 1;
       drones(e, p, et, 1);
-      // Risk GLASS ARMOR etc.
+      if (p.hp <= 0) {
+        // Knocked out: the next team mech drops in on the same spot
+        writeBack();
+        const next = team.findIndex((m) => m.hp > 0);
+        if (next < 0) return { won: false, turns };
+        const pos = p.pos;
+        idx = next;
+        p = playerUnit(team[idx].perm, team[idx].hp, team[idx].maxHp);
+        p.pos = pos;
+        first = true;
+        pt = 0;
+      }
     }
-    if (p.hp <= 0) return { won: false, hpLeft: 0, turns };
-    if (e.hp > 0) return { won: false, hpLeft: 0, turns, timeout: true };
+    if (e.hp > 0) {
+      writeBack();
+      return { won: false, turns, timeout: true };
+    }
     if (p.killHeal) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * p.killHeal * heal);
-    // The next mech drops in: your reactor carries over
   }
-  return { won: true, hpLeft: p.hp, turns };
+  writeBack();
+  // Knocked-out mechs stay down until a Safe Zone (--limp=1: the old rule, they limp on at 1 HP)
+  if (args.limp) for (const m of team) m.hp = Math.max(1, m.hp);
+  return { won: true, turns };
+}
+
+/** Your team for a run: --team=N copies of the loadout (garage mechs 2 and 3), each with its own HP. */
+function makeTeam(parts) {
+  const perm = withMastery(withMech({}, parts.map(ownedPart)), MASTERY);
+  const maxHp = Math.round((CONFIG.run.maxHpBase + (perm.hpBonus || 0)) / (1 + riskData().plusDmgTaken / 100)); // GLASS ARMOR as less HP
+  return Array.from({ length: Math.max(1, Math.min(3, Number(args.team || 1))) }, () => ({ perm, hp: maxHp, maxHp }));
 }
 
 // ---------- One run ----------
@@ -245,51 +291,48 @@ function pickNode(floor, rnd, hpPct, gold) {
 
 function simRun(seed, rules, parts) {
   const rnd = mulberry(seed);
-  const owned = parts.map((id) => ({ id, level: 1, tier: getPart(id).rarity }));
-  const perm = withMastery(withMech({}, owned), MASTERY);
-  const maxHp = CONFIG.run.maxHpBase + (perm.hpBonus || 0);
-  let hp = maxHp;
-  let gold = CONFIG.currency.startGold;
+  const team = makeTeam(parts);
   const heal = rules.healMult;
+  const hpPct = () => team.reduce((s, m) => s + m.hp, 0) / team.reduce((s, m) => s + m.maxHp, 0);
+  // Heals repair every standing mech (RunState.healFlat); only Safe Zones (`revive`) bring knocked-out ones back
+  const healAll = (amount, revive = !!args.limp) => team.forEach((m) => (m.hp > 0 || revive) && (m.hp = Math.min(m.maxHp, m.hp + amount(m.maxHp) * heal)));
+  let gold = CONFIG.currency.startGold;
   const log = { fights: 0, died: null, hpAtBoss: null, rests: 0, lowest: 1 };
   for (let floor = 1; floor <= 5; floor++) {
-    if (floor > 1 && rules.floorHeal) hp = Math.min(maxHp, hp + maxHp * rules.floorHeal * heal);
+    if (floor > 1 && rules.floorHeal) healAll((max) => max * rules.floorHeal);
     const steps = CONFIG.map.baseFloorActions;
-    const nodes = [];
-    for (let i = 0; i < steps; i++) nodes.push(null);
     for (let i = 0; i <= steps; i++) {
       let type;
       if (i === steps) {
         if (floor === 3) type = 'miniboss';
         else if (floor === 5) type = 'boss';
         else break;
-      } else type = pickNode(floor, rnd, hp / maxHp, gold);
-      if (type === 'boss') log.hpAtBoss = hp / maxHp;
+      } else type = pickNode(floor, rnd, hpPct(), gold);
+      if (type === 'combat' && riskData().allElite) type = 'elite';
+      if (type === 'boss') log.hpAtBoss = hpPct();
       if (['combat', 'elite', 'miniboss', 'boss'].includes(type)) {
-        const r = battle(perm, hp, maxHp, type, floor, rnd, rules);
+        const r = battle(team, type, floor, rnd, rules);
         log.fights += 1;
         if (!r.won) {
           log.died = { floor, type };
           return log;
         }
-        hp = r.hpLeft;
-        log.lowest = Math.min(log.lowest, hp / maxHp);
-        const rew = CONFIG.nodes.rewards[type] || {};
-        gold += rew.gold || 0;
+        log.lowest = Math.min(log.lowest, hpPct());
+        gold += (CONFIG.nodes.rewards[type] || {}).gold || 0;
         const postHeal = rules.postWinHeal[type] || 0;
-        if (postHeal) hp = Math.min(maxHp, hp + maxHp * postHeal * heal);
+        if (postHeal) healAll((max) => max * postHeal);
       } else if (type === 'rest') {
         log.rests += 1;
-        hp = Math.min(maxHp, hp + rules.rest(maxHp) * heal);
+        healAll(rules.rest, true);
       } else if (type === 'shop') {
-        if (hp / maxHp < 0.7 && gold >= 28 && rnd() < 0.75) {
+        if (hpPct() < 0.7 && gold >= 28 && rnd() < 0.75) {
           gold -= 28;
-          hp = Math.min(maxHp, hp + 30 * heal);
+          healAll((max) => max * 0.2); // FIELD REPAIR
         }
       } else if (type === 'encounter') {
         // A pick-one event: heal when hurt, gold otherwise; some cost HP
-        if (hp / maxHp < 0.6) hp = Math.min(maxHp, hp + 20 * heal);
-        else if (rnd() < 0.35) hp = Math.max(1, hp - (5 + rnd() * 9));
+        if (hpPct() < 0.6) healAll(() => 20);
+        else if (rnd() < 0.35) team[0].hp = Math.max(1, team[0].hp - (5 + rnd() * 9));
         else gold += 8;
       }
     }
@@ -322,16 +365,15 @@ for (const s of sets) s.healMult = Math.max(0.2, 1 - riskData().minusHeal / 100)
 // --fights: single fights from full HP, to calibrate against play ("a sloppy fight costs 40-60% HP")
 if (args.fights) {
   for (const g of gear) {
-    const owned = LOADOUTS[g].map((id) => ({ id, level: 1, tier: getPart(id).rarity }));
-    const perm = withMastery(withMech({}, owned), MASTERY);
-    const maxHp = CONFIG.run.maxHpBase + (perm.hpBonus || 0);
-    console.log(`\n=== single fights, gear: ${g}, skill ${SKILL}, full HP ${maxHp} ===`);
+    const maxHp = makeTeam(LOADOUTS[g])[0].maxHp;
+    console.log(`\n=== single fights, gear: ${g}, skill ${SKILL}, team ${args.team || 1}, full HP ${maxHp} each ===`);
     for (const [type, floor] of [['combat', 1], ['combat', 2], ['elite', 2], ['combat', 3], ['elite', 3], ['miniboss', 3], ['combat', 5], ['elite', 5], ['boss', 5]]) {
       const rnd = mulberry(7);
       let won = 0, lost = 0, turns = 0, timeouts = 0;
       for (let i = 0; i < RUNS; i++) {
-        const r = battle(perm, maxHp, maxHp, type, floor, rnd, NEW);
-        if (r.won) { won += 1; lost += (maxHp - r.hpLeft) / maxHp; }
+        const team = makeTeam(LOADOUTS[g]);
+        const r = battle(team, type, floor, rnd, NEW);
+        if (r.won) { won += 1; lost += team.reduce((a, m) => a + (m.maxHp - m.hp), 0) / team.reduce((a, m) => a + m.maxHp, 0); }
         if (r.timeout) timeouts += 1;
         turns += r.turns;
       }

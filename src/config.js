@@ -73,7 +73,8 @@ export const CONFIG = {
   // --- Gear combat: guns are the only damage ---
   gear: {
     dmgScale: 1.3, // gun/drone damage vs the classic numbers (bodies no longer hit)
-    enemyDmgScale: 0.4, // enemy guns hit this much of a same-level player gun
+    enemyDmgScale: 0.5, // enemy guns hit this much of a same-level player gun
+    enemyHpScale: 0.75, // every enemy's HP: elites ~10-12 turns, bosses ~20 (tools/balance-sim.mjs)
     exposedMult: 1.25, // rammed targets take +25% gun damage until their next turn
     // Damage types (Mech.DTYPES): Explosive hits add heat and Electric hits drain energy,
     // dtypeLoad x the hit; whatever the reactor can't absorb spills into HP at dtypeSpill x
@@ -184,10 +185,13 @@ export const CONFIG = {
   risk: {
     scrapPerLevel: 15,
     keysPerLevel: 10, // +10% Keys per level (fractions carry over between fights)
-    // Low Risk is gentle: enemies start soft (HP, gun damage, aim) and harden a step
-    // per level, reaching full strength at Risk 10 (Risk XI and the Abyss stay full).
-    // The level rules below stack on top. Mech.riskEase reads this; tools/balance-sim.mjs tunes it.
-    ease: { hp: 0.5, atk: 0.5, ai: -0.2, fullAt: 10 },
+    // Enemy strength per Risk level (HP and gun damage x curve[level]), on top of the
+    // level rules below. Fitted with tools/balance-sim.mjs so ONE mech with good gear
+    // climbs a steady ramp (~90% wins at Risk 1 down to ~8% at Risk XI) instead of
+    // cruising to Risk 8 and hitting a wall; it dips at 9-XI because those rules
+    // already pile on. Risk 0 stays half strength for new players. Aim eases from
+    // `ai` at Risk 0 to none at `fullAt`. The Abyss is always full strength (1).
+    ease: { hp: 0.5, atk: 0.5, ai: -0.2, fullAt: 12, curve: [0.5, 0.75, 0.87, 0.94, 0.97, 1.0, 1.03, 1.02, 0.94, 0.84, 0.8, 0.63] },
     levels: [
       { name: 'HARDENED', desc: 'Enemies +15% HP.', hpPct: 15 },
       { name: 'RANGEFINDERS', desc: 'Enemy guns reach 1 position further.', enemyReach: 1 },

@@ -922,7 +922,7 @@ export class UIManager {
   }
 
   updateRunHud(run) {
-    document.getElementById('run-hp').textContent = `${Math.ceil(run.hp)}/${run.maxHp}`;
+    document.getElementById('run-hp').textContent = run.hp > 0 ? `${Math.ceil(run.hp)}/${run.maxHp}` : 'DOWN';
     const hpBar = document.getElementById('run-hp-bar');
     if (hpBar) {
       const pct = Math.max(0, Math.min(1, run.hp / run.maxHp));
@@ -1368,12 +1368,14 @@ export class UIManager {
 
     // Same multiplier the heal will use (Risk), capped at max HP
     const healMultiplier = run.healMult ?? saveSystem.getHealingMultiplier();
-    const effectiveHealVal = Math.max(0, Math.min(Math.round(healVal * healMultiplier), run.maxHp - run.hp));
+    const effectiveHealVal = Math.max(0, Math.min(Math.round(healVal * healMultiplier), run.maxHp - Math.max(0, run.hp)));
     const buttonText = `HEAL ${effectiveHealVal} HP`;
 
     if (healMultiplier < 1) {
       notes.push(`Heal penalty (-${Math.round((1 - healMultiplier) * 100)}%)`);
     }
+    // The only place knocked-out mechs come back
+    if (run.knockedOut) notes.push(`Brings back ${run.knockedOut} knocked-out mech${run.knockedOut > 1 ? 's' : ''}`);
 
     const noteHtml = notes.length
       ? `<span style="font-size:12px;color:var(--accent);font-weight:600;">${notes.join(' • ')}</span>`
@@ -1466,7 +1468,7 @@ export class UIManager {
       run.runResult === 'victory' ? '#5fd3a8' : '#e0655c';
     const cond = CONFIG.runConditions.find((c) => c.id === run.condition);
     const depth = run.abyssDepth || 0;
-    document.getElementById('result-sub').textContent = depth ? `Sector clear, then ${depth} floor${depth > 1 ? 's' : ''} into the Abyss.` : run.runResult === 'victory' ? 'The sector is clear.' : run.hp > 0 ? 'Operation abandoned.' : 'Your mech was destroyed.';
+    document.getElementById('result-sub').textContent = depth ? `Sector clear, then ${depth} floor${depth > 1 ? 's' : ''} into the Abyss.` : run.runResult === 'victory' ? 'The sector is clear.' : run.teamAlive ? 'Operation abandoned.' : 'Your mech was destroyed.';
     const tile = (label, value) => `<div class="result-stat"><span>${label}</span><strong>${value}</strong></div>`;
     document.getElementById('result-stats').innerHTML = [
       depth ? tile('ABYSS', depth) : tile('FLOOR', `${Math.min(run.floor + 1, CONFIG.map.floors)}/${CONFIG.map.floors}`),

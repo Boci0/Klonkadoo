@@ -276,10 +276,14 @@ export class Renderer {
     for (const ball of balls) {
       if (!ball) continue;
       const prev = this._hpSeen.get(ball);
-      this._hpSeen.set(ball, ball.hp);
-      if (prev === undefined) continue;
+      if (prev === undefined) {
+        this._hpSeen.set(ball, ball.hp);
+        continue;
+      }
+      // Damage is fractional: small hits add up until there's a whole number to show
       const diff = Math.round(ball.hp - prev);
       if (diff === 0) continue;
+      this._hpSeen.set(ball, ball.hp);
       const y = ball.y - ball.radius - 10;
       if (diff < 0) {
         const big = -diff >= 20;

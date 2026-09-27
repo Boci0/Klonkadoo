@@ -208,34 +208,64 @@ export class RunState {
     (this.team || []).forEach((m, i) => fn(m, this.member(i + 1).maxHp));
   }
 
-  /** Heal HP (respects the rest cap and the Risk penalty). The whole team is repaired. */
+  // Knocked-out mechs (0 HP) stay down: repairs skip them, and only a Safe
+  // Zone (healFlat with `revive`) brings them back. The run ends when every
+  // mech is down (teamAlive).
+
+  /** Is any mech still standing? */
+  get teamAlive() {
+    return this.hp > 0 || (this.team || []).some((m) => m.hp > 0);
+  }
+
+  /** How many mechs are knocked out right now. */
+  get knockedOut() {
+    return (this.hp > 0 ? 0 : 1) + (this.team || []).filter((m) => !(m.hp > 0)).length;
+  }
+
+  /** Is any mech (standing or down) below its max HP? */
+  get teamHurt() {
+    return this.hp < this.maxHp || (this.team || []).some((m, i) => m.hp < this.member(i + 1).maxHp);
+  }
+
+  /** Heal HP (respects the rest cap and the Risk penalty). Standing mechs only. */
   heal(amount, capPct = CONFIG.run.hpRegenMaxPct) {
     const effective = Math.round(amount * this.healMult);
     const cap = this.maxHp * capPct;
-    this.hp = Math.min(this.maxHp, this.hp + effective, this.hp + cap);
-    this._eachReserve((m, max) => (m.hp = Math.min(max, m.hp + effective, m.hp + max * capPct)));
+    if (this.hp > 0) this.hp = Math.min(this.maxHp, this.hp + effective, this.hp + cap);
+    this._eachReserve((m, max) => m.hp > 0 && (m.hp = Math.min(max, m.hp + effective, m.hp + max * capPct)));
   }
 
-  /** Restore a flat amount up to max HP (respects the Risk penalty), for the whole team. Returns the lead's HP gained. */
-  healFlat(amount) {
+  /**
+   * Restore a flat amount up to max HP (respects the Risk penalty) for every
+   * standing mech; `revive` (Safe Zones) brings knocked-out ones back too.
+   * Returns the HP the front mech gained (the lead, or the first one standing).
+   */
+  healFlat(amount, { revive = false } = {}) {
     const effective = Math.round(amount * this.healMult);
+    const up = (hp, max) => (hp > 0 || revive ? Math.min(max, Math.max(0, hp) + effective) : hp);
+    const gains = [];
     const before = this.hp;
-    this.hp = Math.min(this.maxHp, this.hp + effective);
-    this._eachReserve((m, max) => (m.hp = Math.min(max, m.hp + effective)));
-    return this.hp - before;
+    this.hp = up(this.hp, this.maxHp);
+    gains.push([before > 0 || revive, this.hp - before]);
+    this._eachReserve((m, max) => {
+      const b = m.hp;
+      m.hp = up(m.hp, max);
+      gains.push([b > 0 || revive, m.hp - b]);
+    });
+    return (gains.find(([alive]) => alive) || [true, 0])[1];
   }
 
-  /** Full repair for the whole team. */
+  /** Full repair for every standing mech. */
   healFull() {
-    this.hp = this.maxHp;
-    this._eachReserve((m, max) => (m.hp = max));
+    if (this.hp > 0) this.hp = this.maxHp;
+    this._eachReserve((m, max) => m.hp > 0 && (m.hp = max));
   }
 
-  /** Gain max HP (+ heal equal amount by default), every mech. */
+  /** Gain max HP (+ heal equal amount by default), every mech; knocked-out ones stay down. */
   addMaxHp(amount) {
     this.maxHp += amount;
-    this.hp += amount;
-    this._eachReserve((m) => (m.hp += amount));
+    if (this.hp > 0) this.hp += amount;
+    this._eachReserve((m) => m.hp > 0 && (m.hp += amount));
   }
 
   startBattle() {

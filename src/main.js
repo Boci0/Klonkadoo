@@ -505,7 +505,7 @@ function autoModal() {
   if (pend?.type === 'rest') {
     autoPending = null;
     ui.closeModal();
-    resolveRest(run.hp < run.maxHp ? 'heal' : 'leave');
+    resolveRest(run.teamHurt ? 'heal' : 'leave');
     return;
   }
   // Anything else (a boon, a result card, a notice): take its main button
@@ -1160,8 +1160,8 @@ function startCombat(node) {
   setState(State.BATTLE);
   ui.showBattleHud(run, node.type);
 
-  // Ensure player HP carries over safely (at least 1 HP)
-  if (run.hp <= 0) run.hp = 1;
+  // Knocked-out mechs sit fights out; with nobody standing (never expected) mech 1 limps in
+  if (!run.teamAlive) run.hp = 1;
 
   const thinkDelay = CONFIG.ai.thinkDelay;
   const riskLevel = saveSystem.getDifficultyLevel();
@@ -1179,7 +1179,7 @@ function startCombat(node) {
   const condAtk = (cond === 'glass_war' ? 1.3 : 1) * (cond === 'blood_moon' ? 1.15 : 1);
   // Abyss: +8% HP and +5% ATK per depth, on top of the normal per-floor scaling
   // Low Risk softens every enemy; the Abyss is always full strength
-  const ease = abyssDepth ? riskEase(CONFIG.risk.ease.fullAt) : riskEase(riskLevel);
+  const ease = abyssDepth ? { hp: 1, atk: 1, ai: 0 } : riskEase(riskLevel);
   const hpMult = (1 + (riskData.hpPct + (isEliteTier ? riskData.eliteHpPct : 0)) / 100) * condHp * (1 + ABYSS_HP_PER_DEPTH * abyssDepth) * ease.hp;
   const atkMult = (1 + (riskData.atkPct + (isEliteTier ? riskData.eliteAtkPct : 0)) / 100) * condAtk * (1 + ABYSS_ATK_PER_DEPTH * abyssDepth) * ease.atk;
   const defMult = 1 + riskData.defPct / 100;
@@ -1204,7 +1204,7 @@ function startCombat(node) {
     const isFinal = isBoss && abyssDepth === ABYSS_FINAL_DEPTH; // the true final boss
     const mech = enemyMech(node.type, archetype, run.floor + 1, Math.random, { atkMult: atkMult * waveAtkScale, boss: isBoss, final: isFinal });
 
-    const finalHp = Math.round(tier.hp * arch.hpMult * hpMult * floorHp * devHp * waveHpScale * (isFinal ? 1.5 : 1) * (node.type === 'boss' && i > 0 ? 0.55 : 1)); // boss escorts are lighter
+    const finalHp = Math.round(tier.hp * CONFIG.gear.enemyHpScale * arch.hpMult * hpMult * floorHp * devHp * waveHpScale * (isFinal ? 1.5 : 1) * (node.type === 'boss' && i > 0 ? 0.55 : 1)); // boss escorts are lighter
     const finalAtk = Math.round((tier.atk * arch.atkMult * atkMult * floorAtk * devAtk * waveAtkScale) * 100) / 100;
     const finalDef = Math.max(0, Math.round((tier.def + arch.defBonus) * defMult) + devDef);
 
@@ -1333,14 +1333,10 @@ function onBattleEnd(won, node) {
   pendingBoon = null;
 
   // Write battle HP back into the run (roguelike persistence): every team
-  // mech keeps its own; one knocked out in a won fight limps on at 1 HP
+  // mech keeps its own, and a knocked-out one stays down until a Safe Zone
   const teamHp = game.teamHp();
   run.hp = Math.max(0, Math.min(run.maxHp, teamHp[0]));
   (run.team || []).forEach((m, i) => (m.hp = teamHp[i + 1] ?? m.hp));
-  if (won) {
-    run.hp = Math.max(1, run.hp);
-    (run.team || []).forEach((m) => (m.hp = Math.max(1, m.hp)));
-  }
   run.shieldHp = Math.max(0, Math.round(game.player.shieldHp || 0));
 
   // Per-class + lifetime stats (skins, medals)
@@ -1460,8 +1456,8 @@ function battleReport(node, damageTaken) {
 }
 
 function continueAfterCombatReport() {
-  // Roguelike permadeath: losing a battle with 0 HP ends the run
-  if (run.hp <= 0) {
+  // Roguelike permadeath: the run ends when every mech is knocked out
+  if (!run.teamAlive) {
     map.visitNode(run.floor, run.currentNodeId);
     ui.closeModal();
     endRun(false);
@@ -1582,12 +1578,13 @@ function buySupply(i) {
 
 function resolveRest(choice) {
   if (choice === 'heal') {
-    const healed = run.healFlat(run.restHeal);
+    const revived = run.knockedOut;
+    const healed = run.healFlat(run.restHeal, { revive: true }); // the one place knocked-out mechs come back
     soundEngine.play('heal');
     // Recovery quest counts every Safe Zone heal across the run
     run.maxRestHealed = (run.maxRestHealed || 0) + healed;
     reportQuest('rest', { healed: run.maxRestHealed });
-    addFeedEntry(`<span class="feed-heal">SAFE ZONE: +${healed} HP RECOVERED</span>`);
+    addFeedEntry(`<span class="feed-heal">SAFE ZONE: +${healed} HP RECOVERED${revived ? ` · ${revived} MECH${revived > 1 ? 'S' : ''} BACK ONLINE` : ''}</span>`);
   }
   map.visitNode(run.floor, run.currentNodeId);
   run.spendFloorAction();

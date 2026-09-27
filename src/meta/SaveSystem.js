@@ -9,12 +9,15 @@
 
 import { CONFIG } from '../config.js';
 import { masteryLevel } from './Mastery.js';
-import { INVENTORY_CAP, salvageValue, upgradeCost, maxLevel, tierOf, transformInfo, slotAccepts, RETIRED, RETIRED_REFUND, STARTER_PARTS, STARTER_LOADOUT, SLOTS, getPart, newUid, openCrate, CRATES, PACK_SIZE, packCost } from './Mech.js';
+import { INVENTORY_CAP, RARITY_ORDER, salvageValue, upgradeCost, maxLevel, tierOf, transformInfo, slotAccepts, RETIRED, RETIRED_REFUND, STARTER_PARTS, STARTER_LOADOUT, SLOTS, getPart, newUid, openCrate, CRATES, PACK_SIZE, packCost } from './Mech.js';
 
 const STORAGE_KEY = 'slingshot-save-v1';
 
 // Node costs of the last tech tree (v3), to convert what was spent on it
 const TECH_COSTS_V3 = {"rct_capacitor":[8,12,16,22,30],"rct_dynamo":[30,60],"rct_coolant":[14,22,32],"rct_opener":[40],"rct_scavenge":[40],"rct_overclock":[120],"bar_reinforce":[6,10,16,24],"bar_quick":[24,48],"bar_spikes":[12,20,30],"bar_twin":[45],"bar_bulwark":[16,26,38],"bar_aegis":[110],"vit_emergency_medkit":[6,10,14,20,28],"vit_overflow_shield":[8,12,18,26,36],"def_forcefield":[12,18,26,36,48],"vit_vampiric_vitality":[14,20,28,38,50],"def_counter":[30,50,80],"vit_second_wind":[50,90],"tac_war_chest":[6,10,14,20,28],"tac_merchant":[8,12,18,26,36],"tac_scout":[60],"tac_intellect":[10,16,24,34,46],"tac_keymaster":[30,60],"tac_supply_drop":[55,100]};
+
+/** How good an owned part is: tier first, then level (bulk salvage keeps the best copy). */
+const partRank = (o) => RARITY_ORDER.indexOf(tierOf(o)) * 100 + (o.level || 1);
 
 export class SaveSystem {
   constructor() {
@@ -690,6 +693,16 @@ export class SaveSystem {
       got.push(part);
       m.cratesOpened += 1;
     }
+    // Auto-salvage: a duplicate of a part you already own as good or better turns straight into scrap
+    const prefs = this.getSalvagePrefs();
+    if (prefs.auto) {
+      const tiers = new Set(prefs.tiers);
+      for (const part of got) {
+        if (!tiers.has(tierOf(part))) continue;
+        const better = m.owned.some((o) => o.uid !== part.uid && o.id === part.id && partRank(o) >= partRank(part));
+        if (better) part.autoSalvaged = this.salvagePart(part.uid, false);
+      }
+    }
     // Past the cap, the weakest spare parts are salvaged automatically
     while (m.owned.length > INVENTORY_CAP) {
       const worn = this.getWornUids();
@@ -725,6 +738,43 @@ export class SaveSystem {
     this.data.mech.loadout[slotId] = null;
     this.save();
     return true;
+  }
+
+  /** Bulk-salvage settings (saved): which tiers, the safety keeps, and auto-salvage for new pod drops. */
+  getSalvagePrefs() {
+    return { tiers: ['common'], keepBest: true, keepLeveled: true, auto: false, ...(this.data.mech.salvagePrefs || {}) };
+  }
+
+  setSalvagePrefs(patch) {
+    this.data.mech.salvagePrefs = { ...this.getSalvagePrefs(), ...patch };
+    this.save();
+  }
+
+  /**
+   * The spare parts a bulk salvage would take (cheapest first). Never a part
+   * any mech is wearing; `keepBest` keeps your best copy of every part (highest
+   * tier, then level), `keepLeveled` keeps anything upgraded past LV 1.
+   */
+  salvageCandidates(prefs = this.getSalvagePrefs()) {
+    const owned = this.data.mech.owned;
+    const tiers = new Set(prefs.tiers);
+    const keep = new Set(this.getWornUids());
+    if (prefs.keepBest) {
+      const best = new Map();
+      for (const o of owned) if (!best.has(o.id) || partRank(o) > partRank(best.get(o.id))) best.set(o.id, o);
+      for (const o of best.values()) keep.add(o.uid);
+    }
+    return owned
+      .filter((o) => !keep.has(o.uid) && tiers.has(tierOf(o)) && !(prefs.keepLeveled && (o.level || 1) > 1))
+      .sort((a, b) => salvageValue(a) - salvageValue(b));
+  }
+
+  /** Salvage several parts at once (one save). Returns the scrap gained. */
+  salvageMany(uids) {
+    let total = 0;
+    for (const uid of uids) total += this.salvagePart(uid, false);
+    this.save();
+    return total;
   }
 
   salvagePart(uid, save = true) {

@@ -31,7 +31,7 @@ const cloneState = (s) => ({ ...s, me: clone(s.me), foe: clone(s.foe), mines: s.
 /** HP damage one gun hit would do to `target` (burst included), before crits. */
 function hitDamage(g, target) {
   const resist = g.pierce ? 0 : Math.min(DEF_CAP, (target.def || 0) + (target.res?.[g.dtype] || 0));
-  return Math.max(1, Math.round(g.dmg * g.burst * (1 - resist * DEF_PER_POINT)));
+  return Math.max(0.1, g.dmg * g.burst * (1 - resist * DEF_PER_POINT)); // fractional, like the game
 }
 
 /** Positions `u` can move to, given the other mech at `otherPos`: [{ pos, how }]. */

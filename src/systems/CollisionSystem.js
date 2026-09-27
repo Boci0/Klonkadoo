@@ -49,26 +49,23 @@ export class CollisionSystem {
   calculatePlayerDamage(rawDamage, { bypassDef = false, dtype = 'phys' } = {}) {
     let damage = rawDamage;
 
-    // 1. Flat DEF + resist reduction (unless bypassing it, e.g. status DOTs, pierce)
+    // 1. DEF + the resist for this type: the same rule enemies get (defensePerPoint
+    //    per point, capped at maxDefCap points = 60%). Risk XI pierces part of it.
     if (!bypassDef) {
       const def = (this.stats.playerTotalDef || this.stats.playerDef || 0) + (this.stats.playerRes?.[dtype] || 0);
-      // Enemies pierce 25% DEF; only the first 12 DEF blocks flat damage
-      // (so stacked armor can't erase hits), and Risk XI pierces half
-      const effectiveDef = Math.min(12, def) * 0.75 * (1 - (this.stats.riskDefPierce || 0));
-      const maxDefReduction = damage * 0.70; // 30% min damage floor
-      const actualDefReduction = Math.min(maxDefReduction, effectiveDef);
-      damage = Math.max(damage * 0.30, damage - actualDefReduction);
+      const effective = Math.max(0, Math.min(CONFIG.run.maxDefCap || 15, def) * (1 - (this.stats.riskDefPierce || 0)));
+      damage *= 1 - effective * D.defensePerPoint;
     }
 
-    // 2. Percentage damage reduction
-    const redPct = Math.max(-0.5, Math.min(0.85, this.stats.playerDamageReductionPct || 0)); // negative = extra damage taken
-    damage = Math.max(1, Math.round(damage * (1 - redPct)));
+    // 2. Percentage damage reduction (mastery VETERAN; negative = extra damage taken)
+    const redPct = Math.max(-0.5, Math.min(0.85, this.stats.playerDamageReductionPct || 0));
+    damage *= 1 - redPct;
 
-    // 3. Risk Modifier (+X% DMG TAKEN)
-    if (this.stats.riskPlusDmgTaken > 0) {
-      damage = Math.max(1, Math.round(damage * (1 + this.stats.riskPlusDmgTaken / 100)));
-    }
+    // 3. Risk GLASS ARMOR (+X% damage taken)
+    if (this.stats.riskPlusDmgTaken > 0) damage *= 1 + this.stats.riskPlusDmgTaken / 100;
 
-    return Math.max(1, damage);
+    // Kept fractional: small hits and small % changes still add up (HP shows rounded up)
+    return Math.max(0.1, damage);
   }
+
 }
