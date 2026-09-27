@@ -932,6 +932,10 @@ export class UIManager {
     const actEl = document.getElementById('run-actions');
     if (actEl) actEl.textContent = `${run.floorActions ?? 5}`;
     document.getElementById('run-gold').textContent = `${run.gold}G`;
+    const keysEl = document.getElementById('run-keys');
+    if (keysEl) keysEl.textContent = `+${run.tokensEarned || 0}`;
+    const scrapEl = document.getElementById('run-scrap');
+    if (scrapEl) scrapEl.textContent = `+${run.scrapEarned || 0}`;
     const statsEl = document.getElementById('run-stats');
     if (statsEl) {
       statsEl.innerHTML = this._runStatRows(run).map((r) => `
@@ -1462,13 +1466,13 @@ export class UIManager {
       run.runResult === 'victory' ? '#5fd3a8' : '#e0655c';
     const cond = CONFIG.runConditions.find((c) => c.id === run.condition);
     const depth = run.abyssDepth || 0;
-    document.getElementById('result-sub').textContent = depth ? `Sector clear, then ${depth} floor${depth > 1 ? 's' : ''} into the Abyss.` : run.runResult === 'victory' ? 'The sector is clear.' : run.hp > 0 ? 'Operation abandoned.' : 'Your ball was destroyed.';
+    document.getElementById('result-sub').textContent = depth ? `Sector clear, then ${depth} floor${depth > 1 ? 's' : ''} into the Abyss.` : run.runResult === 'victory' ? 'The sector is clear.' : run.hp > 0 ? 'Operation abandoned.' : 'Your mech was destroyed.';
     const tile = (label, value) => `<div class="result-stat"><span>${label}</span><strong>${value}</strong></div>`;
     document.getElementById('result-stats').innerHTML = [
       depth ? tile('ABYSS', depth) : tile('FLOOR', `${Math.min(run.floor + 1, CONFIG.map.floors)}/${CONFIG.map.floors}`),
       tile('BATTLES WON', run.combatsWon),
-      tile('BALL', run.ball?.name || 'VANGUARD'),
       tile('KEYS EARNED', run.tokensEarned || 0),
+      tile('SCRAP EARNED', run.scrapEarned || 0),
       tile('RISK', saveSystem.getDifficultyLevel()),
       tile('CONDITION', cond ? cond.name : '-'),
     ].join('');

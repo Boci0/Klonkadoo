@@ -607,6 +607,8 @@ canvas {
 
 .hud-actions strong { color: var(--p-cyan); }
 .hud-gold strong { color: var(--p-yellow); }
+.hud-keys strong { color: var(--p-yellow); }
+.hud-scrap strong { color: #94b0c2; }
 
 .run-topbar-btns {
   display: flex;
@@ -3970,9 +3972,8 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 }
 
 .deploy-stats {
-  display: grid;
-  grid-template-columns: repeat(4, auto);
-  justify-content: start;
+  display: flex; /* wraps instead of widening the modal (the last resist used to need a scroll) */
+  flex-wrap: wrap;
   gap: 4px 10px;
   font-size: 12px;
   color: var(--p-white);
@@ -4010,8 +4011,9 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 
 .deploy-mastery {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 2px 8px;
   font-size: 11px;
   color: var(--text-dim);
   white-space: nowrap;
@@ -4711,3 +4713,18 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 /* AUTO held down: locked on */
 .ability-auto.locked { box-shadow: 0 0 0 2px var(--p-yellow), 0 0 12px rgba(255, 205, 117, 0.45); }
 .ability-auto.locked .ability-cd { color: var(--p-yellow); }
+
+/* Holding AUTO: a bar fills along the bottom; when it's full, AUTO locks */
+.ability-auto.holding::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  bottom: 3px;
+  height: 4px;
+  width: 0;
+  background: var(--p-yellow);
+  animation: auto-hold var(--hold-ms, 550ms) linear forwards;
+  pointer-events: none;
+}
+.ability-auto.holding .ability-cd::after { content: ' · HOLD'; color: var(--p-yellow); }
+@keyframes auto-hold { to { width: calc(100% - 6px); } }

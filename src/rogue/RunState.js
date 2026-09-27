@@ -246,6 +246,22 @@ export class RunState {
     this.isBossFloor = true;
   }
 
+  /** Keys won this run: saved at once (kept even if the run is lost) and counted for the HUD. */
+  earnKeys(n) {
+    if (!(n > 0)) return 0;
+    saveSystem.addTokens(n);
+    this.tokensEarned = (this.tokensEarned || 0) + n;
+    return n;
+  }
+
+  /** Scrap won this run: saved at once and counted for the HUD. */
+  earnScrap(n) {
+    if (!(n > 0)) return 0;
+    saveSystem.addScrap(n);
+    this.scrapEarned = (this.scrapEarned || 0) + n;
+    return n;
+  }
+
   onCombatWon(regenBonus = 0) {
     this.combatsWon += 1;
     const regenCount = this.getBoonCount('boon_regen');

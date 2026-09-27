@@ -246,12 +246,17 @@ function bindAbilityButtons() {
     if (state !== State.BATTLE || battlePaused || autoRun) return;
     held = false;
     clearTimeout(holdTimer);
+    showAutoHold(true);
     holdTimer = setTimeout(() => {
       held = true;
+      showAutoHold(false);
       lockAutoBattle();
     }, AUTO_HOLD_MS);
   };
-  const holdCancel = () => clearTimeout(holdTimer);
+  const holdCancel = () => {
+    clearTimeout(holdTimer);
+    showAutoHold(false);
+  };
   autoBtn?.addEventListener('pointerdown', holdStart);
   autoBtn?.addEventListener('pointerup', holdCancel);
   autoBtn?.addEventListener('pointerleave', holdCancel);
@@ -273,6 +278,7 @@ function bindAbilityButtons() {
     if (e.code !== 'KeyA' || !keyTimer) return;
     clearTimeout(keyTimer);
     keyTimer = null;
+    showAutoHold(false);
     if (keyHeld || state !== State.BATTLE || battlePaused || autoRun) return;
     setAutoBattle(!autoBattle);
   });
@@ -285,8 +291,10 @@ function bindAbilityButtons() {
     if (e.code === 'KeyA') {
       if (!autoRun && !e.repeat && !keyTimer) {
         keyHeld = false;
+        showAutoHold(true);
         keyTimer = setTimeout(() => {
           keyHeld = true;
+          showAutoHold(false);
           lockAutoBattle();
         }, AUTO_HOLD_MS);
       }
@@ -370,6 +378,18 @@ function saveAutoLock() {
     else localStorage.removeItem(AUTO_LOCK_KEY);
   } catch (_) {}
 }
+/** The hold bar on the AUTO button (so a tap shows there's a hold too). */
+function showAutoHold(on) {
+  const btn = document.getElementById('btn-auto');
+  if (!btn) return;
+  btn.style.setProperty('--hold-ms', `${AUTO_HOLD_MS}ms`);
+  btn.classList.remove('holding');
+  if (on && !autoLocked) {
+    void btn.offsetWidth; // restart the fill
+    btn.classList.add('holding');
+  }
+}
+
 /** Hold AUTO (button or [A]): on and locked. */
 function lockAutoBattle() {
   if (state !== State.BATTLE || battlePaused || autoRun) return;
@@ -933,8 +953,7 @@ function proceedFromNode(node, leaveShop) {
           run.gold -= 15;
           if (Math.random() < 0.5) {
             if (Math.random() < 0.5) {
-              saveSystem.addTokens(3);
-              run.tokensEarned = (run.tokensEarned || 0) + 3;
+              run.earnKeys(3);
               addFeedEntry('<span class="feed-gold">GAMBLE: +3 KEYS</span>');
             } else addFeedEntry(`<span class="feed-gold">GAMBLE: +${run.gainGold(45)} GOLD</span>`);
           } else addFeedEntry('<span class="feed-dmg">GAMBLE: LOST 15 GOLD</span>');
@@ -947,8 +966,7 @@ function proceedFromNode(node, leaveShop) {
         if (Math.random() < 0.5) {
           soundEngine.play('confirm');
           if (Math.random() < 0.5) {
-            saveSystem.addTokens(3);
-            run.tokensEarned = (run.tokensEarned || 0) + 3;
+            run.earnKeys(3);
             return { won: true, text: 'The dealer slides over a key ring: <strong>+3 KEYS</strong>.' };
           }
           const g = run.gainGold(45);
@@ -1361,20 +1379,18 @@ function onBattleEnd(won, node) {
 
     if (rewards.gold) {
       gold = run.gainGold(rewards.gold);
-      addFeedEntry(`<span class="feed-gold">+${gold} GOLD</span>`);
     }
     // Scrap upgrades parts: saved at once, kept even if the run is lost
     if (rewards.scrap) {
       scrap = Math.max(1, Math.round(rewards.scrap * scrapMult() * (run.condition === 'blood_moon' ? 1.5 : 1)));
-      saveSystem.addScrap(scrap);
-      addFeedEntry(`<span class="feed-boon">+${scrap} SCRAP</span>`);
+      run.earnScrap(scrap);
     }
-    // Winning doesn't repair you: HP carries into the next fight (Safe Zones, repairs, Nano Repair)
+    // Winning doesn't repair you: HP carries into the next fight (Safe Zones, repairs, Nano Repair).
+    // No toasts for these: the battle report lists every reward.
     const medic = run.permanent?.mech?.healAfterWin || 0;
     if (medic > 0) {
       const extra = Math.round(run.maxHp * medic);
       heal = run.healFlat(extra);
-      if (heal > 0) addFeedEntry(`<span class="feed-heal">NANO REPAIR: +${heal} HP</span>`);
     }
 
     // Keys (saved as `tokens`) open supply pods on the Rig screen; saved at once, so they're kept even if the run is lost
@@ -1383,12 +1399,9 @@ function onBattleEnd(won, node) {
     const tokens = riskKeys(tokenReward(node.type) + (clean ? CLEAN_WIN_KEYS : 0)) + (run.permanent?.bonusKeys || 0);
     if (clean) {
       gold += run.gainGold(8);
-      addFeedEntry('<span class="feed-gold">CLEAN WIN</span>');
     }
     if (tokens > 0) {
-      saveSystem.addTokens(tokens);
-      run.tokensEarned = (run.tokensEarned || 0) + tokens;
-      addFeedEntry(`<span class="feed-gold">+${tokens} KEYS</span>`);
+      run.earnKeys(tokens);
     }
 
     // Chance for a boon drop on combat wins only
@@ -1526,12 +1539,11 @@ function resolveEncounterChoice(idx) {
       addFeedEntry(`<span class="feed-heal">+${choice.heal} HP RECOVERED</span>`);
     }
     if (choice.gainScrap) {
-      saveSystem.addScrap(choice.gainScrap);
+      run.earnScrap(choice.gainScrap);
       addFeedEntry(`<span class="feed-boon">+${choice.gainScrap} SCRAP</span>`);
     }
     if (choice.gainKeys) {
-      saveSystem.addTokens(choice.gainKeys);
-      run.tokensEarned = (run.tokensEarned || 0) + choice.gainKeys;
+      run.earnKeys(choice.gainKeys);
       addFeedEntry(`<span class="feed-gold">+${choice.gainKeys} KEYS</span>`);
     }
     if (choice.gainActions) {
@@ -1629,8 +1641,7 @@ function calculateAndApplyMinigameRewards(result) {
   }
 
   if (keys) {
-    saveSystem.addTokens(keys);
-    run.tokensEarned = (run.tokensEarned || 0) + keys;
+    run.earnKeys(keys);
   }
   reportQuest('minigame', { perfect: isAllPerfect });
   ui.updateRunHud(run);
@@ -1678,8 +1689,8 @@ function sectorCleared() {
     const final = depth === ABYSS_FINAL_DEPTH;
     const keys = riskKeys(3 + depth * 2 + (final ? 15 : 0));
     const scrap = Math.round((10 + depth * 5 + (final ? 60 : 0)) * scrapMult());
-    saveSystem.addTokens(keys);
-    saveSystem.addScrap(scrap);
+    run.earnKeys(keys);
+    run.earnScrap(scrap);
     rewards = { keys, scrap, final };
     if (final) {
       saveSystem.bumpLifetime('trueFinalClears', 1, 'add');

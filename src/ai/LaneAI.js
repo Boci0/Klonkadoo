@@ -68,6 +68,25 @@ function canFire(u, g, dist) {
   return dist >= g.reach[0] && dist <= g.reach[1];
 }
 
+/**
+ * Ground slide (Game._mineStop): stops on the first mine it crosses, which
+ * goes off. Your own mines only hit you when you're `forced` (pushed, pulled,
+ * hooked, dragged). Returns where the slide ends.
+ */
+function slide(s, u, to, forced = false) {
+  const dir = Math.sign(to - u.pos);
+  if (!dir) return to;
+  for (let q = u.pos + dir; q !== to + dir; q += dir) {
+    const i = s.mines.findIndex((m) => m.pos === q && (forced || m.owner !== u.team));
+    if (i >= 0) {
+      u.hp -= s.mines[i].dmg;
+      s.mines.splice(i, 1);
+      return q;
+    }
+  }
+  return to;
+}
+
 /** Apply one action to a copied state. Returns false if it isn't legal. */
 function apply(s, a) {
   const me = s.me;
@@ -77,8 +96,12 @@ function apply(s, a) {
     if (me.legs.freeMove && !me.freeUsed) me.freeUsed = true;
     else me.actions -= 1;
     me.frozen = false;
-    me.pos = a.pos;
     s.moves = (s.moves || 0) + 1;
+    if (a.how === 'walk') {
+      me.pos = slide(s, me, a.pos);
+      return true;
+    }
+    me.pos = a.pos; // a jump only lands
     const mine = s.mines.findIndex((m) => m.pos === a.pos && m.owner !== me.team);
     if (mine >= 0) {
       me.hp -= s.mines[mine].dmg;
@@ -140,15 +163,17 @@ function apply(s, a) {
     if (g.push || g.pull) {
       const dir = Math.sign(foe.pos - me.pos) || 1;
       const step = g.push ? dir : -dir;
+      let to = foe.pos;
       for (let i = 0; i < (g.push || g.pull); i++) {
-        const next = foe.pos + step;
+        const next = to + step;
         if (next < 1 || next > s.size || next === me.pos) break;
-        foe.pos = next;
+        to = next;
       }
+      foe.pos = slide(s, foe, to, true);
     }
     if (g.drag) {
       const next = me.pos + (Math.sign(foe.pos - me.pos) || 1);
-      if (next !== foe.pos && next >= 1 && next <= s.size) me.pos = next;
+      if (next !== foe.pos && next >= 1 && next <= s.size) me.pos = slide(s, me, next, true);
     }
     return true;
   }
@@ -162,7 +187,7 @@ function apply(s, a) {
     s.specialsUsed = (s.specialsUsed || 0) + 1;
     const dir = Math.sign(foe.pos - me.pos) || 1;
     if (sp.kind === 'hook') {
-      foe.pos = me.pos + dir;
+      foe.pos = slide(s, foe, me.pos + dir, true);
       if (sp.drain) foe.energy = Math.max(0, foe.energy - sp.drain);
     } else if (sp.kind === 'charge') {
       const step = sp.away ? -dir : dir; // Retro Rockets back off
@@ -172,13 +197,13 @@ function apply(s, a) {
         if (next < 1 || next > s.size || next === foe.pos) break;
         to = next;
       }
-      me.pos = to;
+      me.pos = slide(s, me, to);
       if (!sp.away && Math.abs(me.pos - foe.pos) === 1) {
         const dmg = soak(foe, hitDamage({ dmg: sp.ram, burst: 1, dtype: 'phys' }, foe));
         foe.hp -= dmg;
         s.dealt += dmg;
         const next = foe.pos + dir;
-        if (next >= 1 && next <= s.size) foe.pos = next;
+        if (next >= 1 && next <= s.size) foe.pos = slide(s, foe, next, true); // rammed back
       }
     } else if (sp.kind === 'teleport') me.pos = a.pos;
     else if (sp.kind === 'shield') me.bubble = sp.absorb;
@@ -194,7 +219,7 @@ function apply(s, a) {
     foe.hp -= dmg;
     s.dealt += dmg;
     const next = foe.pos + (Math.sign(foe.pos - me.pos) || 1);
-    if (next >= 1 && next <= s.size) foe.pos = next;
+    if (next >= 1 && next <= s.size) foe.pos = slide(s, foe, next, true); // stomped back
     return true;
   }
   if (a.type === 'vent') {

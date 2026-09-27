@@ -400,6 +400,8 @@ export class Game {
         // Walking stops at a mech; jumping goes over it
         if (p < 1 || p > L.size || this._unitAt(p)) break;
         out.set(p, 'walk');
+        // ...and at a mine that isn't yours: walking onto it sets it off (_mineStop)
+        if (this.hazards.some((h) => h.type === 'mine' && h.pos === p && h.owner !== unit.team)) break;
       }
       if (legs.jump) {
         const hi = legs.jump[1] - chill;
@@ -416,6 +418,7 @@ export class Game {
   /** Start walking / jumping `unit` to `pos` (the move animates; the turn waits for it). */
   _moveUnit(unit, pos, how) {
     const legs = unit.legs || DEFAULT_LEGS;
+    if (how === 'walk') pos = this._mineStop(unit, unit.pos, pos); // jumps fly over mines
     if (legs.moveEn) unit.energy -= legs.moveEn;
     const free = legs.freeMove && !unit._freeMoveUsed;
     if (free) {
@@ -455,8 +458,33 @@ export class Game {
     return busy;
   }
 
+  /**
+   * Ground movement from `from` toward `to` stops on the first live mine it
+   * crosses (the mine goes off when it gets there, in _arrive). Jumps and
+   * teleports skip this: they only land. Your own mines are safe to walk
+   * over, but a mech that's `forced` (pushed, pulled, hooked, dragged) sets
+   * off any mine, its own too.
+   */
+  _mineStop(u, from, to, forced = false) {
+    const dir = Math.sign(to - from);
+    if (!dir) return to;
+    for (let q = from + dir; q !== to + dir; q += dir) {
+      if (this.hazards.some((h) => h.type === 'mine' && h.pos === q && (forced || h.owner !== u.team))) return q;
+    }
+    return to;
+  }
+
+  /** Forced ground movement: stop on the first mine in the way, and let it hit this mech even if it's theirs. */
+  _throw(u, to) {
+    const stop = this._mineStop(u, u.pos, to, true);
+    if (stop !== u.pos) u._thrown = true;
+    return stop;
+  }
+
   /** A unit finished moving onto its position: spikes bite, mines go off. */
   _arrive(u) {
+    const thrown = !!u._thrown;
+    u._thrown = false;
     if (u.hp <= 0) return;
     if (this.hazards.some((h) => h.type === 'fire' && h.pos === u.pos)) this._burnPlate(u);
     if (this.hazards.some((h) => h.type === 'spikes' && h.pos === u.pos)) {
@@ -467,7 +495,7 @@ export class Game {
       this.events.emit('damage', { attacker: u.team === 'player' ? this.activeEnemy || u : this.player, victim: u, damage: dmg, killed });
       if (killed) return;
     }
-    const mine = this.hazards.find((h) => h.type === 'mine' && h.pos === u.pos && h.owner !== u.team);
+    const mine = this.hazards.find((h) => h.type === 'mine' && h.pos === u.pos && (thrown || h.owner !== u.team));
     if (!mine) return;
     this.hazards.splice(this.hazards.indexOf(mine), 1);
     const raw = mine.dmg || 15;
@@ -495,6 +523,9 @@ export class Game {
       }
       to = next;
     }
+    const stop = this._throw(unit, to);
+    if (stop !== to) blocked = false; // it stopped on a mine, not against a wall
+    to = stop;
     if (to !== unit.pos) {
       unit.anim = { from: unit.x, to: posX(to), t: 0, dur: 0.25, jump: false };
       unit.pos = to;
@@ -937,10 +968,10 @@ export class Game {
       if (next < 1 || next > L.size || this._unitAt(next)) break;
       to = next;
     }
+    to = this._throw(u, to);
     if (to === u.pos) return;
     u.anim = { from: u.x, to: posX(to), t: 0, dur: 0.25, jump: false };
-    u.pos = to;
-    this._arrive(u);
+    u.pos = to; // _updateAnims calls _arrive when the slide ends
   }
 
   // ---------- Specials (SPECIAL A / B slots) ----------
@@ -975,12 +1006,11 @@ export class Game {
     u.actionsLeft -= 1;
     const dir = target ? Math.sign(target.pos - u.pos) || 1 : 1;
     if (sp.special === 'hook') {
-      const spot = u.pos + dir;
+      const spot = this._throw(target, u.pos + dir); // a mine on the way stops the yank there
       target.anim = { from: target.x, to: posX(spot), t: 0, dur: 0.3, jump: false };
-      target.pos = spot;
+      target.pos = spot; // _updateAnims calls _arrive when the yank ends
       soundEngine.playShot('hook');
       this._callout(target, 'HOOKED', sp.color);
-      this._arrive(target);
       // Mag Tether: the cable drains them too
       if (sp.drain && target.hp > 0) this._reactorFx(target, { dtype: 'energy', fx: { drain: sp.drain } }, 0, u);
     } else if (sp.special === 'charge') {
@@ -992,11 +1022,11 @@ export class Game {
         if (next < 1 || next > L.size || this._unitAt(next)) break;
         to = next;
       }
+      to = this._mineStop(u, u.pos, to); // dashing along the ground: an enemy mine stops it
       u.anim = { from: u.x, to: posX(to), t: 0, dur: 0.22, jump: false };
-      u.pos = to;
+      u.pos = to; // _updateAnims calls _arrive when the dash ends
       soundEngine.playMove('jump');
       this._callout(u, sp.away ? 'RETRO!' : 'CHARGE!', sp.color);
-      this._arrive(u);
       if (!sp.away && u.hp > 0 && target.hp > 0 && this.distance(u, target) === 1) {
         this.renderer.addScreenShake(12);
         soundEngine.playStomp();

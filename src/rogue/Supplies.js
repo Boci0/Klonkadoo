@@ -46,11 +46,10 @@ export function grantSupply(s, run) {
       run.addMaxHp(s.amount);
       return `+${s.amount} MAX HP`;
     case 'keys':
-      saveSystem.addTokens(s.amount);
-      run.tokensEarned = (run.tokensEarned || 0) + s.amount;
+      run.earnKeys(s.amount);
       return `+${s.amount} KEYS`;
     case 'scrap':
-      saveSystem.addScrap(s.amount);
+      run.earnScrap(s.amount);
       return `+${s.amount} SCRAP`;
     case 'boon':
       run.applyBoon(s.boonId);
