@@ -1523,7 +1523,7 @@ export class Game {
     if (this.autoPlayer && this.turnSystem.phase === TurnPhase.PLAYER_AIM && !moving && !this.waitThen) {
       this.autoThink = (this.autoThink ?? 0.5) - dt;
       if (this.autoThink <= 0) {
-        this.autoThink = 0.45;
+        this.autoThink = 0.25; // a short beat between AUTO's actions
         this._autoAct();
       }
     } else if (this.turnSystem.phase !== TurnPhase.PLAYER_AIM) this.autoThink = 0.5;

@@ -357,6 +357,7 @@ export class UIManager {
           ${row('sfx', 'SOUND EFFECTS', soundEngine.sfxOn)}
           ${row('music', 'MUSIC', soundEngine.musicOn)}
           ${row('haptics', 'VIBRATION', haptics.enabled)}
+          ${row('motion', 'REDUCE MOTION', document.body.classList.contains('reduce-motion'))}
         </div>
         <div class="settings-data">
           <span>SAVE</span>
@@ -373,6 +374,13 @@ export class UIManager {
           const key = btn.dataset.setting;
           if (key === 'sfx') soundEngine.setSfx(!soundEngine.sfxOn);
           if (key === 'music') soundEngine.setMusic(!soundEngine.musicOn);
+          if (key === 'motion') {
+            const on = !document.body.classList.contains('reduce-motion');
+            document.body.classList.toggle('reduce-motion', on);
+            try {
+              localStorage.setItem('slingshot-reduce-motion', on ? '1' : '0');
+            } catch (_) {}
+          }
           if (key === 'haptics') {
             haptics.setEnabled(!haptics.enabled);
             haptics.impact('medium');

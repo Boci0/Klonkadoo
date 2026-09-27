@@ -2410,12 +2410,11 @@ canvas {
   animation: screen-in 0.35s ease-out 0.1s both;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.001s !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001s !important;
-  }
+/* Settings > REDUCE MOTION (an in-game choice: the OS setting no longer turns animations off) */
+body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after {
+  animation-duration: 0.001s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001s !important;
 }
 
 /* Gear pop-up needs more room than the default modal */

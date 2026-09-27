@@ -91,6 +91,11 @@ function setState(next) {
   }
 }
 
+// Settings > REDUCE MOTION (off unless you turn it on, whatever the OS says)
+try {
+  document.body.classList.toggle('reduce-motion', localStorage.getItem('slingshot-reduce-motion') === '1');
+} catch (_) {}
+
 // Audio can only start after a user gesture; also give every button a click sound
 window.addEventListener('pointerdown', () => soundEngine.unlock(), { capture: true });
 
@@ -1883,7 +1888,9 @@ function loop(now) {
   lastTime = now;
 
   if (state === State.BATTLE) {
-    if (!battlePaused) game.update(dt);
+    // AUTO plays faster: 2x in AUTO battle, 3x on AUTO RUN (same steps, just more per frame)
+    const steps = autoRun ? 3 : autoBattle ? 2 : 1;
+    if (!battlePaused) for (let i = 0; i < steps; i++) game.update(dt);
     game.render();
     updateAbilityHud();
     updateMechHud();
