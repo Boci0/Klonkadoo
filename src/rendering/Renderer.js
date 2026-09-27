@@ -1393,7 +1393,7 @@ export class Renderer {
     if (ball.exposed)
       tags.push({ label: 'EXPOSED', color: '#ffcd75', desc: 'Rammed! Takes +25% gun damage until its next turn.' });
     if (ball.heatCap && ball.heat > ball.heatCap)
-      tags.push({ label: 'OVERHEATED', color: '#ff5d73', desc: 'Too hot to fire until it cools down.' });
+      tags.push({ label: 'OVERHEATED', color: '#ff5d73', desc: 'Over its heat cap: can\'t fire, and its next turn starts with a forced vent (both actions if one isn\'t enough).' });
 
     if (ball.team === 'player') {
       if (ball.forcefield) tags.push({ label: 'FORCEFIELD', color: '#a7f070', desc: 'Forcefield Barrier Active! Blocks 1 incoming attack.' });

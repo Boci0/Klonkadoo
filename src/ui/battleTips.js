@@ -11,7 +11,7 @@ import { DTYPES, dtypeOf, partNote } from '../meta/Mech.js';
 
 const G = CONFIG.gear;
 
-const WHY = { EMPTY: 'Out of ammo', HOT: 'Too hot: vent or wait a turn', ENERGY: 'Not enough energy', RANGE: 'Target out of range: move closer / further', 'TOO CLOSE': 'Too close for this gun', BLOCKED: 'No clear line to the target', 'NO TARGET': 'No target', 'NO ACTIONS': 'No actions left', WAIT: 'Wait for your turn' };
+const WHY = { EMPTY: 'Out of ammo', HOT: 'At the heat cap: vent or wait a turn (over it, your next turn starts with forced vents)', ENERGY: 'Not enough energy', RANGE: 'Target out of range: move closer / further', 'TOO CLOSE': 'Too close for this gun', BLOCKED: 'No clear line to the target', 'NO TARGET': 'No target', 'NO ACTIONS': 'No actions left', WAIT: 'Wait for your turn' };
 
 const row = (label, value, color = '') => `<div class="tip-row"><span>${label}</span><b${color ? ` style="color:${color}"` : ''}>${value}</b></div>`;
 
@@ -36,7 +36,8 @@ function endTip(game) {
     ${drones ? `<p>Drones act now:</p>${drones}` : ''}
     <p>Your next turn starts with:</p>
     ${row('Energy', `+${p.regen} (max ${p.energyMax})`, '#73eff7')}
-    ${row('Heat', `-${p.cool}`, '#ef7d57')}`;
+    ${row('Heat', `-${p.cool}`, '#ef7d57')}
+    ${p.heat - p.cool > p.heatCap ? `<p class="tip-bad">Still over the heat cap after cooling: your next turn starts with a forced vent.</p>` : ''}`;
 }
 
 function barrierTip(game) {
@@ -63,6 +64,7 @@ function gunTip(game, i) {
     ${row('Heat', `+${w.heat || 0} (${Math.ceil(p.heat)}/${p.heatCap})`, '#ef7d57')}
     ${w.ammo ? row('Ammo', `${w.ammoLeft}/${w.ammo}`, '#ffcd75') : ''}
     <p>${partNote(w)}</p>
+    ${st.ok && st.overheats ? `<p class="tip-bad">Overheats you (${Math.ceil(p.heat + (w.heat || 0))}/${p.heatCap}): next turn starts with a forced vent, both actions if one isn't enough.</p>` : ''}
     ${st.ok ? '' : `<p class="tip-bad">${WHY[st.reason] || st.reason}</p>`}`;
 }
 

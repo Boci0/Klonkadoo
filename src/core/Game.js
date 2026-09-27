@@ -424,6 +424,11 @@ export class Game {
       }
     }
 
+    // Still over the heat cap after cooling: VENT is forced (maybe the whole turn)
+    if (this.player && this._forcedVent(this.player) && this.player.actionsLeft <= 0) {
+      this.slingshotInput.setActive(false);
+      this.autoEnd = 1.4; // long enough to see why
+    }
 
     this.events.emit('player-turn-start');
   }
@@ -454,6 +459,13 @@ export class Game {
         this._checkBattleEnd(enemy);
         return this._passEnemyTurn(); // burned to death: next enemy (or you) goes
       }
+    }
+
+    // Same heat rule as yours: overheated means forced vents first
+    if (this._forcedVent(enemy) && enemy.actionsLeft <= 0) {
+      this.turnSystem.startFire();
+      this.enemyFire = { shooter: enemy, index, timer: G.shotGap * 3 }; // nothing left: the turn passes
+      return;
     }
 
     // Enemies learn: every miss in a row tightens their aim
@@ -819,6 +831,27 @@ export class Game {
     ball.actionsLeft = G.actions;
   }
 
+  /**
+   * Overheating: a ball still over its heat cap when its turn starts (after
+   * the normal cooling) must VENT, one action per vent, until it's back
+   * under the cap or out of actions (two vents = the whole turn lost).
+   * Returns how many vents were forced.
+   */
+  _forcedVent(ball) {
+    let n = 0;
+    while (ball.heat > ball.heatCap && ball.actionsLeft > 0) {
+      this._vent(ball);
+      n += 1;
+    }
+    if (n) {
+      this._callout(ball, ball.actionsLeft > 0 ? 'OVERHEATED: FORCED VENT' : 'OVERHEATED: TURN LOST', '#ff5d73');
+      this.addHitStop(0.12);
+      soundEngine.play('alarm');
+      if (ball === this.player) haptics.impact('heavy');
+    }
+    return n;
+  }
+
   _gunsOf(ball) {
     return ball === this.player ? this.playerWeapons || [] : ball.weapons || [];
   }
@@ -902,7 +935,8 @@ export class Game {
   gunStatus(shooter, w, target) {
     if (!(shooter.actionsLeft > 0)) return { ok: false, reason: 'NO ACTIONS' };
     if (w.ammo && w.ammoLeft <= 0) return { ok: false, reason: 'EMPTY' };
-    if (shooter.heat + (w.heat || 0) > shooter.heatCap) return { ok: false, reason: 'HOT' };
+    // Under the cap you may fire, even a shot that takes you over it (overheating: next turn starts with forced vents)
+    if (shooter.heat >= shooter.heatCap) return { ok: false, reason: 'HOT' };
     if (shooter.energy < (w.en || 0)) return { ok: false, reason: 'ENERGY' };
     if (!target) return { ok: false, reason: 'NO TARGET' };
     const d = Math.hypot(target.x - shooter.x, target.y - shooter.y);
@@ -911,7 +945,7 @@ export class Game {
     // Walls in the way: you can still fire, the wall takes the hit (see _coverOnPath)
     const from = w._muzzle || shooter;
     const cover = !!this._coverOnPath(shooter.team, from, target, vfxOf(w));
-    return { ok: true, reason: '', cover };
+    return { ok: true, reason: '', cover, overheats: shooter.heat + (w.heat || 0) > shooter.heatCap };
   }
 
   _byDistance(from) {
@@ -940,7 +974,10 @@ export class Game {
     const w = this.playerWeapons[i];
     if (!w || !this.player) return { ok: false, reason: '' };
     const target = this._targetFor(this.player, w);
-    if (target) return { ok: true, reason: '', target, cover: this.gunStatus(this.player, w, target).cover, dmg: this._previewDamage(w, target) };
+    if (target) {
+      const st = this.gunStatus(this.player, w, target);
+      return { ok: true, reason: '', target, cover: st.cover, overheats: st.overheats, dmg: this._previewDamage(w, target) };
+    }
     const probe = this._currentTarget() || this._foesOf(this.player).sort(this._byDistance(this.player))[0];
     const st = this.gunStatus(this.player, w, probe);
     return { ...st, dmg: probe ? this._previewDamage(w, probe) : 0 };
@@ -1185,7 +1222,12 @@ export class Game {
 
   /** The enemy's next shot: its hardest-hitting gun that can fire now (null when none). */
   _enemyBestGun(enemy) {
-    const ready = (enemy.weapons || []).filter((w) => this.gunStatus(enemy, w, this.player).ok);
+    // Overheating costs next turn: only worth it for a finishing blow
+    const lethal = (w) => w.dmg * (w.fx?.burst || 1) >= this.player.hp;
+    const ready = (enemy.weapons || []).filter((w) => {
+      const st = this.gunStatus(enemy, w, this.player);
+      return st.ok && (!st.overheats || lethal(w));
+    });
     if (!ready.length) return null;
     // Ammo guns are saved for when you're below 60% HP, unless nothing else can fire
     const save = ready.length > 1 && this.player.hp > this.player.maxHp * 0.6;

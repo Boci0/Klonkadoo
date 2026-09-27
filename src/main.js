@@ -349,7 +349,7 @@ function updateGearHud(el, endBtn, ventBtn) {
     const cd = ventBtn.querySelector('.ability-cd');
     if (cd && cd.textContent !== heatTxt) cd.textContent = heatTxt;
   }
-  const sig = `${live}|${left}|` + guns.map((w, i) => `${w.ammoLeft}:${states[i].ok}:${states[i].reason}:${states[i].dmg}:${states[i].cover}`).join(',') + '|' + drones.map((d) => d.off).join(',');
+  const sig = `${live}|${left}|` + guns.map((w, i) => `${w.ammoLeft}:${states[i].ok}:${states[i].reason}:${states[i].dmg}:${states[i].cover}:${states[i].overheats}`).join(',') + '|' + drones.map((d) => d.off).join(',');
   if (sig === mechHudSig) return;
   mechHudSig = sig;
   const D = CONFIG.gear.drone;
@@ -358,11 +358,13 @@ function updateGearHud(el, endBtn, ventBtn) {
     const ready = live && st.ok;
     const why = !st.ok ? GUN_BLOCK_LABEL[st.reason] || '' : '';
     const ammo = w.ammo ? `<b class="gun-ammo">${w.ammoLeft}/${w.ammo}</b>` : '';
-    return `<button class="mech-chip gear-gun ${ready ? 'ready' : 'cooling'}" data-gun="${i}" style="--c:${w.color}" aria-label="${w.name}">
+    // A shot that takes you over the heat cap is allowed, but flagged: next turn starts with a forced vent
+    const hot = ready && st.overheats;
+    return `<button class="mech-chip gear-gun ${ready ? 'ready' : 'cooling'} ${hot ? 'overheat' : ''}" data-gun="${i}" style="--c:${w.color}" aria-label="${w.name}">
       <img src="${partIcon(w.id)}" alt="">${ammo}
       <span class="gun-dmg" style="color:${DTYPES[dtypeOf(w)].color}">${w.fx?.mine ? 'MINE' : st.dmg ? `~${st.dmg}` : ''}</span>
       <span class="gun-cost"><i class="c-en">${w.en || 0}</i><i class="c-heat">${w.heat || 0}</i></span>
-      <span class="gun-why">${ready ? (st.cover ? 'COVER' : 'FIRE') : why}</span></button>`;
+      <span class="gun-why">${ready ? (hot ? 'OVERHEAT' : st.cover ? 'COVER' : 'FIRE') : why}</span></button>`;
   }).join('') + drones.map((d, i) => {
     const en = d.heal ? D.healEn : d.forcefieldEvery ? D.shieldEn : D.dmgEn;
     // Docked: a bright DEPLOY button while you have an action for it; out: ON (tap to recall, free)

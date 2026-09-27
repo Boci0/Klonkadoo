@@ -4150,3 +4150,12 @@ canvas {
 .hud-tip .tip-bad {
   color: #ff5d73;
 }
+
+/* A shot that will overheat you: still fires, but reads as a warning */
+.mech-chip.gear-gun.overheat {
+  box-shadow: 0 0 0 2px #ff5d73;
+}
+
+.mech-chip.gear-gun.overheat .gun-why {
+  color: #ff5d73;
+}
