@@ -1,6 +1,9 @@
 # Push a version tag (npm version patch && git push --follow-tags) and this
-# builds the Android APK + Windows installer, attaches them to a GitHub
-# Release, and redeploys the web version to GitHub Pages.
+# builds the Windows installer, attaches it to a GitHub Release, and
+# redeploys the web version to GitHub Pages.
+#
+# Windows only since 2.0.0: the Android project stays in the repo but isn't
+# released (Android installs see no .apk in newer releases, so no update).
 #
 # The release stays a draft until every build succeeds, so the in-app
 # updaters (which read /releases/latest) never see a half-finished release.
@@ -8,8 +11,6 @@
 # Actions are pinned to commit SHAs so a hijacked tag cannot reach the secrets.
 #
 # Repo secrets needed:
-#   ANDROID_KEYSTORE_BASE64            base64 of android/upload-key.jks
-#   ANDROID_KEYSTORE_PROPERTIES        contents of android/keystore.properties
 #   TAURI_SIGNING_PRIVATE_KEY          contents of ~/.tauri/slingshot-ops.key
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD contents of ~/.tauri/slingshot-ops.key.password
 
@@ -42,42 +43,6 @@ jobs:
             -F draft=true -F generate_release_notes=true --jq .id)
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
-  android:
-    needs: draft
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: npm
-      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
-        with:
-          distribution: temurin
-          java-version: 21
-          cache: gradle
-      - run: npm ci
-      - run: npm run build:android
-      - name: Restore signing key
-        env:
-          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          KEYSTORE_PROPS: ${{ secrets.ANDROID_KEYSTORE_PROPERTIES }}
-        run: |
-          echo "$KEYSTORE_B64" | base64 -d > android/upload-key.jks
-          printf '%s\n' "$KEYSTORE_PROPS" > android/keystore.properties
-      - name: Build release APK
-        working-directory: android
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
-      - name: Upload APK
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          apk="Klonkadoo-${GITHUB_REF_NAME#v}.apk"
-          cp android/app/build/outputs/apk/release/app-release.apk "$apk"
-          gh release upload "$GITHUB_REF_NAME" "$apk" --repo "$GITHUB_REPOSITORY"
-
   windows:
     needs: draft
     runs-on: windows-latest
@@ -102,7 +67,7 @@ jobs:
           includeUpdaterJson: true
 
   pages:
-    needs: [android, windows]
+    needs: [windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

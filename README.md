@@ -35,17 +35,16 @@
 
 Grab the latest build from **[Releases](https://github.com/Boci0/Slingshot-OPS/releases/latest)**:
 
-- **Android**: `Klonkadoo-x.y.z.apk`. Allow installs from your browser / file manager when asked.
 - **Windows**: `Slingshot Ops_x.y.z_x64-setup.exe`. If SmartScreen appears, choose *More info → Run anyway*.
 - **Browser**: play instantly at https://boci0.github.io/Slingshot-OPS/
 
-Both apps check GitHub for new versions on launch (and via *Settings → Updates*) and update themselves in place. The game runs in landscape. Feedback: bocidev.support@gmail.com
+The Windows app checks GitHub for new versions on launch (and via *Settings → Updates*) and updates itself in place. (Android builds stopped at 2.0.0.) The game runs in landscape. Feedback: bocidev.support@gmail.com
 
 ### Releasing
 
 ```bash
 npm version patch          # or minor / major: bumps package.json, commits, tags vX.Y.Z
-git push --follow-tags     # the Release workflow builds the APK + Windows installer, then publishes
+git push --follow-tags     # the Release workflow builds the Windows installer, then publishes
 ```
 
 Every build takes its version from `package.json`. The workflow needs the signing secrets listed at the top of `.github/workflows/release.yml`.
