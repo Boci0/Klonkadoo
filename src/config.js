@@ -56,8 +56,6 @@ export const CONFIG = {
     hitCooldown: 0.4,
     defensePerPoint: 0.04, // damage reduction per DEF point (cap 60%)
     thornsReturn: 0.3, // tank enemy reflects 30% of damage taken
-    barrierHp: 60, // barriers break after taking this much damage
-    barrierImpactMinSpeed: 200, // min ball speed to damage a barrier
   },
 
   // --- The battle lane: positions 1..size, one mech per position ---
@@ -133,7 +131,7 @@ export const CONFIG = {
       color: '#7b1fa2', darkColor: '#4a148c',
     },
     tactician: {
-      name: 'COMMAND UNIT', desc: 'Tesla Coil and a Missile Pod: hits from anywhere.',
+      name: 'COMMAND UNIT', desc: 'Tesla Coil up close, Missile Pod from mid range.',
       hpMult: 1.3, atkMult: 1.05, defBonus: 1, aiShift: 0.06,
       color: '#ffb300', darkColor: '#ff8f00',
     },
@@ -238,27 +236,6 @@ export const CONFIG = {
   // --- Turn timing ---
   turn: {
     minTurnTime: 0.3,
-  },
-
-  // --- Battle abilities (used every few turns) ---
-  abilities: {
-    overdrive: {
-      id: 'overdrive',
-      name: 'OVERDRIVE',
-      desc: 'Next shot deals 1.5x damage (+50% bonus damage)',
-      cooldown: 3, // turns between uses
-      duration: 1, // applies to next shot
-      damageMult: 1.5,
-      color: '#e8a94c',
-    },
-    barrier: {
-      id: 'barrier',
-      name: 'DEPLOY BARRIER',
-      desc: 'Place a protective barrier shield',
-      cooldown: 4, // turns between uses
-      maxActive: 2, // max barriers on the field at once
-      color: '#7aa2ff',
-    },
   },
 
   // --- Roguelike run modifiers ---

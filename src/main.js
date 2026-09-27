@@ -178,22 +178,6 @@ function addFeedEntry(html) {
 // ---------- Battle ability HUD ----------
 
 function bindAbilityButtons() {
-  const triggerBarrier = (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    if (state !== State.BATTLE) return;
-    if (game.useAbility('barrier')) {
-      updateAbilityHud();
-    }
-  };
-
-  document.getElementById('btn-barrier')?.addEventListener('click', (e) => {
-    if (battlePaused) return;
-    triggerBarrier(e);
-    if (!game.abilities?.barrier?.ready || !game.canPlayerAct) soundEngine.play('error');
-  });
   const triggerStomp = () => {
     if (state !== State.BATTLE || battlePaused) return;
     if (game.stompPlayer()) return haptics.impact('medium');
@@ -230,13 +214,11 @@ function bindAbilityButtons() {
     if (!game.ventPlayer()) soundEngine.play('error');
   });
 
-  // Keyboard hotkeys: [Q] [E] guns, [2] / [B] barrier, [F] stomp, [V] vent, [Space] end turn
+  // Keyboard hotkeys: [Q] [E] guns, [F] stomp, [V] vent, [Space] end turn
   window.addEventListener('keydown', (e) => {
     if (state !== State.BATTLE || battlePaused) return;
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
-    if (e.key === '2' || e.code === 'Digit2' || e.code === 'Numpad2' || e.code === 'KeyB') {
-      triggerBarrier(e);
-    } else if (e.code === 'KeyQ' || e.code === 'KeyE') {
+    if (e.code === 'KeyQ' || e.code === 'KeyE') {
       fireGun(e.code === 'KeyQ' ? 0 : 1);
     } else if (e.code === 'Space') {
       e.preventDefault();
@@ -366,19 +348,6 @@ function updateTeamBar() {
 
 function updateAbilityHud() {
   updateTeamBar();
-  const btnBarrier = document.getElementById('btn-barrier');
-  const cdBarrier = document.getElementById('cd-barrier');
-  const br = game.abilities?.barrier;
-  if (!br) return;
-  const usable = br.ready && game.canPlayerAct && game.playerBarrierCount < game._maxBarriers();
-  if (btnBarrier) {
-    btnBarrier.disabled = !usable;
-    btnBarrier.classList.toggle('ready', usable);
-  }
-  if (cdBarrier) {
-    const text = br.ready ? 'READY' : `${br.cooldownLeft}T`;
-    if (cdBarrier.textContent !== text) cdBarrier.textContent = text;
-  }
   // STOMP: lit when the enemy is right next to you
   const btnStomp = document.getElementById('btn-stomp');
   const cdStomp = document.getElementById('cd-stomp');
@@ -960,7 +929,7 @@ function startCombat(node) {
   game.events.on('player-dealt-damage', ({ damage }) => reportQuest('damage_dealt', { amount: damage }));
   game.events.on('battle-end', ({ won }) => onBattleEnd(won, node));
   game.events.on('ability-used', ({ id, name }) => {
-    game.renderer.addCallout(game.player, id === 'barrier' ? 'BARRIER UP' : name, id === 'barrier' ? '#41a6f6' : '#ffcd75');
+    game.renderer.addCallout(game.player, name, '#ffcd75');
   });
   // Status ticks (burn): a short label over whoever it affects
   const STATUS_LABELS = { 'Thermal Burn': ['BURNING', '#ef7d57'] };

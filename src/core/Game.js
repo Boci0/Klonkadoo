@@ -87,7 +87,6 @@ export class Game {
     this.enemyReserve = []; // waiting to drop in
     this.particles = [];
     this.projectiles = [];
-    this.barriers = [];
     this.platforms = [];
     this.obstacles = [];
     this.hazards = [];
@@ -112,9 +111,9 @@ export class Game {
     };
   }
 
-  /** BARRIER: raise a wall in front of you (an action, then a cooldown). */
+  /** No special abilities: everything a mech does comes from its parts (BARRIER was removed in 2.0.1). */
   _freshAbilities() {
-    return { barrier: { ready: true, cooldownLeft: 0, baseCooldown: CONFIG.abilities.barrier.cooldown, name: CONFIG.abilities.barrier.name } };
+    return {};
   }
 
   startBattle(opts = {}) {
@@ -184,7 +183,6 @@ export class Game {
     this.arena = config.arena || pickArena(config.floor || 1);
     this.platforms = [];
     this.obstacles = this.arena.walls.map((w) => this._makeWall(w.at, w.hp, 'arena', w.tall));
-    this.barriers = [];
     this.hazards = [
       ...this.arena.spikes.map((pos) => ({ type: 'spikes', pos, x: posX(pos) - W.width / L.size / 2 + 6, w: W.width / L.size - 12 })),
       ...this.arena.mines.map((pos) => ({ type: 'mine', pos, x: posX(pos) - 24, w: 48, armed: true, born: 0, owner: 'arena', dmg: 30 })),
@@ -368,7 +366,7 @@ export class Game {
 
   // ---------- Cover: walls between positions ----------
 
-  /** A wall standing between position `at` and `at + 1` (drawn by the Renderer as an obstacle / barrier). */
+  /** A wall standing between position `at` and `at + 1` (drawn by the Renderer as an obstacle). */
   _makeWall(at, hp, owner, tall = false) {
     const h = tall ? 220 : 110;
     return { at, owner, x: (at * W.width) / L.size - 15, y: W.groundY - h, w: 30, h, hp, maxHp: hp, active: true };
@@ -378,7 +376,7 @@ export class Game {
   _wallsBetween(a, b) {
     const lo = Math.min(a, b);
     const hi = Math.max(a, b);
-    const walls = [...this.obstacles, ...this.barriers].filter((w) => w.active && w.at >= lo && w.at < hi);
+    const walls = this.obstacles.filter((w) => w.active && w.at >= lo && w.at < hi);
     return walls.sort((x, y) => Math.abs(x.at + 0.5 - a) - Math.abs(y.at + 0.5 - a));
   }
 
@@ -396,52 +394,6 @@ export class Game {
       this.renderer.addFloatingText(cx, wall.y - 10, 'WALL DOWN', '#ffcd75', true);
       this.renderer.addScreenShake(10);
     }
-  }
-
-  useAbility(id) {
-    return id === 'barrier' ? this.raiseBarrier() : false;
-  }
-
-  /**
-   * BARRIER (an action): a wall right in front of you, toward the enemy (or
-   * one boundary further if that spot already has a wall). Cap and cooldown
-   * from CONFIG.abilities.barrier.
-   */
-  raiseBarrier() {
-    const ab = this.abilities.barrier;
-    const p = this.player;
-    const e = this.activeEnemy;
-    if (!this.canPlayerAct || !ab.ready || this.playerBarrierCount >= this._maxBarriers() || !e) return false;
-    const dir = Math.sign(e.pos - p.pos) || 1;
-    let at = dir > 0 ? p.pos : p.pos - 1;
-    const taken = (k) => [...this.obstacles, ...this.barriers].some((w) => w.active && w.at === k);
-    if (taken(at)) at += dir;
-    const beyond = dir > 0 ? at >= e.pos : at < e.pos;
-    if (beyond || taken(at) || at < 1 || at >= L.size) return false;
-    this.barriers.push(this._makeWall(at, this._barrierHp(), 'player'));
-    ab.ready = false;
-    ab.cooldownLeft = ab.baseCooldown;
-    p.actionsLeft -= 1;
-    soundEngine.playAbility('barrier');
-    this.events.emit('ability-used', { id: 'barrier', name: CONFIG.abilities.barrier.name });
-    this._afterAction(p);
-    return true;
-  }
-
-  deployBarrierAt() {
-    return this.raiseBarrier();
-  }
-
-  get playerBarrierCount() {
-    return this.barriers.filter((b) => b.active && b.owner === 'player').length;
-  }
-
-  _barrierHp() {
-    return CONFIG.damage.barrierHp;
-  }
-
-  _maxBarriers() {
-    return CONFIG.abilities.barrier.maxActive;
   }
 
   // ---------- The lane ----------
@@ -621,9 +573,6 @@ export class Game {
     this.turnId += 1;
     this.turnSystem.startPlayerTurn();
     const p = this.player;
-    const ab = this.abilities.barrier;
-    if (ab.cooldownLeft > 0) ab.cooldownLeft -= 1;
-    ab.ready = ab.cooldownLeft <= 0;
     if (!this._tickBurn(p)) return;
     const canAct = this._upkeep(p);
     this.moveMap = this.reachable(p);
@@ -1147,7 +1096,7 @@ export class Game {
         me: this._aiUnit(e, e.weapons || []),
         foe: this._aiUnit(p, this.playerWeapons || []),
         mines: this.hazards.filter((h) => h.type === 'mine').map((h) => ({ pos: h.pos, owner: h.owner, dmg: h.dmg })),
-        walls: [...this.obstacles, ...this.barriers].filter((w) => w.active).map((w) => ({ at: w.at, hp: w.hp })),
+        walls: this.obstacles.filter((w) => w.active).map((w) => ({ at: w.at, hp: w.hp })),
         stompHeat: G.stompHeat,
       },
       { difficulty: Math.min(0.95, e.aiDifficulty ?? 0.5), aggression: this.aggression },
@@ -1390,7 +1339,6 @@ export class Game {
       enemies: this.enemies,
       turnSystem: this.turnSystem,
       particles: this.particles,
-      barriers: this.barriers,
       platforms: this.platforms,
       obstacles: this.obstacles,
       hazards: this.hazards,

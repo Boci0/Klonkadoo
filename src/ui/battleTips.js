@@ -1,7 +1,7 @@
 // ============================================================
 // battleTips — hover a battle button (mouse) to see exactly what it
 // will do right now: VENT's heat / energy numbers, END TURN's upkeep,
-// BARRIER's wall, and each gun / drone chip (damage vs the target,
+// STOMP, SWAP, and each gun / drone chip (damage vs the target,
 // range, costs, ammo, why it can't fire). Numbers refresh while you
 // hover, so they follow the fight.
 // ============================================================
@@ -36,16 +36,6 @@ function endTip(game) {
     ${row('Energy', `+${p.regen} (max ${p.energyMax})`, '#73eff7')}
     ${row('Heat', `-${p.cool}`, '#ef7d57')}
     ${p.heat > p.heatCap ? `<p class="tip-bad">Over your heat cap: your next turn is lost (overheat)${p.heat - p.cool > p.heatCap ? ', and the one after (shutdown)' : ''}.</p>` : ''}`;
-}
-
-function barrierTip(game) {
-  const ab = game.abilities?.barrier;
-  const up = game.playerBarrierCount;
-  const max = game._maxBarriers();
-  return `<h4>BARRIER <em>[2] · 1 action</em></h4>
-    <p>Raises a wall right in front of you (${game._barrierHp()} HP). Direct fire hits it; lobs arc over and beams burn through. Walking can't pass it (jumping can).</p>
-    ${row('On the field', `${up}/${max}`)}
-    ${row('Cooldown', ab?.ready ? 'READY' : `${ab?.cooldownLeft} turn${ab?.cooldownLeft === 1 ? '' : 's'}`)}`;
 }
 
 function stompTip(game) {
@@ -114,7 +104,7 @@ export class BattleTips {
     // Mouse only: on touch the chips act on press, so there's nothing to hover
     hud.addEventListener('pointerover', (e) => {
       if (e.pointerType !== 'mouse') return;
-      const el = e.target.closest('#btn-vent, #btn-end-turn, #btn-barrier, #btn-stomp, [data-gun], [data-drone], [data-swap]');
+      const el = e.target.closest('#btn-vent, #btn-end-turn, #btn-stomp, [data-gun], [data-drone], [data-swap]');
       if (el) this.show(el);
     });
     hud.addEventListener('pointerout', (e) => {
@@ -152,7 +142,7 @@ export class BattleTips {
     }
     const t = this.target;
     const g = this.game;
-    const html = t.id === 'btn-vent' ? ventTip(g) : t.id === 'btn-end-turn' ? endTip(g) : t.id === 'btn-barrier' ? barrierTip(g) : t.id === 'btn-stomp' ? stompTip(g) : t.dataset.swap !== undefined ? swapTip(g, Number(t.dataset.swap)) : t.dataset.gun !== undefined ? gunTip(g, Number(t.dataset.gun)) : droneTip(g, Number(t.dataset.drone));
+    const html = t.id === 'btn-vent' ? ventTip(g) : t.id === 'btn-end-turn' ? endTip(g) : t.id === 'btn-stomp' ? stompTip(g) : t.dataset.swap !== undefined ? swapTip(g, Number(t.dataset.swap)) : t.dataset.gun !== undefined ? gunTip(g, Number(t.dataset.gun)) : droneTip(g, Number(t.dataset.drone));
     if (html !== this._html) {
       this.el.innerHTML = html;
       this._html = html;

@@ -4,7 +4,7 @@
 // Three layers per frame:
 //   1. Backdrop  — cached low-res pixel art (sky, skyline, ground)
 //                  filling the whole screen, themed per floor.
-//   2. World     — the 1280×750 arena (balls, barriers, blocks,
+//   2. World     — the 1280×750 arena (mechs, walls, blocks,
 //                  particles, aim line), scaled to fit and centred.
 //   3. HUD       — screen-space UI in CSS px: HP panels pinned to
 //                  the corners, floating damage/heal numbers, turn
@@ -177,7 +177,6 @@ export class Renderer {
     if (world.lane) this._drawLane(ctx, world, now);
     this._drawHazards(ctx, world.hazards || [], now);
     this._drawPlatformsAndObstacles(ctx, world.platforms || [], world.obstacles || []);
-    this._drawBarriers(ctx, world.barriers || [], now);
     this._drawParticles(ctx, particles || []);
     this._updateAmbient(dt, [player, ...livingEnemies]);
     this._drawAmbient(ctx);
@@ -403,7 +402,7 @@ export class Renderer {
     return c;
   }
 
-  // ---------- World: blocks, barriers, particles ----------
+  // ---------- World: blocks, particles ----------
 
   _pixelBox(ctx, x, y, w, h, fill, light, dark, edge = 4) {
     ctx.fillStyle = INK;
@@ -448,30 +447,6 @@ export class Renderer {
       ctx.fillRect(ob.x - 3, ob.y - 16, ob.w + 6, 10);
       ctx.fillStyle = pct > 0.33 ? '#a7f070' : '#ff5d73';
       ctx.fillRect(ob.x, ob.y - 13, Math.round(ob.w * pct), 4);
-    }
-  }
-
-  _drawBarriers(ctx, barriers, now) {
-    for (const barrier of barriers) {
-      if (!barrier.active) continue;
-      const { x, y, w, h } = barrier;
-      const hostile = barrier.owner === 'enemy';
-      ctx.fillStyle = hostile ? 'rgba(255, 93, 115, 0.35)' : 'rgba(65, 166, 246, 0.35)';
-      ctx.fillRect(x, y, w, h);
-      // Scrolling energy scanlines
-      const scroll = Math.floor(now / 60) % 8;
-      ctx.fillStyle = hostile ? 'rgba(255, 150, 160, 0.8)' : 'rgba(115, 239, 247, 0.8)';
-      for (let yy = y + scroll; yy < y + h; yy += 8) ctx.fillRect(x, yy, w, 2);
-      ctx.fillStyle = hostile ? '#ff5d73' : '#73eff7';
-      ctx.fillRect(x - 3, y, 3, h);
-      ctx.fillRect(x + w, y, 3, h);
-
-      const maxHp = barrier.maxHp || CONFIG.damage.barrierHp;
-      const pct = Math.max(0, (barrier.hp ?? maxHp) / maxHp);
-      ctx.fillStyle = INK;
-      ctx.fillRect(x - 6, y - 14, w + 12, 8);
-      ctx.fillStyle = pct > 0.3 ? '#a7f070' : '#ff5d73';
-      ctx.fillRect(x - 4, y - 12, Math.round((w + 8) * pct), 4);
     }
   }
 
@@ -951,8 +926,10 @@ export class Renderer {
   }
 
   /**
-   * Weapon card above an inspected ball: one row per gun with its icon,
-   * damage, a range strip (the band it can hit), cooldown and effect.
+   * Card above an inspected mech, kept simple and big: its name, then HP /
+   * heat / energy, then one row per gun with damage and range (ammo if it
+   * has any). How it moves and its resists sit small under the name; gun
+   * costs live in the hover tips.
    */
   _drawInspectCard(ctx, world) {
     const ins = world.inspected;
@@ -964,17 +941,17 @@ export class Renderer {
     if (isPlayer && ins.weapon === undefined) guns = [...guns, ...(world.playerDrones || []).map((d) => ({ ...d, drone: true }))];
 
     // Sized for phones: the world is drawn at roughly 0.6x on a small screen
-    const S = 4; // icon scale
-    const rowH = 56;
-    const head = 80; // name + legs, then the resist line
-    const w = 640;
-    const h = head + Math.max(1, guns.length) * rowH;
+    const S = 5; // gun icon scale
+    const rowH = 72;
+    const head = 142; // name, small line, big stats
+    const w = 600;
+    const h = head + Math.max(1, guns.length) * rowH + 8;
     const x = Math.round(Math.max(8, Math.min(W.width - w - 8, ball.x - w / 2)));
     const above = ball.y - ball.radius - 30 - h;
     const y = Math.round(above > 60 ? above : Math.min(W.height - h - 8, ball.y + ball.radius + 30));
     ctx.fillStyle = '#000';
     ctx.fillRect(x + 5, y + 5, w, h);
-    ctx.fillStyle = 'rgba(26, 28, 44, 0.96)';
+    ctx.fillStyle = 'rgba(26, 28, 44, 0.97)';
     ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = '#566c86';
     ctx.lineWidth = 4;
@@ -983,40 +960,61 @@ export class Renderer {
     ctx.fillRect(x, y, w, 6);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.font = `700 22px ${FONT}`;
+
+    // Name
+    ctx.font = `700 30px ${FONT}`;
     ctx.fillStyle = '#ffcd75';
-    ctx.fillText(isPlayer ? 'YOUR RIG' : fitText(ctx, ball.displayName || 'ENEMY', w - 300), x + 16, y + 30);
-    if (ball.legs) {
-      // Its legs: how it can move
-      const how = legsLabel(ball.legs);
-      ctx.textAlign = 'right';
-      ctx.fillStyle = '#94b0c2';
-      ctx.font = `700 16px ${FONT}`;
-      ctx.fillText(`${ball.legs.name.replace(' LEGS', '')} · ${how}`, x + w - 16, y + 30);
-      ctx.textAlign = 'left';
-      ctx.font = `700 22px ${FONT}`;
-    }
-    // Resists per damage type (DEF counts for all three)
+    ctx.fillText(fitText(ctx, isPlayer ? ball.displayName || 'YOUR MECH' : ball.displayName || 'ENEMY', w - 32), x + 16, y + 32);
+
+    // Small line: how it moves, then resists that aren't zero
+    const small = [];
+    if (ball.legs) small.push(ball.legs.anchored ? 'CAN\'T MOVE' : legsLabel(ball.legs));
+    const res = DTYPE_KEYS.map((t) => [t, Math.round(resistOf(ball, t) * 10) / 10]).filter(([, v]) => v);
     ctx.font = `700 16px ${FONT}`;
-    let rx = x + 16;
+    let sx = x + 16;
     ctx.fillStyle = '#94b0c2';
-    ctx.fillText('RES', rx, y + 60);
-    rx += 50;
-    for (const t of DTYPE_KEYS) {
-      const label = `${DTYPES[t].short} ${Math.round(resistOf(ball, t) * 10) / 10}`;
-      ctx.fillStyle = DTYPES[t].color;
-      ctx.fillText(label, rx, y + 60);
-      rx += ctx.measureText(label).width + 22;
+    if (small.length) {
+      ctx.fillText(small.join(''), sx, y + 62);
+      sx += ctx.measureText(small.join('')).width + 24;
     }
-    ctx.font = `700 22px ${FONT}`;
+    if (res.length) {
+      ctx.fillText('RESIST', sx, y + 62);
+      sx += ctx.measureText('RESIST').width + 12;
+      for (const [t, v] of res) {
+        const label = `${DTYPES[t].short} ${v}`;
+        ctx.fillStyle = DTYPES[t].color;
+        ctx.fillText(label, sx, y + 62);
+        sx += ctx.measureText(label).width + 16;
+      }
+    }
+
+    const icon = (name, ix, iy, k = 4) => {
+      const c = iconCanvas(name);
+      ctx.drawImage(c, ix, Math.round(iy - (c.height * k) / 2), c.width * k, c.height * k);
+      return c.width * k;
+    };
+    // Big stats: HP, heat, energy (current / max)
+    const stats = [
+      ['hp', `${Math.max(0, Math.ceil(ball.hp))}/${Math.round(ball.maxHp)}`, ball.hp / ball.maxHp > 0.3 ? '#a7f070' : '#ff5d73'],
+      ['heat', `${Math.ceil(ball.heat || 0)}/${Math.round(ball.heatCap || 0)}`, (ball.heat || 0) > (ball.heatCap || 0) ? '#ff5d73' : '#ef7d57'],
+      ['energy', `${Math.floor(ball.energy || 0)}/${Math.round(ball.energyMax || 0)}`, '#73eff7'],
+    ];
+    ctx.font = `700 28px ${FONT}`;
+    const sy = y + 106;
+    stats.forEach(([name, text, color], i) => {
+      const cx = x + 16 + i * ((w - 32) / 3);
+      const iw = icon(name, cx, sy);
+      ctx.fillStyle = color;
+      ctx.fillText(text, cx + iw + 10, sy);
+    });
+
+    ctx.fillStyle = '#2a3048';
+    ctx.fillRect(x + 10, y + head - 4, w - 20, 3);
     if (!guns.length) {
+      ctx.font = `700 26px ${FONT}`;
       ctx.fillStyle = '#94b0c2';
       ctx.fillText('UNARMED', x + 16, y + head + rowH / 2);
     }
-    const icon = (name, ix, iy) => {
-      const c = iconCanvas(name);
-      ctx.drawImage(c, ix, Math.round(iy - c.height * 1.5), c.width * 3, c.height * 3);
-    };
     guns.forEach((g, i) => {
       const ry = y + head + i * rowH;
       const cy = ry + rowH / 2;
@@ -1026,57 +1024,40 @@ export class Renderer {
       }
       const ic = partCanvas(g.id);
       const spent = g.ammo && g.ammoLeft <= 0;
-      ctx.globalAlpha = spent ? 0.5 : 1;
+      ctx.globalAlpha = spent ? 0.4 : 1;
       ctx.drawImage(ic, x + 16, Math.round(cy - (ic.height * S) / 2), ic.width * S, ic.height * S);
-      ctx.globalAlpha = 1;
-      let cx = x + 80;
-      ctx.font = `700 20px ${FONT}`;
+      let cx = x + 100;
+      ctx.font = `700 30px ${FONT}`;
       if (g.drone) {
-        icon(g.heal ? 'heal' : 'dmg', cx, cy);
-        ctx.fillStyle = '#f4f4f4';
-        ctx.fillText(g.heal ? `${Math.round(g.heal)}/T` : `${Math.round(g.dmg || 0)}`, cx + 30, cy);
+        ctx.fillStyle = g.heal ? '#a7f070' : '#f4f4f4';
+        ctx.fillText(g.heal ? `+${Math.round(g.heal)} HP` : `${Math.round(g.dmg || 0)}`, cx, cy);
+        ctx.font = `700 18px ${FONT}`;
         ctx.fillStyle = '#94b0c2';
-        ctx.fillText('DRONE · EVERY TURN', cx + 110, cy);
+        ctx.fillText(g.off ? 'DRONE · DOCKED' : 'DRONE · EVERY TURN', cx + 150, cy);
+        ctx.globalAlpha = 1;
         return;
       }
-      icon(DTYPES[dtypeOf(g)].icon, cx, cy);
+      // Damage in its type's colour
       ctx.fillStyle = DTYPES[dtypeOf(g)].color;
-      ctx.fillText(`${Math.round(g.dmg)}`, cx + 30, cy);
-      cx += 86;
-      // Range strip: 0 .. 1400 world px, the hittable band in the gun's colour
+      const dmg = `${Math.round(g.dmg * (g.fx?.burst || 1))}`;
+      ctx.fillText(dmg, cx, cy);
+      const dw = ctx.measureText(dmg).width;
+      ctx.font = `700 16px ${FONT}`;
+      ctx.fillText(DTYPES[dtypeOf(g)].short, cx + dw + 8, cy + 4);
+      // Range: big numbers
+      cx += 150;
       icon('range', cx, cy);
-      const bx = cx + 32;
-      const bw = 170;
-      // Reach strip: one cell per distance 1..11, lit where the gun hits, then '3-7'
-      const cells = LANE_SIZE - 1;
-      const cw = (bw - 60) / cells;
-      for (let d = 1; d <= cells; d++) {
-        const on = g.reach && d >= g.reach[0] && d <= g.reach[1];
-        ctx.fillStyle = on ? g.color || '#f4f4f4' : '#10111c';
-        ctx.fillRect(Math.round(bx + (d - 1) * cw), cy - 7, Math.max(2, Math.round(cw - 2)), 14);
-      }
+      ctx.font = `700 30px ${FONT}`;
       ctx.fillStyle = '#f4f4f4';
-      ctx.fillText(g.reach ? reachLabel(g.reach) : '', bx + bw - 52, cy);
-      cx = bx + bw + 16;
-      {
-        // Energy and heat per shot, then ammo left (strong guns only)
-        icon('energy', cx, cy);
-        ctx.fillStyle = '#73eff7';
-        ctx.fillText(`${g.en || 0}`, cx + 28, cy);
-        cx += 62;
-        icon('heat', cx, cy);
-        ctx.fillStyle = '#ef7d57';
-        ctx.fillText(`${g.heat || 0}`, cx + 28, cy);
-        cx += 62;
-        if (g.ammo) {
-          icon('ammo', cx, cy);
-          ctx.fillStyle = g.ammoLeft > 0 ? '#ffcd75' : '#566c86';
-          ctx.fillText(`${g.ammoLeft}/${g.ammo}`, cx + 28, cy);
-        } else {
-          ctx.fillStyle = '#566c86';
-          ctx.fillText(g.arc ? 'LOB' : '', cx, cy);
-        }
+      ctx.fillText(g.reach ? reachLabel(g.reach) : '-', cx + 40, cy);
+      // Ammo only when the gun has a limit
+      if (g.ammo) {
+        cx += 170;
+        icon('ammo', cx, cy);
+        ctx.fillStyle = g.ammoLeft > 0 ? '#ffcd75' : '#566c86';
+        ctx.fillText(`${g.ammoLeft}/${g.ammo}`, cx + 40, cy);
       }
+      ctx.globalAlpha = 1;
     });
     ctx.textBaseline = 'alphabetic';
   }
