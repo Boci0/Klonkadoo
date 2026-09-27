@@ -11,7 +11,7 @@ import { DTYPES, dtypeOf, partNote, reachLabel, droneUpkeep } from '../meta/Mech
 
 const G = CONFIG.gear;
 
-const WHY = { JAMMED: 'Guns jammed: you were drained to 0 energy (you can still move, stomp and vent)', USED: 'Already fired this turn: each gun fires once per turn', EMPTY: 'Out of ammo', HOT: 'Over your heat cap: VENT, or your next turn is lost', ENERGY: 'Not enough energy', RANGE: 'Out of reach: move closer', 'TOO CLOSE': 'Too close for this gun', 'NO TARGET': 'No target', 'NO ACTIONS': 'No actions left', WAIT: 'Wait for your turn' };
+const WHY = { ACTIVE: 'Your shield is already up', ANCHORED: 'Anchored legs can\'t charge', JAMMED: 'Guns jammed: you were drained to 0 energy (you can still move, stomp and vent)', USED: 'Already fired this turn: each gun fires once per turn', EMPTY: 'Out of ammo', HOT: 'Over your heat cap: VENT, or your next turn is lost', ENERGY: 'Not enough energy', RANGE: 'Out of reach: move closer', 'TOO CLOSE': 'Too close for this gun', 'NO TARGET': 'No target', 'NO ACTIONS': 'No actions left', WAIT: 'Wait for your turn' };
 
 const row = (label, value, color = '') => `<div class="tip-row"><span>${label}</span><b${color ? ` style="color:${color}"` : ''}>${value}</b></div>`;
 
@@ -77,6 +77,21 @@ function droneTip(game, i) {
     <p>${d.off ? 'Tap to DEPLOY: uses 1 action, then it works every turn.' : 'Tap to recall it (free).'}</p>`;
 }
 
+/** A special chip: what it does and what it costs. */
+function specialTip(game, i) {
+  const sp = game.playerSpecials?.[i];
+  if (!sp) return '';
+  const st = game.specialStatus(game.player, sp, game.activeEnemy);
+  const key = i === 0 ? 'Z' : 'X';
+  return `<h4 style="color:${sp.color || '#f4f4f4'}">${sp.name} <em>[${key}] · 1 action</em></h4>
+    <p>${partNote(sp)}</p>
+    ${sp.ram ? row('Ram', `${Math.round(sp.ram)} Physical`) : ''}
+    ${sp.absorb ? row('Soaks', `${Math.round(sp.absorb)} damage`) : ''}
+    ${row('Cost', `${sp.en || 0} EN · +${sp.heat || 0} heat`, '#73eff7')}
+    ${row('Uses left', `${sp.usesLeft}/${sp.uses}`)}
+    ${st.ok ? '' : `<p class="tip-bad">${WHY[st.reason] || st.reason}</p>`}`;
+}
+
 /** A team mech in the team bar. */
 function swapTip(game, i) {
   const m = game.team?.[i];
@@ -102,7 +117,7 @@ export class BattleTips {
     // Mouse only: on touch the chips act on press, so there's nothing to hover
     hud.addEventListener('pointerover', (e) => {
       if (e.pointerType !== 'mouse') return;
-      const el = e.target.closest('#btn-vent, #btn-end-turn, #btn-stomp, [data-gun], [data-drone], [data-swap]');
+      const el = e.target.closest('#btn-vent, #btn-end-turn, #btn-stomp, [data-gun], [data-drone], [data-swap], [data-special]');
       if (el) this.show(el);
     });
     hud.addEventListener('pointerout', (e) => {
@@ -134,13 +149,19 @@ export class BattleTips {
       const gun = el.dataset?.gun;
       const drone = el.dataset?.drone;
       const swap = el.dataset?.swap;
+      const special = el.dataset?.special;
+      if (special !== undefined) {
+        const again = this.hud.querySelector(`[data-special="${special}"]`);
+        if (!again) return this.hide();
+        this.target = again;
+      }
       const again = gun !== undefined ? this.hud.querySelector(`[data-gun="${gun}"]`) : drone !== undefined ? this.hud.querySelector(`[data-drone="${drone}"]`) : swap !== undefined ? this.hud.querySelector(`[data-swap="${swap}"]`) : null;
       if (!again) return this.hide();
       this.target = again;
     }
     const t = this.target;
     const g = this.game;
-    const html = t.id === 'btn-vent' ? ventTip(g) : t.id === 'btn-end-turn' ? endTip(g) : t.id === 'btn-stomp' ? stompTip(g) : t.dataset.swap !== undefined ? swapTip(g, Number(t.dataset.swap)) : t.dataset.gun !== undefined ? gunTip(g, Number(t.dataset.gun)) : droneTip(g, Number(t.dataset.drone));
+    const html = t.id === 'btn-vent' ? ventTip(g) : t.id === 'btn-end-turn' ? endTip(g) : t.id === 'btn-stomp' ? stompTip(g) : t.dataset.swap !== undefined ? swapTip(g, Number(t.dataset.swap)) : t.dataset.special !== undefined ? specialTip(g, Number(t.dataset.special)) : t.dataset.gun !== undefined ? gunTip(g, Number(t.dataset.gun)) : droneTip(g, Number(t.dataset.drone));
     if (html !== this._html) {
       this.el.innerHTML = html;
       this._html = html;

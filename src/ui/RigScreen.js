@@ -22,8 +22,8 @@ import {
 const RANK = { common: 0, rare: 1, epic: 2, legendary: 3, mythic: 4 };
 const REACH_MAX = LANE_SIZE - 1; // farthest distance on the lane
 // Where each slot tile sits around the bay
-const LEFT = ['weapon1', 'armor', 'module1'];
-const RIGHT = ['weapon2', 'drone', 'module2'];
+const LEFT = ['weapon1', 'armor', 'module1', 'special1'];
+const RIGHT = ['weapon2', 'drone', 'module2', 'special2'];
 
 export class RigScreen {
   constructor({ onBack }) {

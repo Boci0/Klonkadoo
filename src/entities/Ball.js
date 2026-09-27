@@ -33,6 +33,12 @@ export class Ball {
   }
 
   takeDamage(amount) {
+    // SHIELD special: soaks damage until the owner's next turn
+    if (this.bubble > 0) {
+      const soaked = Math.min(this.bubble, amount);
+      this.bubble -= soaked;
+      amount -= soaked;
+    }
     if (this.shieldHp > 0) {
       const soaked = Math.min(this.shieldHp, amount);
       this.shieldHp -= soaked;

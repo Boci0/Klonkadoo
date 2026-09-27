@@ -846,7 +846,7 @@ export class Renderer {
     const pulse = 0.55 + 0.25 * Math.sin(now / 180);
     for (const [pos, how] of moves) {
       const { x, w } = this._plate(pos, lane.size);
-      const col = how === 'jump' ? '65, 166, 246' : '167, 240, 112';
+      const col = how === 'teleport' ? '196, 111, 214' : how === 'jump' ? '65, 166, 246' : '167, 240, 112';
       const hot = lane.hover === pos;
       ctx.fillStyle = `rgba(${col}, ${hot ? 0.55 : 0.28 * pulse})`;
       ctx.fillRect(Math.round(x + 4), y - 6, Math.round(w - 8), 24);
@@ -862,7 +862,7 @@ export class Renderer {
       if (hot) {
         ctx.font = `700 14px ${FONT}`;
         ctx.textAlign = 'center';
-        ctx.fillText(how === 'jump' ? 'JUMP' : 'WALK', cx, cy - 12);
+        ctx.fillText(how === 'teleport' ? 'BLINK' : how === 'jump' ? 'JUMP' : 'WALK', cx, cy - 12);
       }
     }
   }
@@ -940,6 +940,7 @@ export class Renderer {
     let guns = isPlayer ? world.playerWeapons || [] : ball.weapons || [];
     if (ins.weapon !== undefined) guns = guns.filter((_, i) => i === ins.weapon);
     if (isPlayer && ins.weapon === undefined) guns = [...guns, ...(world.playerDrones || []).map((d) => ({ ...d, drone: true }))];
+    if (ins.weapon === undefined) guns = [...guns, ...((isPlayer ? world.playerSpecials : ball.specials) || []).map((sp) => ({ ...sp, specialRow: true }))];
 
     // Sized for phones: the world is drawn at roughly 0.6x on a small screen
     const S = 5; // gun icon scale
@@ -1040,6 +1041,17 @@ export class Renderer {
       ctx.drawImage(ic, x + 16, Math.round(cy - (ic.height * S) / 2), ic.width * S, ic.height * S);
       let cx = x + 100;
       ctx.font = `700 30px ${FONT}`;
+      if (g.specialRow) {
+        ctx.fillStyle = '#f4f4f4';
+        ctx.font = `700 24px ${FONT}`;
+        ctx.fillText(g.name, cx, cy);
+        icon('ammo', cx + 330, cy);
+        ctx.font = `700 30px ${FONT}`;
+        ctx.fillStyle = g.usesLeft > 0 ? '#ffcd75' : '#566c86';
+        ctx.fillText(`${g.usesLeft}/${g.uses}`, cx + 370, cy);
+        ctx.globalAlpha = 1;
+        return;
+      }
       if (g.drone) {
         ctx.fillStyle = g.heal ? '#a7f070' : '#f4f4f4';
         ctx.fillText(g.heal ? `+${Math.round(g.heal)} HP` : `${Math.round(g.dmg || 0)}`, cx, cy);
@@ -1101,6 +1113,7 @@ export class Renderer {
     // Status rings (no blur: chunky pixel rings)
     const rings = [];
     if (ball.forcefield) rings.push('#a7f070');
+    if (ball.bubble > 0) rings.push('#41a6f6');
     if (ball.burnTicks > 0) rings.push('#ef7d57');
     if (ball.isFrozen) rings.push('#73eff7');
     rings.forEach((col, i) => {

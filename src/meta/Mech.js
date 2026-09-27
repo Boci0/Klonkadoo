@@ -32,6 +32,8 @@ export const SLOTS = [
   { id: 'drone', type: 'drone', name: 'DRONE' },
   { id: 'module1', type: 'module', name: 'MOD A' },
   { id: 'module2', type: 'module', name: 'MOD B' },
+  { id: 'special1', type: 'special', name: 'SPECIAL A' },
+  { id: 'special2', type: 'special', name: 'SPECIAL B' },
 ];
 
 export const RARITIES = {
@@ -108,7 +110,7 @@ export const PARTS = [
   { id: 'wp_cryo', type: 'weapon', name: 'CRYO CANNON', rarity: 'rare', dtype: 'heat', weight: 18, reach: [2, 4], dmg: 11, en: 4, heat: 20, fx: { freeze: true }, color: '#73eff7', desc: 'Chills: their next move is 1 position shorter.' },
   { id: 'wp_beam', type: 'weapon', name: 'LASER BEAM', rarity: 'rare', dtype: 'energy', weight: 16, reach: [2, 5], dmg: 13, en: 15, heat: 3, fx: { line: true }, color: '#ff5d73', desc: 'A steady mid-range beam.' },
   { id: 'wp_emp', type: 'weapon', name: 'EMP BURST', rarity: 'rare', dtype: 'energy', weight: 14, reach: [1, 3], dmg: 8, en: 18, heat: 4, fx: { drain: 14 }, color: '#c46fd6', desc: 'Drains 14 of their energy.' },
-  { id: 'wp_grapple', type: 'weapon', name: 'GRAPPLE HOOK', rarity: 'rare', dtype: 'phys', weight: 12, reach: [3, 6], dmg: 9, en: 7, heat: 10, fx: { pull: 2 }, color: '#94b0c2', desc: 'Pulls the target 2 positions toward you.' },
+  { id: 'wp_grapple', type: 'weapon', name: 'GRAPPLE HOOK', rarity: 'rare', dtype: 'phys', weight: 12, reach: [3, 6], dmg: 9, en: 7, heat: 10, fx: { pull: 2, drag: 1 }, color: '#94b0c2', desc: 'Pulls the target 2 toward you, but the cable drags you 1 toward it too.' },
   { id: 'wp_minelauncher', type: 'weapon', name: 'MINE LAUNCHER', rarity: 'rare', dtype: 'phys', weight: 16, reach: [2, 6], dmg: 17, en: 6, heat: 9, ammo: 3, arc: true, fx: { mine: true }, color: '#ef7d57', desc: 'Plants a mine next to the target: it blasts whoever steps there. 3 mines.' },
   { id: 'wp_rocket', type: 'weapon', name: 'ROCKET LAUNCHER', rarity: 'rare', dtype: 'phys', weight: 20, reach: [3, 7], dmg: 19, en: 8, heat: 13, ammo: 2, arc: true, fx: { splash: 1 }, color: '#ffcd75', desc: 'Lobbed. 2 rockets per battle.' },
   { id: 'wp_tesla', type: 'weapon', name: 'TESLA COIL', rarity: 'epic', dtype: 'energy', weight: 20, reach: [1, 2], dmg: 16, en: 19, heat: 4, fx: { line: true }, color: '#c46fd6', desc: 'A short-range electric arc.' },
@@ -118,6 +120,9 @@ export const PARTS = [
   { id: 'wp_howitzer', type: 'weapon', name: 'SIEGE HOWITZER', rarity: 'legendary', dtype: 'phys', weight: 34, reach: [6, 9], dmg: 24, en: 12, heat: 18, ammo: 2, arc: true, fx: { splash: 1 }, color: '#ffcd75', desc: 'Lobbed. 2 shells per battle.' },
   { id: 'wp_scythe', type: 'weapon', name: 'PLASMA SCYTHE', rarity: 'legendary', dtype: 'energy', weight: 24, reach: [1, 1], dmg: 24, en: 28, heat: 6, color: '#c46fd6', desc: 'A brutal energy blade: huge damage, right next to the enemy only.' },
   { id: 'wp_sniper', type: 'weapon', name: 'SNIPER CANNON', rarity: 'legendary', dtype: 'phys', weight: 26, reach: [7, 10], dmg: 23, en: 10, heat: 14, ammo: 3, color: '#f4f4f4', desc: 'Huge hit at long range. 3 shots.' },
+  // Long-range pushers: keep them out of reach
+  { id: 'wp_concussion', type: 'weapon', name: 'CONCUSSION MORTAR', rarity: 'rare', dtype: 'phys', weight: 20, reach: [4, 8], dmg: 9, en: 8, heat: 12, arc: true, fx: { push: 2 }, color: '#94b0c2', desc: 'A lobbed blast that knocks the target back 2 (into the edge: it slams).' },
+  { id: 'wp_impact', type: 'weapon', name: 'IMPACT CANNON', rarity: 'epic', dtype: 'phys', weight: 24, reach: [3, 7], dmg: 12, en: 9, heat: 14, fx: { push: 3 }, color: '#f4f4f4', desc: 'A slug that knocks the target back 3 (into the edge: it slams).' },
   // Explosive specialists: cook the target until it locks up, then cash the heat in
   { id: 'wp_blowtorch', type: 'weapon', name: 'BLOWTORCH', rarity: 'common', dtype: 'heat', weight: 10, reach: [1, 2], dmg: 5, en: 4, heat: 16, fx: { heat: 18 }, color: '#ef7d57', desc: 'Weak hit, but pumps 18 heat into the target.' },
   { id: 'wp_napalm', type: 'weapon', name: 'NAPALM LAUNCHER', rarity: 'rare', dtype: 'heat', weight: 18, reach: [3, 6], dmg: 8, en: 5, heat: 22, arc: true, fx: { heat: 12, napalm: 2 }, color: '#ff5d73', desc: "+12 heat, and sets the target's plate on fire for 2 turns: +8 heat to whoever stands or lands there." },
@@ -131,6 +136,14 @@ export const PARTS = [
   { id: 'wp_capdump', type: 'weapon', name: 'CAPACITOR DUMP', rarity: 'epic', dtype: 'energy', weight: 16, reach: [1, 4], dmg: 8, en: 13, heat: 3, fx: { dump: true }, color: '#c46fd6', desc: 'Spends ALL your remaining energy: +1 damage for every 2 energy spent.' },
   { id: 'wp_blackout', type: 'weapon', name: 'BLACKOUT CANNON', rarity: 'legendary', dtype: 'energy', weight: 26, reach: [3, 7], dmg: 12, en: 28, heat: 7, fx: { drain: 20, jam: true }, color: '#29366f', desc: "Drains 20. If that leaves them at 0 energy, their guns jam next turn (they can still move, stomp and vent)." },
   { id: 'wp_nova', type: 'weapon', name: 'NOVA LANCE', rarity: 'mythic', dtype: 'energy', weight: 30, reach: [3, 5], dmg: 24, en: 24, heat: 5, ammo: 2, fx: { pierce: true }, color: '#ff5d73', desc: 'A mid-range lance that ignores resists. 2 shots.' },
+
+  // Specials: an action each, a few uses per battle (energy / heat like a gun)
+  { id: 'sp_hook', type: 'special', name: 'GRAPPLING HOOK', rarity: 'rare', weight: 8, special: 'hook', range: 6, uses: 2, en: 8, heat: 6, color: '#94b0c2', desc: 'Yanks the enemy right next to you from up to 6 away. No damage.' },
+  { id: 'sp_charge', type: 'special', name: 'CHARGE BOOSTER', rarity: 'common', weight: 8, special: 'charge', dist: 4, ram: 10, uses: 2, en: 6, heat: 10, color: '#ffcd75', desc: 'Dash up to 4 toward the enemy. End next to it and you ram it: Physical damage and a knockback.' },
+  { id: 'sp_ram', type: 'special', name: 'RAM BOOSTER', rarity: 'epic', weight: 12, special: 'charge', dist: 5, ram: 18, uses: 2, en: 8, heat: 14, color: '#ef7d57', desc: 'Dash up to 5 toward the enemy and ram it hard: Physical damage and a knockback.' },
+  { id: 'sp_teleport', type: 'special', name: 'TELEPORTER', rarity: 'epic', weight: 10, special: 'teleport', uses: 1, en: 14, heat: 4, color: '#c46fd6', desc: 'Blink to any free position.' },
+  { id: 'sp_shield', type: 'special', name: 'SHIELD GENERATOR', rarity: 'rare', weight: 10, special: 'shield', absorb: 40, uses: 2, en: 10, heat: 4, color: '#41a6f6', desc: 'A bubble that soaks damage until your next turn.' },
+  { id: 'sp_aegis', type: 'special', name: 'AEGIS PROJECTOR', rarity: 'legendary', weight: 14, special: 'shield', absorb: 70, uses: 2, en: 12, heat: 4, color: '#a7f070', desc: 'A heavy bubble that soaks damage until your next turn.' },
 
   // Drones: act every turn, any range, free to run
   { id: 'dr_gnat', type: 'drone', name: 'GNAT DRONE', rarity: 'common', dtype: 'phys', weight: 6, upkeep: { en: 3, heat: 1 }, dmg: 4, color: '#94b0c2' },
@@ -179,7 +192,7 @@ export const INVENTORY_CAP = 60;
 export const levelMult = (lvl) => 1 + 0.05 * (lvl - 1);
 
 // Numeric fields that scale with level
-const SCALING = ['hp', 'def', 'dmg', 'heal', 'stomp', 'atkPct', 'crit', 'stompPct', 'goldPct', 'healAfterWin', 'weaponDmgPct'];
+const SCALING = ['hp', 'def', 'dmg', 'heal', 'stomp', 'ram', 'absorb', 'atkPct', 'crit', 'stompPct', 'goldPct', 'healAfterWin', 'weaponDmgPct'];
 // Reactor modules (Battery Pack, Coolant Loop, Heat Sink, Power Core) grow fully with level; frames' reactors don't
 const REACTOR = ['energy', 'regen', 'heatCap', 'cool'];
 
@@ -189,7 +202,7 @@ export function partStats(owned) {
   if (!base) return null;
   const k = levelMult(owned.level || 1);
   const out = { ...base, level: owned.level || 1, uid: owned.uid };
-  for (const f of SCALING) if (typeof base[f] === 'number') out[f] = base[f] * (f === 'hp' || f === 'dmg' || f === 'heal' || f === 'stomp' ? k : 1 + (k - 1) * 0.5);
+  for (const f of SCALING) if (typeof base[f] === 'number') out[f] = base[f] * (f === 'hp' || f === 'dmg' || f === 'heal' || f === 'stomp' || f === 'ram' || f === 'absorb' ? k : 1 + (k - 1) * 0.5);
   if (base.type === 'module') for (const f of REACTOR) if (typeof base[f] === 'number') out[f] = Math.round(base[f] * k);
   if (base.res) out.res = Object.fromEntries(Object.entries(base.res).map(([t, v]) => [t, v * (1 + (k - 1) * 0.5)]));
   return out;
@@ -222,6 +235,11 @@ export function describePart(owned) {
   if (p.heatCap) L.push(`HEAT CAP ${p.type === 'frame' ? '' : '+'}${p.heatCap}`);
   if (p.cool) L.push(`COOL ${p.type === 'frame' ? '' : '+'}${p.cool}/turn`);
   if (p.heal) L.push(`HEAL ${Math.round(p.heal)}/turn`);
+  if (p.type === 'special') L.push(`${p.uses} USE${p.uses > 1 ? 'S' : ''} PER BATTLE`);
+  if (p.ram) L.push(`RAM ${Math.round(p.ram * CONFIG.gear.dmgScale)} PHYSICAL`);
+  if (p.absorb) L.push(`SOAKS ${Math.round(p.absorb)} DMG`);
+  if (p.special === 'hook') L.push(`RANGE 2-${p.range}`);
+  if (p.special === 'charge') L.push(`DASH ${p.dist}`);
   if (p.type === 'drone') L.push(`UPKEEP ${droneUpkeep(p).en} EN${droneUpkeep(p).heat ? ` +${droneUpkeep(p).heat} HEAT` : ''}/turn`);
   if (p.atkPct) L.push(`DMG +${Math.round(p.atkPct * 100)}%`);
   if (p.weaponDmgPct) L.push(`GUNS +${Math.round(p.weaponDmgPct * 100)}%`);
@@ -260,6 +278,11 @@ export function partChips(owned) {
   add(p.heatCap, 'heat', `${p.type === 'frame' ? '' : '+'}${p.heatCap}`);
   add(p.cool, 'heat', `-${p.cool}/T`);
   add(p.heal, 'heal', `${Math.round(p.heal)}/T`);
+  add(p.type === 'special', 'ammo', `x${p.uses}`);
+  add(p.ram, 'dmg', `RAM ${Math.round((p.ram || 0) * CONFIG.gear.dmgScale)}`);
+  add(p.absorb, 'def', `${Math.round(p.absorb || 0)}`);
+  add(p.special === 'hook', 'range', `2-${p.range}`);
+  add(p.special === 'charge', 'move', `${p.dist}`);
   add(p.type === 'drone', 'energy', `${droneUpkeep(p).en}/T`);
   add(p.type === 'drone' && droneUpkeep(p).heat, 'heat', `+${droneUpkeep(p).heat}/T`);
   add(p.atkPct, 'dmg', `+${Math.round(p.atkPct * 100)}%`);
@@ -298,7 +321,7 @@ export function partNote(p) {
   return '';
 }
 
-export const TYPE_LABEL = { frame: 'FRAME', legs: 'LEGS', armor: 'ARMOR', weapon: 'GUN', drone: 'DRONE', module: 'MOD' };
+export const TYPE_LABEL = { frame: 'FRAME', legs: 'LEGS', armor: 'ARMOR', weapon: 'GUN', drone: 'DRONE', module: 'MOD', special: 'SPECIAL' };
 
 // ---------- Loadout ----------
 
@@ -307,7 +330,7 @@ export function loadoutTotals(ownedParts) {
   const t = {
     capacity: 0, weight: 0, hp: 0, def: 0, res: { phys: 0, heat: 0, energy: 0 }, atkPct: 0, crit: 0, stompPct: 0, freeFirstShot: false, goldPct: 0,
     healAfterWin: 0, weaponDmgPct: 0, reachBonus: 0, startForcefield: false,
-    weapons: [], drones: [],
+    weapons: [], drones: [], specials: [],
     // Reactor (gear combat): the frame sets it, modules add to it
     energy: 0, regen: 0, heatCap: 0, cool: 0, hasFrame: false,
     legs: null, // the fitted legs part (movement rules), null = DEFAULT_LEGS
@@ -326,6 +349,7 @@ export function loadoutTotals(ownedParts) {
     for (const k of DTYPE_KEYS) t.res[k] += p.res?.[k] || 0;
     if (p.type === 'weapon') t.weapons.push(p);
     if (p.type === 'drone') t.drones.push(p);
+    if (p.type === 'special') t.specials.push(p);
     if (p.type === 'legs') t.legs = p;
   }
   // Module effects apply to the guns
@@ -358,6 +382,7 @@ export function withMech(base, ownedParts) {
       parts: ownedParts.filter(Boolean).map((o) => o.id), // for the sprite
       weapons: t.weapons,
       drones: t.drones,
+      specials: t.specials,
       healAfterWin: t.healAfterWin,
       startForcefield: t.startForcefield,
       freeFirstShot: t.freeFirstShot,
@@ -419,18 +444,18 @@ export function tokenReward(nodeType, risk = 0) {
  */
 export const ENEMY_LOADOUTS = {
   standard: { legs: ['lg_strider', 'lg_hopper'], armor: 'ar_scrap', guns: [['wp_blaster', 'wp_scatter', 'wp_smg'], ['wp_rifle', 'wp_acid']] },
-  tank: { legs: ['lg_treads'], armor: 'ar_titanium', guns: [['wp_scatter'], ['wp_repulsor']] },
-  striker: { legs: ['lg_catapult', 'lg_strider'], armor: 'ar_kevlar', guns: [['wp_rifle'], ['wp_blaster']], heavy: 'wp_sniper' },
-  vampire: { legs: ['lg_coil', 'lg_strider'], armor: 'ar_aegis', guns: [['wp_scythe'], ['wp_smg']] },
+  tank: { specials: ['sp_shield'], legs: ['lg_treads'], armor: 'ar_titanium', guns: [['wp_scatter'], ['wp_repulsor']] },
+  striker: { specials: ['sp_teleport'], legs: ['lg_catapult', 'lg_strider'], armor: 'ar_kevlar', guns: [['wp_rifle'], ['wp_blaster']], heavy: 'wp_sniper' },
+  vampire: { specials: ['sp_hook', 'sp_charge'], legs: ['lg_coil', 'lg_strider'], armor: 'ar_aegis', guns: [['wp_scythe'], ['wp_smg']] },
   pyromancer: { legs: ['lg_treads', 'lg_strider'], armor: 'ar_reactive', guns: [['wp_blowtorch', 'wp_flamer'], ['wp_napalm', 'wp_thermal', 'wp_rupturer']], heavy: 'wp_meltdown' },
   disruptor: { legs: ['lg_jumpjets', 'lg_coil'], armor: 'ar_aegis', guns: [['wp_spark', 'wp_leech'], ['wp_gridbreaker', 'wp_grapple']], heavy: 'wp_blackout' },
-  tactician: { legs: ['lg_strider', 'lg_coil'], armor: 'ar_reactive', guns: [['wp_tesla'], ['wp_missiles']] },
+  tactician: { specials: ['sp_shield'], legs: ['lg_strider', 'lg_coil'], armor: 'ar_reactive', guns: [['wp_tesla'], ['wp_missiles']] },
   corroder: { legs: ['lg_hopper', 'lg_coil'], armor: 'ar_kevlar', guns: [['wp_acid'], ['wp_emp']] },
   minelayer: { legs: ['lg_treads', 'lg_hopper'], armor: 'ar_reactive', guns: [['wp_minelauncher'], ['wp_blaster', 'wp_scatter']] },
   // The Sector Commander: bolted down with long guns (get in close: they can't hit you there)
-  boss: { frame: 'fr_leviathan', legs: ['lg_anchor'], armor: 'ar_void', guns: [['wp_howitzer'], ['wp_rail']] },
+  boss: { specials: ['sp_aegis', 'sp_hook'], frame: 'fr_leviathan', legs: ['lg_anchor'], armor: 'ar_void', guns: [['wp_howitzer'], ['wp_rail']] },
   // Abyss 5's true final boss: fast, reaches everywhere, and hits hard up close
-  final: { frame: 'fr_leviathan', legs: ['lg_phase'], armor: 'ar_void', guns: [['wp_nova'], ['wp_scythe']] },
+  final: { specials: ['sp_ram', 'sp_teleport'], frame: 'fr_leviathan', legs: ['lg_phase'], armor: 'ar_void', guns: [['wp_nova'], ['wp_scythe']] },
 };
 
 /** Frame (for its look and reactor tier) by fight tier. */
@@ -479,5 +504,10 @@ export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMu
     legs: legsInfo(legsId),
     res,
     parts: [frameId, legsId, armor?.id, ...gunIds].filter(Boolean),
+    // Specials: elites and up; ram hits like their guns, shields grow with the floor
+    specials: (tier === 'combat' ? [] : L.specials || []).map((id) => {
+      const sp = getPart(id);
+      return { ...sp, level: 1, ram: sp.ram ? Math.round(sp.ram * scale * atkMult) : 0, absorb: sp.absorb ? Math.round(sp.absorb * k) : 0 };
+    }),
   };
 }

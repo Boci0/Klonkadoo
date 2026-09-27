@@ -18,7 +18,14 @@
 const DEF_PER_POINT = 0.04;
 const DEF_CAP = 15;
 
-const clone = (u) => ({ ...u, res: { ...u.res }, guns: u.guns.map((g) => ({ ...g })) });
+const clone = (u) => ({ ...u, res: { ...u.res }, guns: u.guns.map((g) => ({ ...g })), specials: (u.specials || []).map((x) => ({ ...x })) });
+
+/** A hit on `foe` after its SHIELD bubble soaks what it can. */
+function soak(foe, dmg) {
+  const s = Math.min(foe.bubble || 0, dmg);
+  foe.bubble = (foe.bubble || 0) - s;
+  return dmg - s;
+}
 const cloneState = (s) => ({ ...s, me: clone(s.me), foe: clone(s.foe), mines: s.mines.map((m) => ({ ...m })) });
 
 /** HP damage one gun hit would do to `target` (burst included), before crits. */
@@ -119,6 +126,7 @@ function apply(s, a) {
       foe.shield = false; // forcefield eats the hit
       dmg = 0;
     }
+    dmg = soak(foe, dmg);
     foe.hp -= dmg;
     s.dealt += dmg;
     if (g.freeze) foe.frozen = true;
@@ -131,6 +139,39 @@ function apply(s, a) {
         foe.pos = next;
       }
     }
+    if (g.drag) {
+      const next = me.pos + (Math.sign(foe.pos - me.pos) || 1);
+      if (next !== foe.pos && next >= 1 && next <= s.size) me.pos = next;
+    }
+    return true;
+  }
+  if (a.type === 'special') {
+    const sp = me.specials[a.i];
+    if (!sp || sp.uses <= 0 || me.energy < sp.en || me.heat > me.heatCap) return false;
+    me.energy -= sp.en;
+    me.heat += sp.heat;
+    sp.uses -= 1;
+    me.actions -= 1;
+    s.specialsUsed = (s.specialsUsed || 0) + 1;
+    const dir = Math.sign(foe.pos - me.pos) || 1;
+    if (sp.kind === 'hook') foe.pos = me.pos + dir;
+    else if (sp.kind === 'charge') {
+      let to = me.pos;
+      for (let i = 0; i < sp.dist; i++) {
+        const next = to + dir;
+        if (next < 1 || next > s.size || next === foe.pos) break;
+        to = next;
+      }
+      me.pos = to;
+      if (Math.abs(me.pos - foe.pos) === 1) {
+        const dmg = soak(foe, hitDamage({ dmg: sp.ram, burst: 1, dtype: 'phys' }, foe));
+        foe.hp -= dmg;
+        s.dealt += dmg;
+        const next = foe.pos + dir;
+        if (next >= 1 && next <= s.size) foe.pos = next;
+      }
+    } else if (sp.kind === 'teleport') me.pos = a.pos;
+    else if (sp.kind === 'shield') me.bubble = sp.absorb;
     return true;
   }
   if (a.type === 'stomp') {
@@ -138,7 +179,7 @@ function apply(s, a) {
     me.stomped = true;
     me.actions -= 1;
     me.heat += s.stompHeat || 4;
-    const dmg = hitDamage({ dmg: me.stompDmg, burst: 1, dtype: 'phys' }, foe);
+    const dmg = soak(foe, hitDamage({ dmg: me.stompDmg, burst: 1, dtype: 'phys' }, foe));
     foe.hp -= dmg;
     s.dealt += dmg;
     const next = foe.pos + (Math.sign(foe.pos - me.pos) || 1);
@@ -169,6 +210,13 @@ function actionsFor(s) {
     if (canFire(me, g, dist)) list.push({ type: 'fire', gun: i });
   });
   if (canStomp(s)) list.push({ type: 'stomp' });
+  (me.specials || []).forEach((sp, i) => {
+    if (sp.uses <= 0 || me.energy < sp.en || me.heat > me.heatCap) return;
+    if (sp.kind === 'hook' && dist >= 2 && dist <= sp.range) list.push({ type: 'special', i });
+    if (sp.kind === 'charge' && dist >= 2 && !me.legs?.anchored) list.push({ type: 'special', i });
+    if (sp.kind === 'shield' && !(me.bubble > 0)) list.push({ type: 'special', i });
+    if (sp.kind === 'teleport') for (let q = 1; q <= s.size; q++) if (q !== me.pos && q !== s.foe.pos) list.push({ type: 'special', i, pos: q });
+  });
   for (const m of laneMoves(me, s.foe.pos, s.size)) list.push({ type: 'move', pos: m.pos, how: m.how });
   if (me.actions === me.maxActions && me.heat > 0) list.push({ type: 'vent' });
   return list;
@@ -217,7 +265,7 @@ function score(start, end, aggression) {
   let s = end.dealt;
   // Their answer next turn (none if they're over their heat cap: overheat)
   const foeLocked = foe.heat > foe.heatCap || foe.jamNext;
-  const reply = foeLocked ? 0 : threat(foe, me, end.size);
+  const reply = Math.max(0, (foeLocked ? 0 : threat(foe, me, end.size)) - (me.bubble || 0)); // a SHIELD soaks their answer
   s -= reply * (0.7 - 0.4 * aggression);
   if (foeLocked) s += 12;
   // Our own next turn
@@ -233,6 +281,7 @@ function score(start, end, aggression) {
   // Energy for next turn matters a little; wasted steps cost a little
   s += Math.min(me.energy, me.energyMax) * 0.02;
   s -= (end.moves || 0) * 1.5;
+  s -= (end.specialsUsed || 0) * 4; // uses are limited: spend them when they matter
   return s;
 }
 

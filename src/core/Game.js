@@ -51,6 +51,9 @@ export function vfxOf(w) {
   return 'bullet';
 }
 
+/** A Charge Booster ram as a hit: Physical. */
+const RAM_GUN = { id: 'ram', name: 'RAM', dtype: 'phys', fx: {} };
+
 /** STOMP as a hit: Physical, from the legs. */
 const STOMP_GUN = { id: 'stomp', name: 'STOMP', dtype: 'phys', fx: {} };
 
@@ -224,6 +227,7 @@ export class Game {
     b.pos = pos;
     b.rank = e.rank || null;
     b.weapons = (e.weapons || []).map((w) => ({ ...laneGun(w), ammoLeft: w.ammo || 0 }));
+    b.specials = (e.specials || []).map((sp) => ({ ...sp, usesLeft: sp.uses }));
     b.legs = laneLegs(e.legs);
     const floor = Math.max(1, Math.min(5, this.battleConfig.floor || 1));
     b.stompDmg = Math.round((b.legs.stomp || 0) * G.dmgScale * G.enemyDmgScale * (1 + 0.1 * (floor - 1)));
@@ -276,6 +280,7 @@ export class Game {
       freeShot: !!mech.freeFirstShot, // Phantom frame: the first gun fired costs no energy
       // Drones start docked: DEPLOY (an action) launches one for the rest of the battle
       drones: (mech.drones || []).map((d) => ({ ...d, dmg: d.dmg ? d.dmg * G.dmgScale : d.dmg, off: true })),
+      specials: (mech.specials || []).map((sp) => ({ ...sp, ram: (sp.ram || 0) * G.dmgScale, usesLeft: sp.uses })),
       burnTicks: 0,
       burnDmg: 0,
       isFrozen: false,
@@ -307,6 +312,8 @@ export class Game {
     this.rigStats = m.rigStats;
     this.playerWeapons = m.weapons;
     this.playerDrones = m.drones;
+    this.playerSpecials = m.specials || [];
+    this.teleportPick = null;
     if (this.collisionSystem.stats) {
       this.collisionSystem.stats.playerAtk = m.atk;
       this.collisionSystem.stats.playerDef = m.def;
@@ -508,6 +515,7 @@ export class Game {
     u.energy = Math.min(u.energyMax, u.energy + u.regen);
     u.actionsLeft = G.actions;
     u._freeMoveUsed = false;
+    u.bubble = 0; // a SHIELD lasts until your next turn
     u.jammed = !!u.jamNext; // Blackout Cannon: guns jam for this turn
     u.jamNext = false;
     if (u.jammed) this._callout(u, 'GUNS JAMMED', DTYPES.energy.color);
@@ -587,6 +595,7 @@ export class Game {
   /** After an action: wait for moves and shots to finish, then (if no actions are left) pass the turn. */
   _afterAction(u, delay = L.settle) {
     if (!this.running || this.turnSystem.phase === TurnPhase.GAME_OVER) return; // that action ended the battle
+    this.teleportPick = null;
     this.turnSystem.phase = u === this.player ? TurnPhase.PLAYER_FLY : TurnPhase.ENEMY_FLY;
     this.moveMap = new Map();
     this.waitTimer = delay;
@@ -631,6 +640,13 @@ export class Game {
     if (!this.canPlayerAct) return false;
     const how = this.moveMap.get(pos);
     if (!how) return false;
+    if (how === 'teleport') {
+      const sp = this.playerSpecials[this.teleportPick];
+      this.teleportPick = null;
+      this._useSpecial(this.player, sp, this.activeEnemy, pos);
+      this._afterAction(this.player, 0.35);
+      return true;
+    }
     this._moveUnit(this.player, pos, how);
     this._afterAction(this.player, 0.15);
     return true;
@@ -861,6 +877,114 @@ export class Game {
     if (w.fx?.napalm) this._ignite(target.pos, w.fx.napalm);
     if (w.fx?.push) this._shove(target, shooter, w.fx.push, w.color);
     if (w.fx?.pull) this._shove(target, shooter, -w.fx.pull, w.color);
+    if (w.fx?.drag && shooter.hp > 0) this._dragToward(shooter, target, w.fx.drag);
+  }
+
+  /** Grapple Hook's cable: the shooter slides `n` toward the target (stops at a mech). */
+  _dragToward(u, target, n) {
+    const dir = Math.sign(target.pos - u.pos) || 1;
+    let to = u.pos;
+    for (let i = 0; i < n; i++) {
+      const next = to + dir;
+      if (next < 1 || next > L.size || this._unitAt(next)) break;
+      to = next;
+    }
+    if (to === u.pos) return;
+    u.anim = { from: u.x, to: posX(to), t: 0, dur: 0.25, jump: false };
+    u.pos = to;
+    this._arrive(u);
+  }
+
+  // ---------- Specials (SPECIAL A / B slots) ----------
+
+  /** Can `u` use special `sp` on `target` now? { ok, reason } */
+  specialStatus(u, sp, target) {
+    if (!sp) return { ok: false, reason: '' };
+    if (!(u.actionsLeft > 0)) return { ok: false, reason: 'NO ACTIONS' };
+    if (!(sp.usesLeft > 0)) return { ok: false, reason: 'EMPTY' };
+    if (u.heat > u.heatCap) return { ok: false, reason: 'HOT' };
+    if (u.energy < (sp.en || 0)) return { ok: false, reason: 'ENERGY' };
+    const d = target ? this.distance(u, target) : 99;
+    if (sp.special === 'hook') {
+      if (!target) return { ok: false, reason: 'NO TARGET' };
+      if (d < 2) return { ok: false, reason: 'TOO CLOSE' };
+      if (d > sp.range) return { ok: false, reason: 'RANGE' };
+    }
+    if (sp.special === 'charge') {
+      if (!target) return { ok: false, reason: 'NO TARGET' };
+      if (u.legs?.anchored) return { ok: false, reason: 'ANCHORED' };
+      if (d < 2) return { ok: false, reason: 'TOO CLOSE' };
+    }
+    if (sp.special === 'shield' && u.bubble > 0) return { ok: false, reason: 'ACTIVE' };
+    return { ok: true, reason: '' };
+  }
+
+  /** Use a special (the action and its cost are paid here). `pos` is the Teleporter's destination. */
+  _useSpecial(u, sp, target, pos) {
+    u.energy -= sp.en || 0;
+    u.heat += sp.heat || 0;
+    sp.usesLeft -= 1;
+    u.actionsLeft -= 1;
+    const dir = target ? Math.sign(target.pos - u.pos) || 1 : 1;
+    if (sp.special === 'hook') {
+      const spot = u.pos + dir;
+      target.anim = { from: target.x, to: posX(spot), t: 0, dur: 0.3, jump: false };
+      target.pos = spot;
+      soundEngine.playShot('hook');
+      this._callout(target, 'HOOKED', sp.color);
+      this._arrive(target);
+    } else if (sp.special === 'charge') {
+      let to = u.pos;
+      for (let i = 0; i < sp.dist; i++) {
+        const next = to + dir;
+        if (next < 1 || next > L.size || this._unitAt(next)) break;
+        to = next;
+      }
+      u.anim = { from: u.x, to: posX(to), t: 0, dur: 0.22, jump: false };
+      u.pos = to;
+      soundEngine.playMove('jump');
+      this._callout(u, 'CHARGE!', sp.color);
+      this._arrive(u);
+      if (u.hp > 0 && target.hp > 0 && this.distance(u, target) === 1) {
+        this.renderer.addScreenShake(12);
+        soundEngine.playStomp();
+        this._weaponHit(u, target, RAM_GUN, sp.ram);
+        if (target.hp > 0 && this.turnSystem.phase !== TurnPhase.GAME_OVER) this._shove(target, u, 1, sp.color);
+      }
+    } else if (sp.special === 'teleport') {
+      for (const at of [u.x, posX(pos)]) this.particles.push({ type: 'shockwave', x: at, y: u.y, radius: 6, maxRadius: 90, life: 0.3, maxLife: 0.3 });
+      u.pos = pos;
+      u.x = posX(pos);
+      u.anim = null;
+      soundEngine.playTeleport();
+      this._arrive(u);
+    } else if (sp.special === 'shield') {
+      u.bubble = sp.absorb;
+      soundEngine.playShield();
+      this._callout(u, `SHIELD ${Math.round(sp.absorb)}`, sp.color);
+    }
+  }
+
+  /** HUD: tap a special. The Teleporter first asks for a plate (tap it again to cancel). */
+  usePlayerSpecial(i) {
+    const sp = this.playerSpecials?.[i];
+    if (!this.canPlayerAct || !sp) return { ok: false, reason: this.player?.actionsLeft > 0 ? 'WAIT' : 'NO ACTIONS' };
+    if (this.teleportPick === i) {
+      this.teleportPick = null;
+      this.moveMap = this.reachable(this.player);
+      return { ok: true, cancelled: true };
+    }
+    const st = this.specialStatus(this.player, sp, this.activeEnemy);
+    if (!st.ok) return st;
+    if (sp.special === 'teleport') {
+      this.teleportPick = i;
+      this.moveMap = new Map();
+      for (let q = 1; q <= L.size; q++) if (!this._unitAt(q)) this.moveMap.set(q, 'teleport');
+      return { ok: true, pick: true };
+    }
+    this._useSpecial(this.player, sp, this.activeEnemy);
+    this._afterAction(this.player, 0.35);
+    return { ok: true };
   }
 
   /** This round's damage before resists: Thermal Lance, Meltdown Cannon and Capacitor Dump change it. */
@@ -1095,6 +1219,8 @@ export class Game {
       frozen: !!u.isFrozen,
       jammed: !!u.jammed,
       jamNext: !!u.jamNext,
+      bubble: u.bubble || 0,
+      specials: (u === this.player ? this.playerSpecials || [] : u.specials || []).map((sp) => ({ kind: sp.special, uses: sp.usesLeft, en: sp.en || 0, heat: sp.heat || 0, range: sp.range || 0, dist: sp.dist || 0, ram: sp.ram || 0, absorb: sp.absorb || 0 })),
       shield: !!u.forcefield,
       legs: u.legs || DEFAULT_LEGS,
       def: u.def || 0,
@@ -1116,6 +1242,7 @@ export class Game {
         drain: w.fx?.drain,
         push: w.fx?.push || 0,
         pull: w.fx?.pull || 0,
+        drag: w.fx?.drag || 0,
         freeze: !!w.fx?.freeze,
         mine: !!w.fx?.mine,
         hotBonus: !!w.fx?.hotBonus,
@@ -1154,6 +1281,13 @@ export class Game {
     if (a.type === 'move') {
       this._moveUnit(e, a.pos, a.how);
       return this._afterAction(e, 0.15);
+    }
+    if (a.type === 'special') {
+      const sp = e.specials?.[a.i];
+      if (sp && this.specialStatus(e, sp, p).ok) {
+        this._useSpecial(e, sp, p, a.pos);
+        return this._afterAction(e, 0.35);
+      }
     }
     if (a.type === 'stomp' && this.stompStatus(e, p).ok) {
       this._stomp(e, p);
@@ -1391,6 +1525,7 @@ export class Game {
       battleSummary: { kills: this.enemies.filter((e) => e.hp <= 0).length, turns: this.battleStats.turns },
       playerWeapons: this.playerWeapons || [],
       playerDrones: this.playerDrones || [],
+      playerSpecials: this.playerSpecials || [],
       projectiles: this.projectiles,
       gear: true,
       showHints: !!this.battleConfig?.showHints,

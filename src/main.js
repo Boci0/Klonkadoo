@@ -214,7 +214,7 @@ function bindAbilityButtons() {
     if (!game.ventPlayer()) soundEngine.play('error');
   });
 
-  // Keyboard hotkeys: [Q] [E] guns, [F] stomp, [V] vent, [Space] end turn
+  // Keyboard hotkeys: [Q] [E] guns, [Z] [X] specials, [F] stomp, [V] vent, [Space] end turn
   window.addEventListener('keydown', (e) => {
     if (state !== State.BATTLE || battlePaused) return;
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
@@ -225,6 +225,8 @@ function bindAbilityButtons() {
       if (game.endPlayerTurn()) soundEngine.playUI();
     } else if (e.code === 'KeyV') {
       if (!game.ventPlayer()) soundEngine.play('error');
+    } else if (e.code === 'KeyZ' || e.code === 'KeyX') {
+      useSpecial(e.code === 'KeyZ' ? 0 : 1);
     } else if (e.code === 'KeyF') {
       triggerStomp();
     }
@@ -235,7 +237,19 @@ function bindAbilityButtons() {
 // Classic: tap one to see its range. Gear combat: tap to fire it; each chip
 // shows its energy / heat cost, ammo and why it can't fire right now.
 
-const GUN_BLOCK_LABEL = { JAMMED: 'JAMMED', USED: 'USED', EMPTY: 'EMPTY', HOT: 'TOO HOT', ENERGY: 'NO ENERGY', RANGE: 'OUT OF RANGE', 'TOO CLOSE': 'TOO CLOSE', BLOCKED: 'NO LINE', 'NO TARGET': 'NO TARGET', 'NO ACTIONS': 'NO ACTIONS', WAIT: '' };
+const GUN_BLOCK_LABEL = { ACTIVE: 'ACTIVE', ANCHORED: 'ANCHORED', JAMMED: 'JAMMED', USED: 'USED', EMPTY: 'EMPTY', HOT: 'TOO HOT', ENERGY: 'NO ENERGY', RANGE: 'OUT OF RANGE', 'TOO CLOSE': 'TOO CLOSE', BLOCKED: 'NO LINE', 'NO TARGET': 'NO TARGET', 'NO ACTIONS': 'NO ACTIONS', WAIT: '' };
+
+function useSpecial(i) {
+  const res = game.usePlayerSpecial(i);
+  if (res.ok) {
+    haptics.impact(res.pick || res.cancelled ? 'light' : 'medium');
+    if (res.pick) game.renderer.addCallout(game.player, 'PICK A PLATE', '#c46fd6');
+    return;
+  }
+  soundEngine.play('error');
+  const label = GUN_BLOCK_LABEL[res.reason];
+  if (label) game.renderer.addCallout(game.player, label, '#94b0c2');
+}
 
 function fireGun(i) {
   const res = game.firePlayerWeapon(i);
@@ -259,6 +273,7 @@ function updateGearHud(el, endBtn, ventBtn) {
   hud?.classList.add('gear');
   const guns = game.playerWeapons || [];
   const drones = game.playerDrones || [];
+  const specials = game.playerSpecials || [];
   const p = game.player;
   const myTurn = game.running && game.turnSystem.phase === 'PLAYER_AIM';
   const live = game.canPlayerAct;
@@ -278,7 +293,7 @@ function updateGearHud(el, endBtn, ventBtn) {
     const cd = ventBtn.querySelector('.ability-cd');
     if (cd && cd.textContent !== heatTxt) cd.textContent = heatTxt;
   }
-  const sig = `${live}|${left}|` + guns.map((w, i) => `${w.ammoLeft}:${states[i].ok}:${states[i].reason}:${states[i].dmg}:${states[i].cover}:${states[i].overheats}`).join(',') + '|' + drones.map((d) => d.off).join(',');
+  const sig = `${live}|${left}|` + guns.map((w, i) => `${w.ammoLeft}:${states[i].ok}:${states[i].reason}:${states[i].dmg}:${states[i].cover}:${states[i].overheats}`).join(',') + '|' + drones.map((d) => d.off).join(',') + '|' + specials.map((sp) => `${sp.usesLeft}:${game.specialStatus(p, sp, game.activeEnemy).reason}`).join(',') + `|${game.teleportPick}`;
   if (sig === mechHudSig) return;
   mechHudSig = sig;
   el.innerHTML = guns.map((w, i) => {
@@ -300,11 +315,26 @@ function updateGearHud(el, endBtn, ventBtn) {
     const label = !d.off ? 'ON' : live ? 'DEPLOY' : 'NO ACTIONS';
     return `<button class="mech-chip drone gear-drone ${state}" data-drone="${i}" style="--c:${d.color}" aria-label="${d.name}">
       <img src="${partIcon(d.id)}" alt=""><span class="gun-cost"><i class="c-en">${en}</i>${heat ? `<i class="c-heat">${heat}</i>` : ''}</span><span class="gun-why">${label}</span></button>`;
+  }).join('') + specials.map((sp, i) => {
+    // Specials: an action each, limited uses; the Teleporter waits for a plate
+    const st = game.specialStatus(p, sp, game.activeEnemy);
+    const picking = game.teleportPick === i;
+    const ready = live && (st.ok || picking);
+    const label = picking ? 'PICK A PLATE' : ready ? 'USE' : GUN_BLOCK_LABEL[st.reason] || '';
+    return `<button class="mech-chip gear-gun gear-special ${ready ? 'ready' : 'cooling'} ${picking ? 'picking' : ''}" data-special="${i}" style="--c:${sp.color}" aria-label="${sp.name}">
+      <img src="${partIcon(sp.id)}" alt=""><b class="gun-ammo">${sp.usesLeft}/${sp.uses}</b>
+      <span class="gun-cost"><i class="c-en">${sp.en || 0}</i><i class="c-heat">${sp.heat || 0}</i></span>
+      <span class="gun-why">${label}</span></button>`;
   }).join('');
   el.querySelectorAll('[data-gun]').forEach((b) => b.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
     if (battlePaused) return;
     fireGun(Number(b.dataset.gun));
+  }));
+  el.querySelectorAll('[data-special]').forEach((b) => b.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    if (battlePaused) return;
+    useSpecial(Number(b.dataset.special));
   }));
   el.querySelectorAll('[data-drone]').forEach((b) => b.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
@@ -883,6 +913,7 @@ function startCombat(node) {
       legs: mech.legs,
       res: mech.res,
       parts: mech.parts,
+      specials: mech.specials,
     });
   }
 

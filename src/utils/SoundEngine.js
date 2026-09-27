@@ -279,6 +279,20 @@ class SoundEngine {
     this._noise({ dur: 0.25, vol: 0.08, filter: 'bandpass', freq: 1800 });
   }
 
+  /** TELEPORTER: a fast down-up sweep. */
+  playTeleport() {
+    if (!this._ready()) return;
+    this._tone({ type: 'square', freq: 1400, to: 200, dur: 0.12, vol: 0.08 });
+    this._tone({ type: 'square', freq: 200, to: 1800, dur: 0.16, vol: 0.08, at: 0.12 });
+  }
+
+  /** SHIELD: a rising hum. */
+  playShield() {
+    if (!this._ready()) return;
+    this._tone({ type: 'triangle', freq: 220, to: 660, dur: 0.3, vol: 0.2 });
+    this._tone({ type: 'sine', freq: 880, to: 1320, dur: 0.3, vol: 0.06, at: 0.05 });
+  }
+
   /** Turn start: two rising notes for you, two falling for the enemy. */
   playTurn(mine = true) {
     if (!this._ready()) return;

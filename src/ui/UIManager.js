@@ -213,7 +213,7 @@ export class UIManager {
     // Garage mechs 2 and 3 come along (SWAP in battle, drop in after a knock-out)
     const team = saveSystem.getTeamLoadouts().slice(1);
     // One row of part icons (names on hover / tap), in the order you'd read a rig
-    const order = ['frame', 'legs', 'weapon1', 'weapon2', 'drone', 'armor', 'module1', 'module2'];
+    const order = ['frame', 'legs', 'weapon1', 'weapon2', 'drone', 'armor', 'module1', 'module2', 'special1', 'special2'];
     const parts = order.map((slotId) => {
       const o = owned[SLOTS.findIndex((s) => s.id === slotId)];
       return o ? getPart(o.id) : null;
@@ -798,7 +798,7 @@ export class UIManager {
    */
   showAlmanac(type = 'weapon') {
     const owned = new Set(saveSystem.getMech().owned.map((o) => o.id));
-    const TABS = [['weapon', 'GUNS'], ['legs', 'LEGS'], ['frame', 'FRAMES'], ['armor', 'ARMOR'], ['drone', 'DRONES'], ['module', 'MODS']];
+    const TABS = [['weapon', 'GUNS'], ['legs', 'LEGS'], ['frame', 'FRAMES'], ['armor', 'ARMOR'], ['drone', 'DRONES'], ['module', 'MODS'], ['special', 'SPECIALS']];
     const RANK = { common: 0, rare: 1, epic: 2, legendary: 3, mythic: 4 };
     const list = PARTS.filter((p) => p.type === type).sort((a, b) => RANK[a.rarity] - RANK[b.rarity] || a.name.localeCompare(b.name));
     const cards = list.map((p) => {
