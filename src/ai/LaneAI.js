@@ -94,6 +94,11 @@ function apply(s, a) {
     if (g.ammo) g.ammoLeft -= 1;
     g.used = true;
     me.actions -= 1;
+    if (g.backfire) {
+      const bf = Math.min(g.backfire, Math.max(0, me.hp - 1));
+      me.hp -= bf;
+      s.backfire = (s.backfire || 0) + bf;
+    }
     if (g.mine) {
       s.mines.push({ pos: foe.pos + Math.sign(foe.pos - me.pos || 1), owner: me.team, dmg: g.dmg });
       s.minesLaid = (s.minesLaid || 0) + 1;
@@ -130,6 +135,7 @@ function apply(s, a) {
     foe.hp -= dmg;
     s.dealt += dmg;
     if (g.freeze) foe.frozen = true;
+    for (const [t, n] of Object.entries(g.resDrain || {})) foe.res[t] = (foe.res[t] || 0) - n;
     if (g.push || g.pull) {
       const dir = Math.sign(foe.pos - me.pos) || 1;
       const step = g.push ? dir : -dir;
@@ -178,8 +184,9 @@ function apply(s, a) {
     if (!canStomp(s)) return false;
     me.stomped = true;
     me.actions -= 1;
-    me.heat += s.stompHeat || 4;
-    const dmg = soak(foe, hitDamage({ dmg: me.stompDmg, burst: 1, dtype: 'phys' }, foe));
+    me.heat += me.legs.stompHeat ?? (s.stompHeat || 4);
+    me.energy -= me.legs.stompEn || 0;
+    const dmg = soak(foe, hitDamage({ dmg: me.stompDmg, burst: 1, dtype: me.legs.stompType || 'phys' }, foe));
     foe.hp -= dmg;
     s.dealt += dmg;
     const next = foe.pos + (Math.sign(foe.pos - me.pos) || 1);
@@ -197,7 +204,7 @@ function apply(s, a) {
 
 function canStomp(s) {
   const me = s.me;
-  return me.stompDmg > 0 && !me.stomped && me.heat <= me.heatCap && Math.abs(me.pos - s.foe.pos) === 1;
+  return me.stompDmg > 0 && !me.stomped && me.heat <= me.heatCap && me.energy >= (me.legs.stompEn || 0) && Math.abs(me.pos - s.foe.pos) === 1;
 }
 
 /** Every action `me` could take right now. */
@@ -253,7 +260,7 @@ function threat(u, target, size) {
   let best = (here[0] || 0) + (here[1] || 0);
   for (const m of laneMoves(v, target.pos, size)) best = Math.max(best, fireable(m.pos)[0] || 0);
   // Stomp from right next to it
-  if (v.stompDmg > 0 && Math.abs(v.pos - target.pos) === 1) best = Math.max(best, (here[0] || 0) + hitDamage({ dmg: v.stompDmg, burst: 1, dtype: 'phys' }, target));
+  if (v.stompDmg > 0 && Math.abs(v.pos - target.pos) === 1) best = Math.max(best, (here[0] || 0) + hitDamage({ dmg: v.stompDmg, burst: 1, dtype: v.legs?.stompType || 'phys' }, target));
   return best;
 }
 

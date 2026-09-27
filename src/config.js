@@ -83,7 +83,16 @@ export const CONFIG = {
     shotGap: 0.45, // seconds between an enemy's actions, so you can follow them
     actions: 2, // actions per turn: WALK / JUMP, FIRE a gun (each gun once per turn), DEPLOY a drone; VENT takes the rest of the turn
     vent: { coolMult: 2, energyPct: 0 }, // VENT (cooldown): cools 2x your cooling; energy only comes from regen
-    stompHeat: 4, // STOMP adds this much heat to the stomper
+    stompHeat: 4, // STOMP heat for legs that don't set their own (stompHeat on the legs part)
+    // Build: one load cap for every mech; up to overweightMax kg over costs HP per kg, past that you can't deploy
+    loadCap: 1000,
+    overweightMax: 10,
+    overweightHp: 2,
+    dmgSpread: 0.15, // every hit rolls mean ±15%
+    // Tiers: max level per tier (common..mythic); each tier up multiplies stats, levels add up to one more step
+    tierLevelCap: [5, 10, 15, 20, 25],
+    tierStep: 1.12,
+    transform: { parts: [2, 3, 4, 5], scrap: [20, 60, 150, 400] }, // from common, rare, epic, legendary
     // Energy pool / refill per turn, heat cap / cooling per turn when no frame sets them
     baseRig: { energy: 30, regen: 14, heatCap: 30, cool: 12 },
     // Enemy reactors by tier: bigger threats sustain more fire

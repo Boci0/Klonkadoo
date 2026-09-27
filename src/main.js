@@ -914,6 +914,8 @@ function startCombat(node) {
       res: mech.res,
       parts: mech.parts,
       specials: mech.specials,
+      drones: mech.drones,
+      startForcefield: mech.startForcefield,
     });
   }
 

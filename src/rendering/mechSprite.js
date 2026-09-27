@@ -1,7 +1,7 @@
 // ============================================================
 // mechSprite — the fighters on the field are drawn from their parts:
-// the Frame sets the torso (bigger frames, bigger mechs), Armor bolts
-// plating onto it, and the Legs set what walks underneath. Guns and
+// the Frame sets the torso (bigger frames, bigger mechs), plating modules
+// bolt armor onto it, and the Legs set what walks underneath. Guns and
 // drones are mounted by Renderer._drawGear; the physics body stays the
 // ball's circle hitbox.
 //
@@ -252,7 +252,15 @@ function palette(color, dark, flash, visor = VISOR) {
   return { k: INK, b: color, h: mix(color, 0.3), d: dark || mix(color, -0.4), v: visor, m: METAL, l: METAL_LIGHT };
 }
 
-/** Armor bolted onto the torso: pads, bands or rivets by armor part. */
+/** Plating modules show on the torso: which look each one bolts on. */
+const ARMOR_LOOK = {
+  md_plating: 'ar_scrap', md_physres: 'ar_kevlar', md_heatres: 'ar_kevlar', md_elecres: 'ar_kevlar',
+  md_heavyplate: 'ar_reactive', md_composite: 'ar_reactive', md_aegis: 'ar_aegis',
+  md_titanplate: 'ar_titanium', md_voidcore: 'ar_void',
+};
+const LOOK_RANK = ['md_plating', 'md_physres', 'md_heatres', 'md_elecres', 'md_heavyplate', 'md_composite', 'md_aegis', 'md_titanplate', 'md_voidcore'];
+
+/** Armor bolted onto the torso: pads, bands or rivets by plating module. */
 function paintArmor(g, armorId, w, h, flash) {
   const part = armorId && getPart(armorId);
   if (!part) return;
@@ -269,7 +277,7 @@ function paintArmor(g, armorId, w, h, flash) {
     g.fillStyle = lo;
     g.fillRect(x + 1, y + bh - 2, bw - 2, 1);
   };
-  switch (armorId) {
+  switch (ARMOR_LOOK[armorId]) {
     case 'ar_scrap':
       g.fillStyle = METAL_LIGHT;
       for (const [x, y] of [[4, 3], [w - 6, 4], [5, h - 4], [w - 7, h - 5]]) g.fillRect(x, y, 2, 2);
@@ -313,7 +321,8 @@ const cache = new Map();
 export function mechLook(ball) {
   const parts = ball.parts || [];
   const frame = parts.find((id) => getPart(id)?.type === 'frame') || 'fr_scout';
-  const armor = parts.find((id) => getPart(id)?.type === 'armor') || null;
+  // The best plating module shows (older snapshots may still list armor ids)
+  const armor = [...parts].filter((id) => ARMOR_LOOK[id]).sort((a, b) => LOOK_RANK.indexOf(b) - LOOK_RANK.indexOf(a))[0] || null;
   return { frame: TORSOS[frame] ? frame : 'fr_scout', armor };
 }
 

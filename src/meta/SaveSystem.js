@@ -9,7 +9,7 @@
 
 import { CONFIG } from '../config.js';
 import { masteryLevel } from './Mastery.js';
-import { INVENTORY_CAP, salvageValue, upgradeCost, MAX_LEVEL, STARTER_PARTS, STARTER_LOADOUT, SLOTS, getPart, newUid, openCrate, CRATES } from './Mech.js';
+import { INVENTORY_CAP, salvageValue, upgradeCost, maxLevel, tierOf, transformInfo, slotAccepts, RETIRED, RETIRED_REFUND, STARTER_PARTS, STARTER_LOADOUT, SLOTS, getPart, newUid, openCrate, CRATES, PACK_SIZE, packCost } from './Mech.js';
 
 const STORAGE_KEY = 'slingshot-save-v1';
 
@@ -111,13 +111,70 @@ export class SaveSystem {
       m.owned.push({ uid, id: 'lg_strider', level: 1 });
       m.loadout.legs = uid;
     }
+    if (m && (d.mechVersion || 1) < 2) this._migrateMechV2(d);
     this.save();
+  }
+
+  /**
+   * mechVersion 2 (the 1:1 build pass): 4 SIDE + 2 TOP guns, CHARGE / TELEPORT /
+   * HOOK slots, 8 modules, no ARMOR, tiers. Armor becomes the matching module,
+   * shield specials pay back Keys + scrap, every part gets a tier (its rarity),
+   * and levels over the tier's new cap drop to it (the scrap spent comes back).
+   */
+  _migrateMechV2(d) {
+    const m = d.mech;
+    const report = { keys: 0, scrap: 0, armor: 0 };
+    const gone = new Set();
+    for (const o of m.owned) {
+      if (o.id in RETIRED) {
+        if (RETIRED[o.id]) {
+          o.id = RETIRED[o.id];
+          report.armor += 1;
+        } else {
+          const r = RETIRED_REFUND[o.id] || { keys: 2, scrap: 10 };
+          report.keys += r.keys;
+          report.scrap += r.scrap;
+          gone.add(o.uid);
+          continue;
+        }
+      }
+      if (!getPart(o.id)) {
+        gone.add(o.uid);
+        continue;
+      }
+      o.tier = o.tier || getPart(o.id).rarity;
+      const cap = maxLevel(o);
+      while ((o.level || 1) > cap) {
+        o.level -= 1;
+        report.scrap += upgradeCost(o);
+      }
+    }
+    m.owned = m.owned.filter((o) => !gone.has(o.uid));
+    const part = (uid) => (uid && !gone.has(uid) ? m.owned.find((o) => o.uid === uid) : null);
+    m.loadouts = (m.loadouts || []).map((lo) => {
+      const next = Object.fromEntries(SLOTS.map((s) => [s.id, null]));
+      next.frame = part(lo.frame)?.uid || null;
+      next.legs = part(lo.legs)?.uid || null;
+      next.drone = part(lo.drone)?.uid || null;
+      const put = (o) => {
+        if (!o) return;
+        const slot = SLOTS.find((s) => !next[s.id] && slotAccepts(s, getPart(o.id)));
+        if (slot) next[slot.id] = o.uid;
+      };
+      for (const k of ['weapon1', 'weapon2', 'module1', 'module2', 'armor', 'special1', 'special2']) put(part(lo[k]));
+      return next;
+    });
+    m.tokens = (m.tokens || 0) + report.keys;
+    m.scrap = (m.scrap || 0) + report.scrap;
+    if (report.keys || report.scrap || report.armor) d.mechConverted = report; // shown once on the menu
+    d.mechVersion = 2;
   }
 
   _defaults() {
     return {
       version: 2,
       techVersion: 4, // fresh saves have nothing to migrate (see _migrate)
+      mechVersion: 2,
       profile: {
         name: 'operator',
         callsign: 'SLING-01',
@@ -157,6 +214,7 @@ export class SaveSystem {
           unlockedPerks: parsed.unlockedPerks || [],
           progression: { ...defaults.progression, ...(parsed.progression || {}) },
           techVersion: parsed.techVersion || 1, // old saves get converted
+          mechVersion: parsed.mechVersion || 1,
         };
       }
     } catch (e) {
@@ -487,6 +545,7 @@ export class SaveSystem {
         unlockedPerks: parsed.unlockedPerks || [],
         progression: { ...defaults.progression, ...(parsed.progression || {}) },
         techVersion: parsed.techVersion || 1,
+        mechVersion: parsed.mechVersion || 1,
       };
       this._ensureMech(); // older exported saves have no mech yet
       this._migrate();
@@ -511,7 +570,7 @@ export class SaveSystem {
       const base = { common: 2, rare: 5, epic: 12, legendary: 30 }[it.rarity] || 2;
       return sum + Math.round(base * (1 + ((it.level || 1) - 1) * 0.25));
     }, 0);
-    const owned = STARTER_PARTS.map((id) => ({ uid: newUid(), id, level: 1 }));
+    const owned = STARTER_PARTS.map((id) => ({ uid: newUid(), id, level: 1, tier: getPart(id).rarity }));
     const loadout = {};
     for (const slot of SLOTS) {
       const want = STARTER_LOADOUT[slot.id];
@@ -607,24 +666,34 @@ export class SaveSystem {
     this.save();
   }
 
-  /** Buy and open a crate (`free`: the daily pod). Returns the new part, or null if you can't afford it. */
-  buyCrate(crateId, { free = false } = {}) {
+  /**
+   * Buy and open a crate (`free`: the daily pod; `pack`: PACK_SIZE at once).
+   * Returns the new parts (an array), or null if you can't afford it.
+   */
+  buyCrate(crateId, { free = false, pack = false } = {}) {
     const m = this.data.mech;
     const crate = CRATES.find((c) => c.id === crateId);
     if (!crate) return null;
-    if (!free && (m.tokens < crate.cost || (crate.minRisk && this.bestRiskAnyBall() < crate.minRisk))) return null;
-    if (!free) m.tokens -= crate.cost;
-    const part = openCrate(crateId);
-    m.owned.push(part);
-    m.cratesOpened += 1;
-    // Past the cap, the weakest spare part is salvaged automatically
-    if (m.owned.length > INVENTORY_CAP) {
+    const cost = free ? 0 : pack ? packCost(crate) : crate.cost;
+    if (m.tokens < cost || (!free && crate.minRisk && this.bestRiskAnyBall() < crate.minRisk)) return null;
+    m.tokens -= cost;
+    const got = [];
+    for (let i = 0; i < (pack ? PACK_SIZE : 1); i++) {
+      const part = openCrate(crateId);
+      m.owned.push(part);
+      got.push(part);
+      m.cratesOpened += 1;
+    }
+    // Past the cap, the weakest spare parts are salvaged automatically
+    while (m.owned.length > INVENTORY_CAP) {
       const worn = this.getWornUids();
-      const spare = m.owned.filter((o) => !worn.has(o.uid) && o.uid !== part.uid).sort((a, b) => salvageValue(a) - salvageValue(b));
-      if (spare[0]) this.salvagePart(spare[0].uid, false);
+      const fresh = new Set(got.map((p) => p.uid));
+      const spare = m.owned.filter((o) => !worn.has(o.uid) && !fresh.has(o.uid)).sort((a, b) => salvageValue(a) - salvageValue(b));
+      if (!spare[0]) break;
+      this.salvagePart(spare[0].uid, false);
     }
     this.save();
-    return part;
+    return got;
   }
 
   /** Put a part in a slot (or take it out if it's already there). */
@@ -632,7 +701,9 @@ export class SaveSystem {
     const m = this.data.mech;
     const slot = SLOTS.find((s) => s.id === slotId);
     const owned = this.getOwnedPart(uid);
-    if (!slot || (uid && (!owned || getPart(owned.id).type !== slot.type))) return false;
+    if (!slot || (uid && (!owned || !slotAccepts(slot, getPart(owned.id))))) return false;
+    // `unique` modules fit once per mech
+    if (uid && getPart(owned.id).unique && Object.entries(m.loadout).some(([k, u]) => k !== slotId && u && u !== uid && this.getOwnedPart(u)?.id === owned.id)) return false;
     if (slot.id === 'frame' && !uid) return false; // a mech always has a frame
     // Mech 1 always fights, so its frame can't be taken for another mech
     if (m.editing !== 0 && m.loadouts[0].frame === uid) return false;
@@ -664,11 +735,43 @@ export class SaveSystem {
   upgradePart(uid) {
     const m = this.data.mech;
     const owned = this.getOwnedPart(uid);
-    if (!owned || owned.level >= MAX_LEVEL) return false;
+    if (!owned || owned.level >= maxLevel(owned)) return false;
     const cost = upgradeCost(owned);
     if (m.scrap < cost) return false;
     m.scrap -= cost;
     owned.level += 1;
+    this.save();
+    return true;
+  }
+
+  /**
+   * The spare parts a transform would melt down: the cheapest unworn parts of
+   * the same tier (never the part itself). Returns [] if there aren't enough.
+   */
+  transformFodder(uid) {
+    const owned = this.getOwnedPart(uid);
+    const info = owned && transformInfo(owned);
+    if (!info) return [];
+    const worn = this.getWornUids();
+    const pool = this.data.mech.owned
+      .filter((o) => o.uid !== uid && !worn.has(o.uid) && tierOf(o) === tierOf(owned))
+      .sort((a, b) => salvageValue(a) - salvageValue(b));
+    return pool.length >= info.parts ? pool.slice(0, info.parts) : [];
+  }
+
+  /** TRANSFORM: a part at max level becomes the next tier at LV 1. Returns true on success. */
+  transformPart(uid) {
+    const m = this.data.mech;
+    const owned = this.getOwnedPart(uid);
+    const info = owned && transformInfo(owned);
+    if (!info || owned.level < maxLevel(owned) || m.scrap < info.scrap) return false;
+    const fodder = this.transformFodder(uid);
+    if (fodder.length < info.parts) return false;
+    const eat = new Set(fodder.map((o) => o.uid));
+    m.owned = m.owned.filter((o) => !eat.has(o.uid));
+    m.scrap -= info.scrap;
+    owned.tier = info.to;
+    owned.level = 1;
     this.save();
     return true;
   }

@@ -2,8 +2,9 @@
 // RigScreen — full-screen loadout + supply pods.
 //
 // Left: the "bay", a live pixel scene of your mech as it will
-// fight (frame torso with its armor, legs, guns on the flanks,
-// orbiting drone) with the eight slot tiles around it. Right: the
+// fight (frame torso with its plating, legs, side guns on the flanks,
+// top guns on the shoulders, orbiting drone) with the slot tiles
+// around it and the stat bar under it. Right: the
 // parts that fit the selected slot as icon tiles, plus a detail
 // card for the focused part. The PODS tab opens supply pods.
 // ============================================================
@@ -14,16 +15,22 @@ import { haptics } from '../platform/haptics.js';
 import { OPERATOR, skinColors } from '../meta/Balls.js';
 import { torsoCanvas, legsCanvas } from '../rendering/mechSprite.js';
 import { partIcon, partCanvas, ico, uiIcon } from '../rendering/pixelIcons.js';
+import { CONFIG } from '../config.js';
 import {
-  SLOTS, PARTS, CRATES, getPart, partChips, partNote, describePart, TYPE_LABEL, rarityColor, rarityName,
-  upgradeCost, salvageValue, loadoutTotals, MAX_LEVEL, INVENTORY_CAP, DTYPES, DTYPE_KEYS, LANE_SIZE, reachLabel,
+  SLOTS, PARTS, CRATES, getPart, TYPE_LABEL, rarityColor, rarityName,
+  upgradeCost, salvageValue, loadoutTotals, INVENTORY_CAP, slotAccepts, maxLevel, tierOf, transformInfo,
+  PACK_SIZE, packCost,
 } from '../meta/Mech.js';
+import { partCardHtml, statBarHtml, bindHoverTips, hideTip } from './partCard.js';
 
 const RANK = { common: 0, rare: 1, epic: 2, legendary: 3, mythic: 4 };
-const REACH_MAX = LANE_SIZE - 1; // farthest distance on the lane
 // Where each slot tile sits around the bay
-const LEFT = ['weapon1', 'armor', 'module1', 'special1'];
-const RIGHT = ['weapon2', 'drone', 'module2', 'special2'];
+const LEFT = ['top1', 'side1', 'side2'];
+const RIGHT = ['top2', 'side3', 'side4'];
+const STRIP = ['drone', 'charge', 'teleport', 'hook'];
+const MODS = SLOTS.filter((s) => s.type === 'module').map((s) => s.id);
+// What an empty slot shows (a faint symbol instead of words)
+const EMPTY_ICON = { top: 'top', side: 'side', drone: 'star', charge: 'move', teleport: 'range', hook: 'pull', module: 'def', frame: 'hp', legs: 'move' };
 
 export class RigScreen {
   constructor({ onBack }) {
@@ -31,10 +38,12 @@ export class RigScreen {
     this.body = document.getElementById('rig-body');
     this.wallet = document.getElementById('rig-wallet');
     this.tab = 'loadout';
-    this.slot = 'weapon1';
+    this.slot = 'side1';
     this.focus = null; // uid of the part shown in the detail card
+    this.hover = null; // uid of the inventory part under the mouse (stat bar preview)
     document.getElementById('btn-rig-back').addEventListener('click', () => {
       soundEngine.playUI();
+      hideTip();
       this.stop();
       onBack();
     });
@@ -43,6 +52,12 @@ export class RigScreen {
       this.tab = b.dataset.rtab;
       this.render();
     }));
+    // Hover any part tile (slots, inventory, drops) for its icon card
+    bindHoverTips(this.body, '[data-tip-uid],[data-tip-part]', (el) => {
+      const uid = el.dataset.tipUid;
+      const owned = uid ? saveSystem.getOwnedPart(uid) : { id: el.dataset.tipPart, level: 1 };
+      return owned ? partCardHtml(owned) : '';
+    });
   }
 
   show(opts = {}) {
@@ -57,6 +72,7 @@ export class RigScreen {
 
   render() {
     this.stop();
+    hideTip();
     this._renderWallet();
     this.el.querySelectorAll('[data-rtab]').forEach((b) => b.classList.toggle('on', b.dataset.rtab === this.tab));
     if (this.tab === 'pods') this._renderPods();
@@ -76,20 +92,16 @@ export class RigScreen {
     const t = loadoutTotals(parts);
     const bySlot = Object.fromEntries(SLOTS.map((s, i) => [s.id, parts[i]]));
 
-    const tile = (slotId) => {
+    const tile = (slotId, cls = '') => {
       const slot = SLOTS.find((s) => s.id === slotId);
       const owned = bySlot[slotId];
       const p = owned && getPart(owned.id);
-      return `<button class="rig-slot ${slotId === this.slot ? 'sel' : ''} ${p ? '' : 'empty'}" data-slot="${slotId}" style="--rar:${p ? rarityColor(p.rarity) : 'var(--p-steel)'}">
-        ${p ? `<img src="${partIcon(p.id)}" alt=""><i class="rig-lv">${owned.level}</i>` : '<span class="rig-plus">+</span>'}
+      const empty = EMPTY_ICON[slot.mount || slot.kind || slot.id] || EMPTY_ICON[slot.type] || 'star';
+      return `<button class="rig-slot ${cls} ${slotId === this.slot ? 'sel' : ''} ${p ? '' : 'empty'}" data-slot="${slotId}" ${p ? `data-tip-uid="${owned.uid}"` : `title="${slot.name}"`} style="--rar:${p ? rarityColor(tierOf(owned)) : 'var(--p-steel)'}">
+        ${p ? `<img src="${partIcon(p.id)}" alt=""><i class="rig-lv">${owned.level}</i>` : `<span class="rig-plus">${ico(empty)}</span>`}
         <span class="rig-slot-name">${slot.name}</span>
       </button>`;
     };
-
-    // Load meter: one block per 4 capacity, red past the limit
-    const blocks = Math.max(10, Math.ceil(t.capacity / 4));
-    const used = Math.ceil(t.weight / 4);
-    const meter = Array.from({ length: Math.max(blocks, used) }, (_, i) => `<i class="${i < used ? (i >= blocks ? 'over' : 'on') : ''}"></i>`).join('');
 
     // Garage: up to 3 mechs; locked slots say how to earn them
     const garage = [0, 1, 2].map((i) => {
@@ -104,19 +116,15 @@ export class RigScreen {
     this.body.innerHTML = `
       <div class="rig-garage">${garage}</div>
       <div class="rig-bay">
-        <div class="rig-col">${LEFT.map(tile).join('')}</div>
+        <div class="rig-col">${LEFT.map((id) => tile(id)).join('')}</div>
         <div class="rig-stage">
-          <canvas id="rig-canvas" width="72" height="54"></canvas>
+          <canvas id="rig-canvas" width="80" height="56"></canvas>
           <div class="rig-core-slots">${tile('frame')}${tile('legs')}</div>
         </div>
-        <div class="rig-col">${RIGHT.map(tile).join('')}</div>
-        <div class="rig-load ${t.overweight ? 'over' : ''}">
-          ${ico('load')}<div class="rig-meter">${meter}</div><b>${t.weight}/${t.capacity}</b>
-        </div>
-        <div class="rig-totals">
-          <span>${ico('hp')}+${Math.round(t.hp)}</span>${DTYPE_KEYS.map((k) => `<span title="${DTYPES[k].name} resist" style="color:${DTYPES[k].color}">${ico('def', DTYPES[k].color)}${Math.round((t.def + t.res[k]) * 10) / 10}</span>`).join('')}<span>${ico('gun')}${t.weapons.length}</span>${t.drones.length ? `<span>${ico('star')}${t.drones.length}</span>` : ''}
-          ${t.overweight ? '<em class="rig-warn">OVERLOADED</em>' : ''}
-        </div>
+        <div class="rig-col">${RIGHT.map((id) => tile(id)).join('')}</div>
+        <div class="rig-strip">${STRIP.map((id) => tile(id, 'sm')).join('')}</div>
+        <div class="rig-strip mods">${MODS.map((id) => tile(id, 'xs')).join('')}</div>
+        <div class="rig-stats-wrap" id="rig-stats">${statBarHtml(t)}</div>
       </div>
       <div class="rig-side" id="rig-side"></div>`;
 
@@ -136,34 +144,61 @@ export class RigScreen {
     this._startBay(bySlot, t);
   }
 
+  /** Loadout totals if `uid` went into the selected slot (null if it's already there). */
+  _preview(bySlot, uid) {
+    if (!uid || bySlot[this.slot]?.uid === uid) return null;
+    const next = { ...bySlot };
+    for (const k of Object.keys(next)) if (next[k]?.uid === uid) next[k] = null;
+    next[this.slot] = saveSystem.getOwnedPart(uid);
+    return loadoutTotals(SLOTS.map((s) => next[s.id]));
+  }
+
+  _renderStats(bySlot, t) {
+    const box = document.getElementById('rig-stats');
+    if (box) box.innerHTML = statBarHtml(t, this._preview(bySlot, this.hover || this.focus));
+  }
+
   _renderSide(m, bySlot, t) {
     const side = document.getElementById('rig-side');
     const slot = SLOTS.find((s) => s.id === this.slot);
     const inSlot = bySlot[this.slot];
     const worn = saveSystem.getWornUids(); // on any garage mech
-    const fits = m.owned.filter((o) => getPart(o.id)?.type === slot.type)
-      .sort((a, b) => (b.uid === inSlot?.uid) - (a.uid === inSlot?.uid) || RANK[getPart(b.id).rarity] - RANK[getPart(a.id).rarity] || b.level - a.level);
+    const fits = m.owned.filter((o) => slotAccepts(slot, getPart(o.id)))
+      .sort((a, b) => (b.uid === inSlot?.uid) - (a.uid === inSlot?.uid) || RANK[tierOf(b)] - RANK[tierOf(a)] || b.level - a.level);
     if (!fits.some((o) => o.uid === this.focus)) this.focus = inSlot?.uid || fits[0]?.uid || null;
 
     const tiles = fits.map((o) => {
       const p = getPart(o.id);
       const on = saveSystem.wornBy(o.uid);
       const mark = o.uid === inSlot?.uid ? '<i class="rig-mark here">&#10003;</i>' : on === m.editing ? '<i class="rig-mark">&#9679;</i>' : on >= 0 ? `<i class="rig-mark other" title="On mech ${on + 1}">${on + 1}</i>` : '';
-      return `<button class="rig-item ${o.uid === this.focus ? 'sel' : ''}" data-uid="${o.uid}" style="--rar:${rarityColor(p.rarity)}">
-        <img src="${partIcon(p.id)}" alt=""><i class="rig-lv">${o.level}</i>${mark}
+      const ready = o.level >= maxLevel(o) && transformInfo(o) ? '<i class="rig-mark up" title="Ready to transform">&#9650;</i>' : '';
+      return `<button class="rig-item ${o.uid === this.focus ? 'sel' : ''}" data-uid="${o.uid}" data-tip-uid="${o.uid}" style="--rar:${rarityColor(tierOf(o))}">
+        <img src="${partIcon(p.id)}" alt=""><i class="rig-lv">${o.level}</i>${mark}${ready}
       </button>`;
     }).join('');
+    const what = slot.kind ? slot.name.toLowerCase() : TYPE_LABEL[slot.type].toLowerCase();
 
     side.innerHTML = `
       <div class="rig-side-head"><b>${slot.name}</b><span>${fits.length}</span></div>
-      <div class="rig-inv">${tiles || `<p class="rig-empty">${ico('pod', '#41a6f6')} Open pods to find ${TYPE_LABEL[slot.type].toLowerCase()}s</p>`}</div>
+      <div class="rig-inv">${tiles || `<p class="rig-empty">${ico('pod', '#41a6f6')} Open pods to find ${what}s</p>`}</div>
       <div class="rig-detail" id="rig-detail"></div>`;
 
-    side.querySelectorAll('[data-uid]').forEach((b) => b.addEventListener('click', () => {
-      soundEngine.play('select');
-      this.focus = b.dataset.uid;
-      this._renderSide(m, bySlot, t);
-    }));
+    side.querySelectorAll('[data-uid]').forEach((b) => {
+      b.addEventListener('click', () => {
+        soundEngine.play('select');
+        this.focus = b.dataset.uid;
+        this._renderSide(m, bySlot, t);
+      });
+      b.addEventListener('mouseenter', () => {
+        this.hover = b.dataset.uid;
+        this._renderStats(bySlot, t);
+      });
+      b.addEventListener('mouseleave', () => {
+        this.hover = null;
+        this._renderStats(bySlot, t);
+      });
+    });
+    this._renderStats(bySlot, t);
     this._renderDetail(m, bySlot, t, worn);
   }
 
@@ -175,52 +210,61 @@ export class RigScreen {
       return;
     }
     const p = getPart(owned.id);
+    const G = CONFIG.gear;
     const inThis = bySlot[this.slot]?.uid === owned.uid;
-    const current = bySlot[this.slot];
-    // Load after equipping this part here
-    const after = t.weight - (current ? getPart(current.id).weight || 0 : 0) + (p.weight || 0)
-      - (!inThis && saveSystem.wornBy(owned.uid) === m.editing ? p.weight || 0 : 0);
-    const capAfter = p.type === 'frame' ? p.capacity : t.capacity;
-    const tooHeavy = !inThis && after > capAfter;
+    const after = this._preview(bySlot, owned.uid);
+    const tooHeavy = !inThis && after && after.overKg > G.overweightMax;
+    const dupe = !inThis && p.unique && Object.entries(bySlot).some(([k, o]) => k !== this.slot && o && o.id === p.id && o.uid !== owned.uid);
     const cost = upgradeCost(owned);
-    const maxed = owned.level >= MAX_LEVEL;
-    const range = p.reach ? `<div class="rig-range" title="Hits at ${reachLabel(p.reach)} positions away">
-        ${ico('range')}<div class="rig-range-bar"><i style="left:${((p.reach[0] - 1) / REACH_MAX) * 100}%;width:${((p.reach[1] - p.reach[0] + 1) / REACH_MAX) * 100}%;--c:${p.color}"></i></div>
-        <span>${reachLabel(p.reach)}</span>
-      </div>` : '';
-    const note = partNote(p);
+    const maxed = owned.level >= maxLevel(owned);
+    const tf = transformInfo(owned);
+    const fodder = maxed && tf ? saveSystem.transformFodder(owned.uid) : [];
+    const canTf = maxed && tf && fodder.length >= tf.parts && m.scrap >= tf.scrap;
 
-    box.innerHTML = `
-      <div class="rig-detail-head" style="--rar:${rarityColor(p.rarity)}">
-        <img src="${partIcon(p.id)}" alt="">
-        <div><strong>${p.name}</strong><span>${rarityName(p.rarity)} ${TYPE_LABEL[p.type]} · LV ${owned.level}${p.weight ? ` · ${ico('load')}${p.weight}` : ''}</span></div>
-      </div>
-      <div class="rig-chips">${partChips(owned).map((c) => `<span>${ico(c.icon)}${c.text}</span>`).join('')}</div>
-      ${range}
-      ${note ? `<p class="rig-note">${note}</p>` : ''}
-      <div class="rig-actions">
-        ${inThis
-          ? (this.slot === 'frame' ? '<button class="btn btn-disabled" disabled>EQUIPPED</button>' : '<button class="btn btn-outline" data-act="unequip">REMOVE</button>')
-          : `<button class="btn ${tooHeavy ? 'btn-outline' : 'btn-accent'}" data-act="equip">${tooHeavy ? 'TOO HEAVY' : 'EQUIP'}</button>`}
-        <button class="btn ${!maxed && m.scrap >= cost ? 'btn-primary' : 'btn-disabled'}" data-act="upgrade" ${maxed || m.scrap < cost ? 'disabled' : ''}>${maxed ? 'MAX' : `LV+ ${ico('scrap')}${cost}`}</button>
-        <button class="btn ${worn.has(owned.uid) ? 'btn-disabled' : 'btn-danger'}" data-act="salvage" ${worn.has(owned.uid) ? 'disabled' : ''}>${ico('scrap')}+${salvageValue(owned)}</button>
-      </div>`;
+    // At max level the level button becomes TRANSFORM (it needs spare parts of the same tier)
+    const lvBtn = !maxed
+      ? `<button class="btn ${m.scrap >= cost ? 'btn-primary' : 'btn-disabled'}" data-act="upgrade" ${m.scrap < cost ? 'disabled' : ''} title="Level up">LV+ ${ico('scrap')}${cost}</button>`
+      : tf
+        ? `<button class="btn ${canTf ? 'btn-accent' : 'btn-disabled'}" data-act="transform" ${canTf ? '' : 'disabled'} title="Transform to ${rarityName(tf.to)}: melts ${tf.parts} spare ${rarityName(tierOf(owned))} parts + ${tf.scrap} scrap">&#9650;<i class="tdot" style="--c:${rarityColor(tf.to)}"></i> ${tf.parts}x<i class="tdot" style="--c:${rarityColor(tierOf(owned))}"></i> ${ico('scrap')}${tf.scrap}</button>`
+        : '<button class="btn btn-disabled" disabled>MAX</button>';
+    const heavyTip = 'Too heavy: you will not be able to deploy';
+    const equipBtn = inThis
+      ? (this.slot === 'frame' ? '<button class="btn btn-disabled" disabled>&#10003;</button>' : '<button class="btn btn-outline" data-act="unequip" title="Remove">&#10005;</button>')
+      : dupe ? `<button class="btn btn-disabled" disabled title="One per mech">${ico('lock')}1x</button>`
+        : `<button class="btn ${tooHeavy ? 'btn-outline' : 'btn-accent'}" data-act="equip" title="${tooHeavy ? heavyTip : 'Equip'}">${tooHeavy ? `${ico('load')}!` : 'EQUIP'}</button>`;
+    const sell = `<button class="btn ${worn.has(owned.uid) ? 'btn-disabled' : 'btn-danger'}" data-act="salvage" ${worn.has(owned.uid) ? 'disabled' : ''} title="Salvage">${ico('scrap')}+${salvageValue(owned)}</button>`;
+    const tfInfo = maxed && tf && !canTf
+      ? `<p class="rig-note">&#9650; ${fodder.length < tf.parts ? `needs ${tf.parts} spare ${rarityName(tierOf(owned))} parts` : `needs ${tf.scrap} scrap`}</p>` : '';
+
+    box.innerHTML = partCardHtml(owned, { extra: `${tfInfo}<div class="rig-actions">${equipBtn}${lvBtn}${sell}</div>` });
 
     box.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () => {
       const act = b.dataset.act;
-      // Equipping an overweight part is allowed (you just can't deploy), the label warns first
+      // Equipping an overweight part is allowed (you just can't deploy), the button warns first
       const ok = act === 'equip' ? saveSystem.equipPart(this.slot, owned.uid)
         : act === 'unequip' ? saveSystem.unequipSlot(this.slot)
           : act === 'upgrade' ? saveSystem.upgradePart(owned.uid)
-            : saveSystem.salvagePart(owned.uid) > 0;
-      soundEngine.play(ok ? 'confirm' : 'error');
-      if (ok && act !== 'salvage') haptics.impact('light');
+            : act === 'transform' ? saveSystem.transformPart(owned.uid)
+              : saveSystem.salvagePart(owned.uid) > 0;
+      soundEngine.play(ok ? (act === 'transform' ? 'coin' : 'confirm') : 'error');
+      if (ok && act !== 'salvage') haptics.impact(act === 'transform' ? 'heavy' : 'light');
       if (act === 'salvage') this.focus = null;
       const scroll = this.body.querySelector('.rig-inv')?.scrollTop || 0;
       this.render();
       const inv = this.body.querySelector('.rig-inv');
       if (inv) inv.scrollTop = scroll;
+      if (ok && act === 'transform') this._flashTransform(owned);
     }));
+  }
+
+  /** A short burst over the detail card after a transform. */
+  _flashTransform(owned) {
+    const box = document.getElementById('rig-detail');
+    if (!box) return;
+    box.style.setProperty('--glow', rarityColor(tierOf(owned)));
+    box.classList.remove('transformed');
+    void box.offsetWidth;
+    box.classList.add('transformed');
   }
 
   // ---------- Bay animation ----------
@@ -240,12 +284,15 @@ export class RigScreen {
     const look = skinColors(ball, skin);
 
     const part = (id) => bySlot[id] && getPart(bySlot[id].id);
-    const guns = [part('weapon1'), part('weapon2')];
-    const armor = part('armor');
+    // Side guns on the flanks (1-2 left, 3-4 right), top guns on the shoulders
+    const guns = [part('side1'), part('side3'), part('side2'), part('side4')];
+    const tops = [part('top1'), part('top2')];
     const drone = part('drone');
-    const mods = [part('module1'), part('module2')];
+    const mods = MODS.map(part);
+    const plating = mods.filter(Boolean).find((mp) => ['md_voidcore', 'md_titanplate', 'md_aegis', 'md_composite', 'md_heavyplate', 'md_plating'].includes(mp.id));
+    const armor = plating?.id || null;
     const frame = part('frame');
-    const frameCol = frame ? rarityColor(frame.rarity) : '#566c86';
+    const frameCol = frame ? rarityColor(tierOf(bySlot.frame)) : '#566c86';
     const legs = part('legs');
     // The mech itself: legs on the pedestal, torso (frame + armor) on the legs
     const legsSprite = legsCanvas(legs?.id || 'lg_strider', look.color, look.darkColor);
@@ -290,7 +337,7 @@ export class RigScreen {
       mods.forEach((mp, i) => {
         if (!mp) return;
         const on = Math.sin(s * 4 + i * 2) > -0.2;
-        px(cx + (i ? 8 : -10), 42, 2, 2, on ? rarityColor(mp.rarity) : '#1a1c2c');
+        px(cx - 12 + i * 3, 42, 2, 2, on ? rarityColor(mp.rarity) : '#1a1c2c');
       });
 
       const bob = Math.round(Math.sin(s * 2) * 0.6);
@@ -301,16 +348,32 @@ export class RigScreen {
       guns.forEach((gp, i) => {
         if (!gp) return;
         const ic = partCanvas(gp.id);
-        const y = gy - ic.height / 2 + (i ? 1 : -1);
+        const right = i % 2 === 1;
+        const low = i >= 2; // the second gun on a flank hangs lower
+        const y = gy - ic.height / 2 + (low ? 6 : -1);
+        const x = gunX + (low ? 2 : 0);
         g.save();
-        if (i === 0) {
-          g.translate(cx - gunX, 0);
+        if (!right) {
+          g.translate(cx - x, 0);
           g.scale(-1, 1);
           g.drawImage(ic, 0, Math.round(y));
-        } else g.drawImage(ic, Math.round(cx + gunX), Math.round(y));
+        } else g.drawImage(ic, Math.round(cx + x), Math.round(y));
         g.restore();
         // Muzzle blink every few seconds
-        if (((s + i * 1.3) % 3) < 0.08) px(i ? cx + gunX + ic.width : cx - gunX - 1 - ic.width, gy, 2, 2, '#ffcd75');
+        if (((s + i * 1.3) % 3) < 0.08) px(right ? cx + x + ic.width : cx - x - 1 - ic.width, y + ic.height / 2, 2, 2, '#ffcd75');
+      });
+      // Top guns sit on the shoulders, pointing outward
+      tops.forEach((gp, i) => {
+        if (!gp) return;
+        const ic = partCanvas(gp.id);
+        const y = torsoTop + bob - ic.height + 3;
+        g.save();
+        if (i === 0) {
+          g.translate(cx - 2, 0);
+          g.scale(-1, 1);
+          g.drawImage(ic, 0, Math.round(y));
+        } else g.drawImage(ic, Math.round(cx + 2), Math.round(y));
+        g.restore();
       });
       // Drone orbiting above
       if (drone) {
@@ -338,6 +401,7 @@ export class RigScreen {
     const pods = CRATES.map((c) => {
       const locked = c.minRisk && maxRisk < c.minRisk;
       const can = !locked && m.tokens >= c.cost;
+      const canPack = !locked && m.tokens >= packCost(c);
       const odds = Object.entries(c.odds);
       const pct = (v) => (v < 1 ? v.toFixed(2).replace(/0+$/, '') : v);
       return `<div class="rig-pod ${locked ? 'locked' : ''}" style="--pod:${c.color}">
@@ -346,14 +410,20 @@ export class RigScreen {
         <div class="rig-odds">${odds.map(([r, v]) => `<i style="flex:${Math.max(v, 1.5)};background:${rarityColor(r)}"></i>`).join('')}</div>
         <div class="rig-odds-legend">${odds.map(([r, v]) => `<span style="color:${rarityColor(r)}" title="${rarityName(r)}">${pct(v)}%</span>`).join('')}</div>
         <button class="rig-drops-btn" data-drops="${c.id}">POSSIBLE DROPS</button>
-        <button class="btn ${can ? 'btn-primary' : 'btn-disabled'}" data-pod="${c.id}" ${can ? '' : 'disabled'}>${locked ? `${ico('lock')}RISK ${c.minRisk}` : `OPEN ${ico('key')}${c.cost}`}</button>
+        ${locked
+          ? `<button class="btn btn-disabled" disabled>${ico('lock')}RISK ${c.minRisk}</button>`
+          : `<div class="rig-pod-buy">
+              <button class="btn ${can ? 'btn-primary' : 'btn-disabled'}" data-pod="${c.id}" ${can ? '' : 'disabled'}>x1 ${ico('key')}${c.cost}</button>
+              <button class="btn ${canPack ? 'btn-accent' : 'btn-disabled'}" data-pack="${c.id}" ${canPack ? '' : 'disabled'}>x${PACK_SIZE} ${ico('key')}${packCost(c)}</button>
+            </div>`}
       </div>`;
     }).join('');
     this.body.innerHTML = `
       <div class="rig-pods">${pods}</div>
-      <p class="rig-foot">${ico('key')} Win fights to earn keys · ${m.owned.length}/${INVENTORY_CAP} parts · ${PARTS.length} to find</p>
+      <p class="rig-foot">${ico('key')} Win fights to earn keys · ${saveSystem.getMech().owned.length}/${INVENTORY_CAP} parts · ${PARTS.length} to find</p>
       <div class="rig-reveal hidden" id="rig-reveal"></div>`;
     this.body.querySelectorAll('[data-pod]').forEach((b) => b.addEventListener('click', () => this._openPod(b.dataset.pod)));
+    this.body.querySelectorAll('[data-pack]').forEach((b) => b.addEventListener('click', () => this._openPod(b.dataset.pack, { pack: true })));
     this.body.querySelectorAll('[data-drops]').forEach((b) => b.addEventListener('click', () => {
       soundEngine.playUI();
       this._showDrops(b.dataset.drops);
@@ -370,7 +440,7 @@ export class RigScreen {
       const pool = PARTS.filter((p) => p.rarity === r);
       return `<div class="drops-row" style="--rar:${rarityColor(r)}">
         <div class="drops-head"><b>${rarityName(r)}</b><span>${fmt(v)}%</span><em>${fmt(v / pool.length)}% each</em></div>
-        <div class="drops-items">${pool.map((p) => `<span class="drops-item ${owned.has(p.id) ? 'owned' : ''}" data-part="${p.id}" title="${p.name}"><img src="${partIcon(p.id)}" alt="">${owned.has(p.id) ? '<i>&#10003;</i>' : ''}</span>`).join('')}</div>
+        <div class="drops-items">${pool.map((p) => `<span class="drops-item ${owned.has(p.id) ? 'owned' : ''}" data-part="${p.id}" data-tip-part="${p.id}"><img src="${partIcon(p.id)}" alt="">${owned.has(p.id) ? '<i>&#10003;</i>' : ''}</span>`).join('')}</div>
       </div>`;
     }).join('');
     box.style.removeProperty('--rar');
@@ -378,105 +448,132 @@ export class RigScreen {
     box.innerHTML = `<div class="drops-panel" style="--pod:${crate.color}">
         <div class="drops-title"><strong>${crate.name}</strong><span>&#10003; = owned</span><button class="btn btn-outline" data-act="close">&#10005;</button></div>
         <div class="drops-list">${rows}</div>
-        <p class="drops-info" id="drops-info">Tap a part to see what it is</p>
+        <div class="drops-info" id="drops-info">Tap a part to see it</div>
       </div>`;
     box.classList.remove('hidden');
     box.querySelector('[data-act="close"]').addEventListener('click', () => {
       soundEngine.playUI();
       box.classList.add('hidden');
     });
-    // No hover on phones: tapping an icon names the part
+    // No hover on phones: tapping an icon shows its card
     box.querySelectorAll('[data-part]').forEach((el) => el.addEventListener('click', () => {
-      const p = getPart(el.dataset.part);
       box.querySelectorAll('.drops-item.sel').forEach((x) => x.classList.remove('sel'));
       el.classList.add('sel');
-      const info = document.getElementById('drops-info');
-      info.style.setProperty('--rar', rarityColor(p.rarity));
-      info.innerHTML = `<b>${p.name}</b> · ${rarityName(p.rarity)} ${TYPE_LABEL[p.type]}${owned.has(p.id) ? ' · owned' : ''}${describePart({ id: p.id, level: 1 }).map((l) => ` · ${l}`).join('')}`;
+      document.getElementById('drops-info').innerHTML = partCardHtml({ id: el.dataset.part, level: 1 });
       soundEngine.play('select');
     }));
   }
 
   /**
-   * Pod opening: the pod drops into a light beam, shakes harder and harder
-   * while it glows (epic+ drops shift the glow to their colour halfway: a
-   * tease), then bursts into two halves with sparks, a ring and a flash.
+   * Pod opening: the parts are dealt face down as cards. Tap a card (or
+   * FLIP ALL) and it charges up, shaking harder while it glows; rare and
+   * better cards shift the glow to their colour halfway (a tease), then it
+   * flips over to show the part. Single pods are one card, packs five.
    */
-  /** Open a pod (bought with Keys, or `free`: the daily pod) with the full reveal. */
-  _openPod(podId, { free = false } = {}) {
-    const got = saveSystem.buyCrate(podId, { free });
+  _openPod(podId, { free = false, pack = false } = {}) {
+    const got = saveSystem.buyCrate(podId, { free, pack });
     if (!got) return soundEngine.play('error');
     this._renderWallet();
     const crate = CRATES.find((c) => c.id === podId);
-    const p = getPart(got.id);
-    const rank = RANK[p.rarity];
     const box = document.getElementById('rig-reveal');
-    const art = uiIcon('pod', crate.color);
-    const sparks = Array.from({ length: 18 }, (_, i) => `<i style="--a:${i * 20 + Math.random() * 10}deg;--d:${120 + Math.random() * 90}px"></i>`).join('');
-    box.style.setProperty('--rar', rarityColor(p.rarity));
+    if (!box) return;
+    const back = uiIcon('pod', crate.color);
+    box.style.setProperty('--rar', crate.color);
+    box.classList.remove('mythic');
     box.innerHTML = `
-      <div class="pod-stage" style="--pod:${crate.color};--glow:${crate.color}">
-        <div class="pod-beam"></div>
-        <div class="pod-shell"><img class="pod-half top" src="${art}" alt=""><img class="pod-half bot" src="${art}" alt=""></div>
-        <div class="pod-sparks">${sparks}</div>
-        <div class="pod-ring"></div>
-        <div class="pod-flash"></div>
+      <div class="rig-rays"></div>
+      <div class="pcards ${got.length > 1 ? 'pack' : 'single'}">
+        ${got.map((o, i) => {
+          const tier = tierOf(o);
+          const p = getPart(o.id);
+          return `<button class="pcard3d" data-i="${i}" style="--pod:${crate.color};--rar:${rarityColor(tier)};--deal:${i * 0.12}s" data-tip-uid="${o.uid}">
+            <span class="pcard-face back"><img src="${back}" alt=""><em>?</em></span>
+            <span class="pcard-face front">
+              <img src="${partIcon(p.id)}" alt="">
+              <b>${rarityName(tier)}</b>
+              <strong>${p.name}</strong>
+              <i class="pcard-type">${TYPE_LABEL[p.type]}</i>
+            </span>
+          </button>`;
+        }).join('')}
+      </div>
+      <p class="pcards-hint">TAP A CARD</p>
+      <div class="rig-actions pcards-actions">
+        ${got.length > 1 ? '<button class="btn btn-accent" data-act="all">FLIP ALL</button>' : ''}
+        <button class="btn btn-outline hidden" data-act="ok">OK</button>
+        <button class="btn btn-accent hidden" data-act="fit">VIEW IN RIG</button>
       </div>`;
     box.classList.remove('hidden');
-    const stage = box.querySelector('.pod-stage');
     haptics.impact('medium');
     soundEngine.play('select');
 
-    const charge = 1200;
-    requestAnimationFrame(() => stage.classList.add('charge'));
-    // Rising ticks while it charges
-    for (let i = 0; i < 9; i++) setTimeout(() => soundEngine.playUI(260 + i * 70, 0.035), 150 + i * 115);
-    if (rank >= 2) setTimeout(() => stage.style.setProperty('--glow', rarityColor(p.rarity)), charge * 0.55);
-    setTimeout(() => {
-      stage.classList.add('burst');
-      soundEngine.play(rank >= 3 ? 'alarm' : 'coin');
-      haptics.impact(rank >= 2 ? 'heavy' : 'medium');
-      if (rank >= 3) this.body.classList.add('pod-quake');
-    }, charge);
-    setTimeout(() => {
-      this.body.classList.remove('pod-quake');
-      this._reveal(got);
-    }, charge + 420);
-  }
-
-  _reveal(owned) {
-    const p = getPart(owned.id);
-    const col = rarityColor(p.rarity);
-    const box = document.getElementById('rig-reveal');
-    if (!box) return;
-    soundEngine.play('confirm');
-    box.style.setProperty('--rar', col);
-    box.classList.toggle('mythic', p.rarity === 'mythic');
-    box.innerHTML = `
-      <div class="rig-rays"></div>
-      <div class="pod-flash out"></div>
-      <img class="rig-reveal-icon" src="${partIcon(p.id)}" alt="">
-      <span class="rig-reveal-rar">${rarityName(p.rarity)} ${TYPE_LABEL[p.type]}</span>
-      <strong>${p.name}</strong>
-      <div class="rig-chips">${partChips(owned).map((c) => `<span>${ico(c.icon)}${c.text}</span>`).join('')}${p.weight ? `<span>${ico('load')}${p.weight}</span>` : ''}</div>
-      <div class="rig-actions">
-        <button class="btn btn-outline" data-act="ok">OK</button>
-        <button class="btn btn-accent" data-act="fit">VIEW IN RIG</button>
-      </div>`;
-    box.classList.remove('hidden');
+    const cards = [...box.querySelectorAll('.pcard3d')];
+    let flipped = 0;
+    let queue = Promise.resolve();
+    const done = () => {
+      box.querySelector('.pcards-hint')?.classList.add('hidden');
+      box.querySelector('[data-act="all"]')?.classList.add('hidden');
+      box.querySelector('[data-act="ok"]').classList.remove('hidden');
+      box.querySelector('[data-act="fit"]').classList.remove('hidden');
+      const best = Math.max(...got.map((o) => RANK[tierOf(o)]));
+      box.style.setProperty('--rar', rarityColor(Object.keys(RANK)[best]));
+      box.classList.toggle('mythic', best === 4);
+    };
+    const flip = (i) => {
+      const el = cards[i];
+      if (!el || el.dataset.state) return queue;
+      el.dataset.state = 'charging';
+      queue = queue.then(() => this._flipCard(el, got[i])).then(() => {
+        flipped += 1;
+        if (flipped === got.length) done();
+      });
+      return queue;
+    };
+    cards.forEach((el, i) => el.addEventListener('click', () => flip(i)));
+    box.querySelector('[data-act="all"]')?.addEventListener('click', () => {
+      soundEngine.playUI();
+      cards.forEach((_, i) => flip(i));
+    });
     box.querySelector('[data-act="ok"]').addEventListener('click', () => {
       soundEngine.playUI();
       this.render();
     });
     box.querySelector('[data-act="fit"]').addEventListener('click', () => {
       soundEngine.playUI();
-      // Prefer an empty slot of the right type
+      // The best card: prefer an empty slot it fits
+      const owned = [...got].sort((a, b) => RANK[tierOf(b)] - RANK[tierOf(a)])[0];
+      const p = getPart(owned.id);
       const m = saveSystem.getMech();
-      const slots = SLOTS.filter((s) => s.type === p.type);
+      const slots = SLOTS.filter((s) => slotAccepts(s, p));
       this.slot = (slots.find((s) => !m.loadout[s.id]) || slots[0]).id;
       this.focus = owned.uid;
       this.tab = 'loadout';
       this.render();
+    });
+  }
+
+  /** One card: charge (shake + glow, rare+ shift colour halfway), then flip. Resolves when it's face up. */
+  _flipCard(el, owned) {
+    const rank = RANK[tierOf(owned)];
+    const charge = 450 + rank * 180;
+    return new Promise((resolve) => {
+      el.classList.add('charge');
+      el.style.setProperty('--glow', 'var(--pod)');
+      el.style.setProperty('--charge', `${charge}ms`);
+      const ticks = 3 + rank * 2;
+      for (let i = 0; i < ticks; i++) setTimeout(() => soundEngine.playUI(300 + i * 60, 0.03), (charge / ticks) * i);
+      if (rank >= 1) setTimeout(() => el.style.setProperty('--glow', 'var(--rar)'), charge * 0.55);
+      setTimeout(() => {
+        el.classList.remove('charge');
+        el.classList.add('flipped', `r${rank}`);
+        soundEngine.play(rank >= 3 ? 'alarm' : rank >= 1 ? 'coin' : 'confirm');
+        haptics.impact(rank >= 2 ? 'heavy' : 'light');
+        if (rank >= 3) {
+          this.body.classList.add('pod-quake');
+          setTimeout(() => this.body.classList.remove('pod-quake'), 420);
+        }
+        setTimeout(resolve, 260);
+      }, charge);
     });
   }
 }

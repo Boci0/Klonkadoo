@@ -101,6 +101,91 @@ const WEAPON_GRIDS = {
     '....kkkk....',
     '.....kk.....',
   ],
+  md_physres: [
+    '..k.k.k.k...',
+    '.kkkkkkkkk..',
+    'kkhhhhhhhbkk',
+    '.khawwwwabk.',
+    'kkhawllwabkk',
+    '.khaawwaabk.',
+    'kkhbbbbbbbkk',
+    '.kkkkkkkkk..',
+    '..k.k.k.k...',
+  ],
+  md_heatres: [
+    '..k.k.k.k...',
+    '.kkkkkkkkk..',
+    'kkhhhhhhhbkk',
+    '.khawwwwabk.',
+    'kkhawooyabkk',
+    '.khaawwaabk.',
+    'kkhbbbbbbbkk',
+    '.kkkkkkkkk..',
+    '..k.k.k.k...',
+  ],
+  md_elecres: [
+    '..k.k.k.k...',
+    '.kkkkkkkkk..',
+    'kkhhhhhhhbkk',
+    '.khawwwwabk.',
+    'kkhawccwabkk',
+    '.khaawwaabk.',
+    'kkhbbbbbbbkk',
+    '.kkkkkkkkk..',
+    '..k.k.k.k...',
+  ],
+  md_thermal: [
+    '..k.k.k.k...',
+    '.kkkkkkkkk..',
+    'kkhhhhhhhbkk',
+    '.khaoyacabk.',
+    'kkhoyyccwbkk',
+    '.khaoyacabk.',
+    'kkhbbbbbbbkk',
+    '.kkkkkkkkk..',
+    '..k.k.k.k...',
+  ],
+  md_capacitor: [
+    '..k.k.k.k...',
+    '.kkkkkkkkk..',
+    'kkhhhhhhhbkk',
+    '.khkkkkkabk.',
+    'kkhkccgkwbkk',
+    '.khkkkkkabk.',
+    'kkhbbbbbbbkk',
+    '.kkkkkkkkk..',
+    '..k.k.k.k...',
+  ],
+  wp_shredder: [
+    '............',
+    '..kkkkkkkk..',
+    '.khhhhhhhhk.',
+    '.kaaaaaaaalw',
+    '.kalalalalk.',
+    '.kbbbbkkkk..',
+    '.kbbk.......',
+    '.kkkk.......',
+  ],
+  wp_scorcher: [
+    '............',
+    '..kkkkkk....',
+    '.khhhhhhkkk.',
+    '.kaaaaaaaaoy',
+    '.kbbbbbbkkk.',
+    '..kbbk......',
+    '..kbbk......',
+    '..kkkk......',
+  ],
+  wp_ionizer: [
+    '....kkk.....',
+    '...kcwck....',
+    '..kkkkkkkkk.',
+    '.khhhhhhhhcw',
+    '.kaaaaaaaakc',
+    '.kbbbbkkkk..',
+    '.kbbk.......',
+    '.kkkk.......',
+  ],
   md_target: [
     '..k.k.k.k...',
     '.kkkkkkkkk..',
@@ -715,6 +800,19 @@ const UI_GRIDS = {
   heat: ['...k....', '..kok...', '..koyk..', '.koyyok.', 'koyywyok', 'koywwyok', '.koyyok.', '..kkkk..'],
   ammo: ['.k...k..', 'kyk.kyk.', 'kyk.kyk.', 'kok.kok.', 'kok.kok.', 'kdk.kdk.', 'kkk.kkk.'],
   lock: ['..kkkk..', '.kllllk.', '.kk..kk.', 'kyyyyyyk', 'kyykkyok', 'kyykkyok', 'kyyyyook', 'kkkkkkkk'],
+  top: ['...kk...', '..kwwk..', '.kwwwwk.', 'kkkwwkkk', '..kwwk..', 'kkkkkkkk', 'klllllld', 'kkkkkkkk'],
+  side: ['kkk.k...', 'kldkwk..', 'kldkwwk.', 'kldwwwwk', 'kldkwwk.', 'kldkwk..', 'kkk.k...'],
+  stomp: ['.kkkk...', '.kllk...', '.kllk...', '.klldkk.', 'kllllllk', 'kddddddk', 'kkkkkkkk'],
+  backfire: ['..k..k..', '.kRkkRk.', 'kRwRRwRk', '.kRwwRk.', '.kRwwRk.', 'kRwRRwRk', '.kRkkRk.', '..k..k..'],
+  resdrain: ['kkkkkkkk', 'kssssssk', 'kswwwwsk', 'kssssssk', '.ksssnk.', '..ksnk..', '...kk...'],
+  drain: ['...kkk..', '..kcck..', '.kcck...', 'kccccck.', '..kcck..', '.kkkkkkk', '..kRRRk.', '...kRk..'],
+  push: ['k...k...', 'kk..kk..', 'kwk.kwk.', 'kwwkkwwk', 'kwk.kwk.', 'kk..kk..', 'k...k...'],
+  pull: ['...k...k', '..kk..kk', '.kwk.kwk', 'kwwkkwwk', '.kwk.kwk', '..kk..kk', '...k...k'],
+  pierce: ['.....k..', '.....kk.', 'kkkkkkwk', 'kwwwwwwk', 'kkkkkkwk', '.....kk.', '.....k..'],
+  arc: ['..kkk...', '.k...k..', 'k.....k.', 'k.....k.', 'k......k', 'yk.....y', 'yy....yy'],
+  regen: ['..kkkk..', '.kcccck.', 'kck..kk.', 'kck.kcck', 'kck..kk.', 'kck.....', '.kcccck.', '..kkkk..'],
+  cool: ['...k....', '.k.k.k..', '..kck...', 'kkcwckk.', '..kck...', '.k.k.k..', '...k....'],
+  auto: ['.kkkkkk.', 'kwwwwwwk', 'kwkwwkwk', 'kwwwwwwk', 'kwkkkkwk', 'kwwwwwwk', '.kkkkkk.', '..k..k..'],
   pod: [
     '....kkkkkk....',
     '...khhhhhhk...',
@@ -753,6 +851,9 @@ function paint(grid, colors) {
   return c;
 }
 
+/** Plating modules show as plating on a steel torso, like the mech wears it. */
+const PLATING = new Set(['md_plating', 'md_heavyplate', 'md_composite', 'md_aegis', 'md_titanplate', 'md_voidcore']);
+
 const canvasCache = new Map();
 const urlCache = new Map();
 
@@ -762,12 +863,12 @@ export function partCanvas(id, colorOverride) {
   if (!canvasCache.has(key)) {
     const p = getPart(id);
     const base = colorOverride || p?.color || rarityColor(p?.rarity);
-    // Frames, legs and armor use the same sprites the mech wears in battle
+    // Frames, legs and plating use the same sprites the mech wears in battle
     if (p?.type === 'frame') canvasCache.set(key, torsoCanvas(id, null, base, shade(base, -0.45)));
     else if (p?.type === 'legs') canvasCache.set(key, legsCanvas(id, base, shade(base, -0.45)));
-    else if (p?.type === 'armor') canvasCache.set(key, torsoCanvas('fr_brawler', id, '#566c86', '#333c57')); // plating on a steel torso
+    else if (PLATING.has(id)) canvasCache.set(key, torsoCanvas('fr_brawler', id, '#566c86', '#333c57')); // plating on a steel torso
     else {
-      const grid = WEAPON_GRIDS[id] || TYPE_GRIDS[p?.type] || TYPE_GRIDS.module;
+      const grid = WEAPON_GRIDS[id] || WEAPON_GRIDS[p?.icon] || TYPE_GRIDS[p?.type] || TYPE_GRIDS.module;
       canvasCache.set(key, paint(grid, { a: base, h: shade(base, 0.45), b: shade(base, -0.45) }));
     }
   }

@@ -56,6 +56,7 @@ const RAM_GUN = { id: 'ram', name: 'RAM', dtype: 'phys', fx: {} };
 
 /** STOMP as a hit: Physical, from the legs. */
 const STOMP_GUN = { id: 'stomp', name: 'STOMP', dtype: 'phys', fx: {} };
+const stompGun = (legs) => ({ ...STOMP_GUN, dtype: legs?.stompType || 'phys' });
 
 /** On-screen size by frame: heavier frames stand bigger on the lane. */
 const MECH_R = 32;
@@ -228,6 +229,9 @@ export class Game {
     b.rank = e.rank || null;
     b.weapons = (e.weapons || []).map((w) => ({ ...laneGun(w), ammoLeft: w.ammo || 0 }));
     b.specials = (e.specials || []).map((sp) => ({ ...sp, usesLeft: sp.uses }));
+    // Enemy drones launch on their first turn (it costs them an action, like yours)
+    b.drones = (e.drones || []).map((d) => ({ ...d, off: true }));
+    b.forcefield = !!e.startForcefield;
     b.legs = laneLegs(e.legs);
     const floor = Math.max(1, Math.min(5, this.battleConfig.floor || 1));
     b.stompDmg = Math.round((b.legs.stomp || 0) * G.dmgScale * G.enemyDmgScale * (1 + 0.1 * (floor - 1)));
@@ -275,7 +279,7 @@ export class Game {
       cool: rig.cool,
       weapons: (mech.weapons || []).map((w) => {
         const g = laneGun(w);
-        return { ...g, reach: [g.reach[0], Math.min(L.size - 1, g.reach[1] + reachUp)], dmg: w.dmg * G.dmgScale, ammoLeft: w.ammo || 0 };
+        return { ...g, reach: [g.reach[0], Math.min(L.size - 1, g.reach[1] + reachUp)], dmg: w.dmg * G.dmgScale, backfire: (w.backfire || 0) * G.dmgScale, ammoLeft: w.ammo || 0 };
       }),
       freeShot: !!mech.freeFirstShot, // Phantom frame: the first gun fired costs no energy
       // Drones start docked: DEPLOY (an action) launches one for the rest of the battle
@@ -575,6 +579,13 @@ export class Game {
     if (!this._tickBurn(e)) return;
     if (!this._upkeep(e)) return this._afterAction(e, 1.1);
     this.player.jammed = false; // a jam lasts one turn
+    for (const d of e.drones || []) {
+      if (!d.off || e.actionsLeft <= 0) continue;
+      d.off = false;
+      e.actionsLeft -= 1;
+      d.deployedAt = performance.now();
+      this._callout(e, 'DRONE DEPLOYED', d.color || '#ff5d73');
+    }
     this.enemyThink = L.thinkTime * (1 - 0.35 * this.aggression);
     soundEngine.playTurn(false);
   }
@@ -613,7 +624,14 @@ export class Game {
         return;
       }
       if (u === this.player) this._endPlayerTurn();
-      else this._startPlayerTurn();
+      else if (u.hp > 0 && (u.drones || []).some((d) => !d.off)) {
+        // Their deployed drones act, then your turn
+        this._gearDrones(u);
+        if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
+        this.turnSystem.phase = TurnPhase.ENEMY_FLY;
+        this.waitTimer = L.settle;
+        this.waitThen = () => this._startPlayerTurn();
+      } else this._startPlayerTurn();
     };
   }
 
@@ -706,6 +724,7 @@ export class Game {
     if (!(u.actionsLeft > 0)) return { ok: false, reason: 'NO ACTIONS' };
     if (u.stompedOn === u.turnNo) return { ok: false, reason: 'USED' };
     if (u.heat > u.heatCap) return { ok: false, reason: 'HOT' };
+    if ((u.legs?.stompEn || 0) > u.energy) return { ok: false, reason: 'ENERGY' };
     if (!target || this.distance(u, target) !== 1) return { ok: false, reason: 'NOT ADJACENT' };
     return { ok: true, reason: '', dmg: Math.round(u.stompDmg) };
   }
@@ -713,12 +732,13 @@ export class Game {
   _stomp(u, target) {
     u.stompedOn = u.turnNo;
     u.actionsLeft -= 1;
-    u.heat += G.stompHeat;
+    u.heat += u.legs?.stompHeat ?? G.stompHeat;
+    u.energy -= u.legs?.stompEn || 0;
     u.launchedAt = performance.now(); // renderer: legs spring
     this.renderer.addScreenShake(12);
     this.particles.push({ type: 'shockwave', x: target.x, y: W.groundY, radius: 10, maxRadius: 80, life: 0.3, maxLife: 0.3 });
     soundEngine.playStomp();
-    this._weaponHit(u, target, STOMP_GUN, u.stompDmg);
+    this._weaponHit(u, target, stompGun(u.legs), u.stompDmg);
     if (target.hp > 0 && this.turnSystem.phase !== TurnPhase.GAME_OVER) this._shove(target, u, 1, '#f4f4f4');
   }
 
@@ -803,6 +823,12 @@ export class Game {
     if (w.ammo) w.ammoLeft -= 1;
     w.usedOn = shooter.turnNo; // each gun once per turn
     shooter.actionsLeft -= 1;
+    // Backfire: the gun hurts its shooter too (never below 1 HP)
+    const bf = Math.min(Math.round(w.backfire || 0), Math.max(0, Math.ceil(shooter.hp) - 1));
+    if (bf > 0) {
+      shooter.takeDamage(bf);
+      this._callout(shooter, `BACKFIRE -${bf}`, '#ff5d73');
+    }
     if (w.fx?.dump) {
       // Capacitor Dump: everything left goes into this shot
       const spent = Math.max(0, Math.floor(shooter.energy));
@@ -1044,7 +1070,15 @@ export class Game {
    */
   _weaponHit(from, target, w, rawDmg, owner = from) {
     const type = dtypeOf(w);
+    rawDmg *= 1 + (Math.random() * 2 - 1) * G.dmgSpread; // every hit rolls
+    const strip = { ...(w.fx?.resDrain || {}) };
+    if (w.fx?.corrode) strip.phys = (strip.phys || 0) + w.fx.corrode;
     if (target.team === 'enemy') {
+      if (target.forcefield) {
+        target.forcefield = false;
+        this._callout(target, 'BLOCKED', '#a7f070');
+        return;
+      }
       const yours = owner === this.player;
       const critChance = (w.fx?.crit || 0) + (yours ? 0.05 + (this.rigStats?.critChance || 0) : 0);
       const crit = critChance > 0 && Math.random() < critChance;
@@ -1058,7 +1092,10 @@ export class Game {
         target.burnDmg = Math.max(target.burnDmg || 0, 6);
       }
       if (w.fx?.freeze) target.isFrozen = true;
-      if (w.fx?.corrode) target.res = { ...target.res, phys: Math.max(-(target.def || 0), (target.res?.phys || 0) - w.fx.corrode) };
+      for (const [t, n] of Object.entries(strip)) {
+        target.res = { ...target.res, [t]: Math.max(-(target.def || 0), (target.res?.[t] || 0) - n) };
+        this._callout(target, `-${n} ${DTYPES[t].short} RES`, DTYPES[t].color);
+      }
       if (yours) this._reportHit(w, dmg);
       if (crit) this._callout(target, 'CRIT!', '#ffcd75');
       this.events.emit('damage', { attacker: owner, victim: target, damage: dmg, killed, crit });
@@ -1076,9 +1113,10 @@ export class Game {
       this.player.burnDmg = Math.max(this.player.burnDmg || 0, 6);
     }
     if (w.fx?.freeze) this.player.isFrozen = true;
-    if (w.fx?.corrode) {
+    for (const [t, n] of Object.entries(strip)) {
       const r = this.player.res;
-      r.phys = Math.max(-(this.collisionSystem.stats.playerTotalDef || 0), (r.phys || 0) - w.fx.corrode);
+      r[t] = Math.max(-(this.collisionSystem.stats.playerTotalDef || 0), (r[t] || 0) - n);
+      this._callout(this.player, `-${n} ${DTYPES[t].short} RES`, DTYPES[t].color);
     }
     this.events.emit('damage', { attacker: owner, victim: this.player, damage: dmg, killed });
   }
@@ -1142,27 +1180,28 @@ export class Game {
 
   // ---------- Drones ----------
 
-  /** Deployed drones act at the end of your turn, paying their energy. */
-  _gearDrones() {
-    for (const d of this.playerDrones) {
+  /** Deployed drones act at the end of their owner's turn, paying their energy. */
+  _gearDrones(owner = this.player) {
+    const drones = owner === this.player ? this.playerDrones : owner.drones || [];
+    const foe = owner === this.player ? this.activeEnemy : this.player;
+    for (const d of drones) {
       if (d.off) continue;
       const { en, heat } = droneUpkeep(d);
-      if (d.forcefieldEvery && (this.player.forcefield || this.battleStats.turns % d.forcefieldEvery !== 0)) continue;
-      if (d.heal && this.player.hp >= this.player.maxHp) continue;
-      if (d.dmg && !this.activeEnemy) continue;
-      if (this.player.energy < en) {
-        this._callout(this.player, 'DRONE: NO POWER', '#94b0c2');
+      if (d.forcefieldEvery && (owner.forcefield || this.battleStats.turns % d.forcefieldEvery !== 0)) continue;
+      if (d.heal && owner.hp >= owner.maxHp) continue;
+      if (d.dmg && !foe) continue;
+      if (owner.energy < en) {
+        this._callout(owner, 'DRONE: NO POWER', '#94b0c2');
         continue;
       }
-      this.player.energy -= en;
-      this.player.heat += heat;
-      this._droneAct(d);
+      owner.energy -= en;
+      owner.heat += heat;
+      this._droneAct(d, owner, foe);
       if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
     }
   }
 
-  _droneAct(d) {
-    const shooter = this.player;
+  _droneAct(d, shooter = this.player, foe = this.activeEnemy) {
     if (d.heal) {
       const before = shooter.hp;
       d.firedAt = performance.now();
@@ -1174,7 +1213,7 @@ export class Game {
       shooter.forcefield = true;
       this._callout(shooter, 'DRONE SHIELD', d.color);
     } else if (d.dmg) {
-      const target = this.activeEnemy;
+      const target = foe;
       if (!target) return;
       d.firedAt = performance.now();
       soundEngine.playShot('bullet', dtypeOf(d), true);
@@ -1253,6 +1292,8 @@ export class Game {
         regenDmg: w.fx?.regenDmg || 0,
         dump: !!w.fx?.dump,
         dumpScale: G.dmgScale,
+        backfire: Math.round(w.backfire || 0),
+        resDrain: { ...(w.fx?.resDrain || {}), ...(w.fx?.corrode ? { phys: w.fx.corrode } : {}) },
       })),
     };
   }

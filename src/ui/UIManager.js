@@ -22,7 +22,8 @@ import { OPERATOR, skinsFor, isSkinUnlocked, skinProgress, skinColors } from '..
 import { mechDataUrl } from '../rendering/mechSprite.js';
 import { MEDALS, medalProgress, checkMedals } from '../meta/Medals.js';
 import { masteryLevel, MILESTONES, MAX_MASTERY } from '../meta/Mastery.js';
-import { getPart, loadoutTotals, SLOTS, PARTS, rarityColor, rarityName, describePart, CLEAN_WIN_KEYS, DTYPES, DTYPE_KEYS } from '../meta/Mech.js';
+import { getPart, loadoutTotals, SLOTS, PARTS, rarityColor, rarityName, describePart, CLEAN_WIN_KEYS, DTYPES, DTYPE_KEYS, tierOf, partChips, partNote } from '../meta/Mech.js';
+import { partCardHtml, bindHoverTips, chipHtml, tierDots } from './partCard.js';
 import { getSupply } from '../rogue/Supplies.js';
 import { RigScreen } from './RigScreen.js';
 import { ico, partIcon } from '../rendering/pixelIcons.js';
@@ -62,7 +63,7 @@ export class UIManager {
         soundEngine.play('error');
         this.showConfirm({
           title: 'RIG OVERLOADED',
-          text: `${ico('load')} ${t.weight}/${t.capacity}. Lighten your rig to deploy.`,
+          text: `${ico('load')} ${t.weight}/${t.capacity} kg: ${t.overKg - CONFIG.gear.overweightMax} kg past the limit. Lighten your rig to deploy.`,
           confirmLabel: 'OPEN RIG',
           onConfirm: () => this.showMech(),
         });
@@ -212,14 +213,10 @@ export class UIManager {
     const t = loadoutTotals(owned);
     // Garage mechs 2 and 3 come along (SWAP in battle, drop in after a knock-out)
     const team = saveSystem.getTeamLoadouts().slice(1);
-    // One row of part icons (names on hover / tap), in the order you'd read a rig
-    const order = ['frame', 'legs', 'weapon1', 'weapon2', 'drone', 'armor', 'module1', 'module2', 'special1', 'special2'];
-    const parts = order.map((slotId) => {
-      const o = owned[SLOTS.findIndex((s) => s.id === slotId)];
-      return o ? getPart(o.id) : null;
-    }).filter(Boolean);
-    const partIds = owned.filter(Boolean).map((o) => o.id);
-    const icons = parts.map((p) => `<span class="deploy-part" style="--c:${rarityColor(p.rarity)}" title="${p.name}" data-name="${p.name}"><img src="${partIcon(p.id)}" alt="${p.name}"></span>`).join('');
+    // One row of part icons (cards on hover / tap), in slot order
+    const parts = owned.filter(Boolean);
+    const partIds = parts.map((o) => o.id);
+    const icons = parts.map((o) => `<span class="deploy-part" style="--c:${rarityColor(tierOf(o))}" data-tip-uid="${o.uid}" data-name="${getPart(o.id).name}"><img src="${partIcon(o.id)}" alt="${getPart(o.id).name}"></span>`).join('');
 
     this.openModal('DEPLOY', `
       <div class="deploy">
@@ -235,8 +232,9 @@ export class UIManager {
           <div class="deploy-stats">
             <span title="HP">${ico('hp')}${CONFIG.run.maxHpBase + Math.round(t.hp)}</span>
             ${DTYPE_KEYS.map((k) => `<span title="${DTYPES[k].name} resist" style="color:${DTYPES[k].color}">${ico('def', DTYPES[k].color)}${Math.round((t.def + t.res[k]) * 10) / 10}</span>`).join('')}
-            <span title="Energy pool, refill per turn">${ico('energy')}${t.energy}<em>+${t.regen}</em></span>
-            <span title="Heat cap, cooling per turn">${ico('heat')}${t.heatCap}<em>-${t.cool}</em></span>
+            <span title="Energy pool, refill per turn">${ico('energy')}${t.energy}<em>${ico('regen')}${t.regen}</em></span>
+            <span title="Heat cap, cooling per turn">${ico('heat')}${t.heatCap}<em>${ico('cool')}${t.cool}</em></span>
+            <span title="Weight / load cap" class="${t.overKg > 0 ? 'bad' : ''}">${ico('load')}${t.weight}<em>/${t.capacity}</em></span>
           </div>
           <div class="deploy-parts">${icons}</div>
           ${team.length ? `<div class="deploy-team"><span>TEAM</span>${team.map((ps, i) => `<img src="${mechDataUrl(ps.filter(Boolean).map((o) => o.id), skinColors(b, 'default').color, skinColors(b, 'default').darkColor)}" alt="Mech ${i + 2}" title="Mech ${i + 2}">`).join('')}</div>` : ''}
@@ -250,13 +248,12 @@ export class UIManager {
         <button class="btn btn-primary" data-act="start" ${t.overweight ? 'disabled' : ''}>&#9654; START</button>
       </div>`);
 
-    // Tapping a part names it (phones have no hover)
     const hint = document.getElementById('deploy-hint');
-    if (!t.overweight) {
-      this.modalBody.querySelectorAll('[data-name]').forEach((el) => el.addEventListener('click', () => {
-        hint.textContent = el.dataset.name;
-      }));
-    }
+    // Hover (or press and hold) a part for its card
+    bindHoverTips(this.modalBody, '[data-tip-uid]', (el) => {
+      const o = saveSystem.getOwnedPart(el.dataset.tipUid);
+      return o ? partCardHtml(o) : '';
+    });
 
     // Risk + mastery
     const riskRow = this.modalActions.querySelector('#ball-risk-row');
@@ -727,6 +724,14 @@ export class UIManager {
       delete saveSystem.data.techConverted;
       saveSystem.save();
     }
+    // One-time notice: the 1:1 build pass converted armor and shields
+    const mc = saveSystem.data.mechConverted;
+    if (mc) {
+      const bits = [mc.armor ? `ARMOR → ${mc.armor} MOD${mc.armor > 1 ? 'S' : ''}` : '', mc.keys ? `+${mc.keys} ${ico('key')}` : '', mc.scrap ? `+${mc.scrap} ${ico('scrap')}` : ''].filter(Boolean);
+      this.toast(`<span class="feed-boon">NEW RIG SLOTS: ${bits.join(' · ')}</span>`);
+      delete saveSystem.data.mechConverted;
+      saveSystem.save();
+    }
     // A run left open (app closed mid-run) resumes from the big button
     const saved = this.cb.savedRun?.();
     const play = document.getElementById('btn-play');
@@ -797,23 +802,24 @@ export class UIManager {
    */
   showAlmanac(type = 'weapon') {
     const owned = new Set(saveSystem.getMech().owned.map((o) => o.id));
-    const TABS = [['weapon', 'GUNS'], ['legs', 'LEGS'], ['frame', 'FRAMES'], ['armor', 'ARMOR'], ['drone', 'DRONES'], ['module', 'MODS'], ['special', 'SPECIALS']];
+    const TABS = [['weapon', 'GUNS'], ['legs', 'LEGS'], ['frame', 'FRAMES'], ['drone', 'DRONES'], ['module', 'MODS'], ['special', 'SPECIALS']];
     const RANK = { common: 0, rare: 1, epic: 2, legendary: 3, mythic: 4 };
     const list = PARTS.filter((p) => p.type === type).sort((a, b) => RANK[a.rarity] - RANK[b.rarity] || a.name.localeCompare(b.name));
     const cards = list.map((p) => {
       const has = owned.has(p.id);
-      const lines = describePart({ id: p.id, level: 1 });
+      const lo = { id: p.id, level: 1 };
       return `<div class="alm-card ${has ? 'owned' : ''}" style="--rar:${rarityColor(p.rarity)}">
         <img src="${partIcon(p.id)}" alt="">
         <div class="alm-body">
-          <div class="alm-head"><b>${p.name}</b><em>${rarityName(p.rarity)}${has ? ' · OWNED' : ''}</em></div>
-          <div class="alm-lines">${lines.map((l) => `<span>${l}</span>`).join('')}</div>
+          <div class="alm-head"><b>${p.name}</b>${tierDots(lo)}<em>${has ? '&#10003;' : ''}</em></div>
+          <div class="rig-chips">${partChips(lo).map(chipHtml).join('')}</div>
+          ${partNote(p) ? `<p class="rig-note">${partNote(p)}</p>` : ''}
         </div>
       </div>`;
     }).join('');
     const tabs = TABS.map(([t, label]) => `<button class="btn ${t === type ? 'btn-accent' : 'btn-outline'} alm-tab" data-alm="${t}">${label}</button>`).join('');
     const found = PARTS.filter((p) => owned.has(p.id)).length;
-    this.openModal(`ALMANAC ${found}/${PARTS.length}`, `<div class="alm-tabs">${tabs}</div><p class="dim-text alm-note">Stats at level 1. Upgrading a part adds 5% per level to its HP, damage and bonuses.</p><div class="alm-list">${cards}</div>`,
+    this.openModal(`ALMANAC ${found}/${PARTS.length}`, `<div class="alm-tabs">${tabs}</div><p class="dim-text alm-note">Stats at level 1 of the lowest tier. Dots = the tiers a part can TRANSFORM through (max level, then melt spare parts of its tier).</p><div class="alm-list">${cards}</div>`,
       '<div class="btn-row"><button class="btn btn-accent" data-act="close">CLOSE</button></div>', { wide: true });
     this.modalBody.querySelectorAll('[data-alm]').forEach((b) => b.addEventListener('click', () => {
       soundEngine.playUI();
