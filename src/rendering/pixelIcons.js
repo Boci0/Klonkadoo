@@ -14,6 +14,7 @@
 // ============================================================
 
 import { getPart, rarityColor } from '../meta/Mech.js';
+import { torsoCanvas, legsCanvas } from './mechSprite.js';
 
 const PAL = {
   k: '#1a1c2c', w: '#f4f4f4', y: '#ffcd75', o: '#ef7d57', r: '#b13e53', R: '#ff5d73',
@@ -33,6 +34,205 @@ function shade(hex, amt) {
 // ---------- Part grids (12 wide) ----------
 
 const WEAPON_GRIDS = {
+  // Drones and modules: each its own look (modules share the chip shape)
+  dr_gnat: [
+    '............',
+    '.kkk....kkk.',
+    '..k......k..',
+    '...kkkkkk...',
+    '...kawwak...',
+    '...kbbbbk...',
+    '....kkkk....',
+    '.....kk.....',
+    '............',
+  ],
+  dr_hornet: [
+    'kkk......kkk',
+    'khhk....khhk',
+    '.kkkkkkkkkk.',
+    '.kaaaaaaaak.',
+    'kkaRRaaRRakk',
+    '.kbbbbbbbbk.',
+    '..kkkkkkkk..',
+    '....kyyk....',
+    '.....kk.....',
+  ],
+  dr_medic: [
+    'kkk......kkk',
+    'khhk....khhk',
+    '.kkkkkkkkkk.',
+    '..kaaggaak..',
+    '..kggggggk..',
+    '..kaaggaak..',
+    '..kbbbbbbk..',
+    '...kkkkkk...',
+    '............',
+  ],
+  dr_guardian: [
+    'kkk......kkk',
+    'khhk....khhk',
+    '.kkkkkkkkkk.',
+    '.khaaaaaahk.',
+    '.kaacwwcaak.',
+    '..kaacwaak..',
+    '...kbbbbk...',
+    '....kbbk....',
+    '.....kk.....',
+  ],
+  dr_reaper: [
+    '.kkkkkk.....',
+    'kwwwwwwk....',
+    '.kkkkkwwk...',
+    '..kkkkkkwk..',
+    '.kaaaaaak.k.',
+    '.kaRaaRak...',
+    '.kbbbbbbk...',
+    '..kkkkkk....',
+    '...k..k.....',
+  ],
+  dr_seraph: [
+    '...kyyyyk...',
+    '....kkkk....',
+    'kw.kkkkkk.wk',
+    'kww.kaak.wwk',
+    '.kwwkaakwwk.',
+    '..kkaRRakk..',
+    '...kbbbbk...',
+    '....kkkk....',
+    '.....kk.....',
+  ],
+  md_target: [
+    '..k.k.k.k...',
+    '.kkkkkkkkk..',
+    'kkhhhhhhhbkk',
+    '.khawaawabk.',
+    'kkhaaRRaabkk',
+    '.khawaawabk.',
+    'kkhbbbbbbbkk',
+    '.kkkkkkkkk..',
+    '..k.k.k.k...',
+  ],
+  md_servo: [
+    '..k.k.k.k...',
+    '.kkkkkkkkk..',
+    'kkhhhhhhhbkk',
+    '.khaakkaabk.',
+    'kkhaakkaabkk',
+    '.khakkkkabk.',
+    'kkhbbbbbbbkk',
+    '.kkkkkkkkk..',
+    '..k.k.k.k...',
+  ],
+  md_bounty: [
+    '..k.k.k.k...',
+    '.kkkkkkkkk..',
+    'kkhhhhhhhbkk',
+    '.khaayyaabk.',
+    'kkhayooyabkk',
+    '.khaayyaabk.',
+    'kkhbbbbbbbkk',
+    '.kkkkkkkkk..',
+    '..k.k.k.k...',
+  ],
+  md_battery: [
+    '..k.k.k.k...',
+    '.kkkkkkkkk..',
+    'kkhhhhhhhbkk',
+    '.khkkkkkabk.',
+    'kkhkgggkwbkk',
+    '.khkkkkkabk.',
+    'kkhbbbbbbbkk',
+    '.kkkkkkkkk..',
+    '..k.k.k.k...',
+  ],
+  md_coolant: [
+    '..k.k.k.k...',
+    '.kkkkkkkkk..',
+    'kkhhhhhhhbkk',
+    '.khaaacaabk.',
+    'kkhaacwcabkk',
+    '.khaaacaabk.',
+    'kkhbbbbbbbkk',
+    '.kkkkkkkkk..',
+    '..k.k.k.k...',
+  ],
+  md_amp: [
+    '..k.k.k.k...',
+    '.kkkkkkkkk..',
+    'kkhhhhhhhbkk',
+    '.khaaRRaabk.',
+    'kkhaRRRRabkk',
+    '.khaaRRaabk.',
+    'kkhbbbbbbbkk',
+    '.kkkkkkkkk..',
+    '..k.k.k.k...',
+  ],
+  md_repair: [
+    '..k.k.k.k...',
+    '.kkkkkkkkk..',
+    'kkhhhhhhhbkk',
+    '.khaaggaabk.',
+    'kkhggggggbkk',
+    '.khaaggaabk.',
+    'kkhbbbbbbbkk',
+    '.kkkkkkkkk..',
+    '..k.k.k.k...',
+  ],
+  md_heatsink: [
+    '..k.k.k.k...',
+    '.kkkkkkkkk..',
+    'kkhhhhhhhbkk',
+    '.khokokokbk.',
+    'kkhokokokbkk',
+    '.khkkkkkkbk.',
+    'kkhbbbbbbbkk',
+    '.kkkkkkkkk..',
+    '..k.k.k.k...',
+  ],
+  md_generator: [
+    '..k.k.k.k...',
+    '.kkkkkkkkk..',
+    'kkhhhhhhhbkk',
+    '.khaaayaabk.',
+    'kkhayyyaabkk',
+    '.khaayaaabk.',
+    'kkhbbbbbbbkk',
+    '.kkkkkkkkk..',
+    '..k.k.k.k...',
+  ],
+  md_range: [
+    '..k.k.k.k...',
+    '.kkkkkkkkk..',
+    'kkhhhhhhhbkk',
+    '.khaaaawabk.',
+    'kkhwwwwwwbkk',
+    '.khaaaawabk.',
+    'kkhbbbbbbbkk',
+    '.kkkkkkkkk..',
+    '..k.k.k.k...',
+  ],
+  md_overclock: [
+    '..k.k.k.k...',
+    '.kkkkkkkkk..',
+    'kkhhhhhhhbkk',
+    '.khRaRaaabk.',
+    'kkhaRaRaabkk',
+    '.khRaRaaabk.',
+    'kkhbbbbbbbkk',
+    '.kkkkkkkkk..',
+    '..k.k.k.k...',
+  ],
+  md_singularity: [
+    '..k.k.k.k...',
+    '.kkkkkkkkk..',
+    'kkhhhhhhhbkk',
+    '.khakqqkabk.',
+    'kkhaqwwqabkk',
+    '.khakqqkabk.',
+    'kkhbbbbbbbkk',
+    '.kkkkkkkkk..',
+    '..k.k.k.k...',
+  ],
   // Long-range pushers and specials
   wp_concussion: [
     '......kkkk..',
@@ -562,8 +762,14 @@ export function partCanvas(id, colorOverride) {
   if (!canvasCache.has(key)) {
     const p = getPart(id);
     const base = colorOverride || p?.color || rarityColor(p?.rarity);
-    const grid = WEAPON_GRIDS[id] || TYPE_GRIDS[p?.type] || TYPE_GRIDS.module;
-    canvasCache.set(key, paint(grid, { a: base, h: shade(base, 0.45), b: shade(base, -0.45) }));
+    // Frames, legs and armor use the same sprites the mech wears in battle
+    if (p?.type === 'frame') canvasCache.set(key, torsoCanvas(id, null, base, shade(base, -0.45)));
+    else if (p?.type === 'legs') canvasCache.set(key, legsCanvas(id, base, shade(base, -0.45)));
+    else if (p?.type === 'armor') canvasCache.set(key, torsoCanvas('fr_brawler', id, '#566c86', '#333c57')); // plating on a steel torso
+    else {
+      const grid = WEAPON_GRIDS[id] || TYPE_GRIDS[p?.type] || TYPE_GRIDS.module;
+      canvasCache.set(key, paint(grid, { a: base, h: shade(base, 0.45), b: shade(base, -0.45) }));
+    }
   }
   return canvasCache.get(key);
 }
