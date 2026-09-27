@@ -13,17 +13,19 @@
 
 ## Overview
 
-**Slingshot OPS** is an action-strategy roguelike game where precision launching meets tactical node-based map traversal. Slingshot your operative ball at hostile units, utilize dynamic wall-bounces and overcharged abilities, acquire game-changing relics, and permanently upgrade your stats across runs.
+**Slingshot OPS** is a turn-based mech roguelike. Build a pixel mech from parts, slingshot it across the arena into position, and fight enemy mechs that play by exactly the same rules, across a branching 5-floor campaign.
 
 ---
 
 ## Key Features
 
-- **Ballistic Combat System**: Real-time trajectory prediction, power dragging, elastic collisions, and physics-based damage scaling.
-- **Branching Tactical Node Map**: Procedurally generated 5-floor campaign with Combat, Elite, Boss, Encounter, Shop, Rest, and Minigame nodes.
-- **40+ Collectibles & Relics**: Build synergies across 8 unique categories (*Tactical*, *Gladiator*, *High-Tech*, *Frontier*, *Sanctuary*, etc.).
-- **Persistent Tech Tree**: Earn Tech Points to unlock permanent upgrades across Sharpshooter (ATK), Vitality (HP), and Aegis (DEF).
-- **Dynamic Quests & Encounters**: Interactive event choices with risk/reward mechanics and in-run objectives.
+- **Mechs Built From Parts**: Frame, Legs, Armor, two Guns, a Drone and two Mods. What you equip is what you see on the field, and what the enemy sees.
+- **Grounded Slingshot Movement**: Drag to launch low and land heavy. Your legs decide how far you can go; only Jump Jets can clear tall cover.
+- **Gear-Only Combat**: Two actions a turn: move, fire a gun or vent. Every shot costs energy and heat, and the big guns carry limited ammo.
+- **Physical / Heat / Energy Damage**: Heat hits cook the target's reactor, Energy hits drain it, and armor resists each type separately.
+- **Enemy Mechs**: No special abilities. Every hostile is a loadout of real parts, from Scattergun Wall Units to the bolted-down Sector Commander.
+- **Branching Tactical Node Map**: Procedurally generated 5-floor campaign with Combat, Elite, Boss, Encounter, Shop, Rest, Cache and Minigame nodes.
+- **Progression Through Gear**: Win Keys to open supply pods (51 parts, odds shown) and scrap to upgrade parts to level 10. Never real money.
 
 ---
 
@@ -120,7 +122,7 @@ npm run dev
 - `src/systems/` — Turn system, collision system & damage calculation
 - `src/ai/` — Enemy AI with trajectory simulation & difficulty scaling
 - `src/rogue/` — Run state management & procedural map generator
-- `src/meta/` — Tech tree progression, quest system, save state
+- `src/meta/` — Rig parts and enemy loadouts, quests, medals, mastery, save state
 - `src/rendering/` — Canvas arena renderer & tactical map renderer
 - `src/ui/` — DOM overlay, HUD, shop, & modal UI manager
-- `src/config.js` — Game balance data, relic definitions, and color palette
+- `src/config.js` — Game balance data, enemies, boons and color palette
