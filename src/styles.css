@@ -3742,8 +3742,14 @@ canvas {
 }
 
 .mech-chip.gear-gun.cooling .gun-why { color: var(--p-red, #ff5d73); }
-.mech-chip.gear-drone.on { border-style: solid; }
+.mech-chip.gear-drone { border-style: solid; }
 .mech-chip.gear-drone.on .gun-why { color: var(--p-lime); }
+/* Docked and deployable: looks like a button you can press */
+.mech-chip.gear-drone.ready {
+  box-shadow: 0 0 0 2px var(--c);
+  animation: px-pulse 1.2s steps(2) infinite;
+}
+.mech-chip.gear-drone.ready .gun-why { color: var(--p-yellow); }
 .mech-chip.gear-drone.off { opacity: 0.55; }
 
 .ability-vent { --ab: #73eff7; }
@@ -3765,10 +3771,6 @@ canvas {
 .ability-btn .action-pips {
   letter-spacing: 2px;
   color: var(--p-ink) !important;
-}
-
-.battle-hud.gear.drawer-open .mech-hud {
-  visibility: hidden;
 }
 
 /* Narrow windows: no room at the bottom, so the gun chips move to the top
@@ -4084,4 +4086,67 @@ canvas {
 @media (max-width: 560px) {
   .br-body { grid-template-columns: 1fr; }
   .deploy { flex-direction: column; }
+}
+
+/* ---------- Battle: clean screen ---------- */
+
+/* The Status sidebar belongs to the map: battles get the whole width */
+#screen-run.in-battle .run-drawer,
+#screen-run.in-battle .drawer-scrim {
+  display: none;
+}
+
+/* Hover tips on the battle buttons (battleTips.js) */
+.hud-tip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 200;
+  width: max-content;
+  max-width: 260px;
+  padding: 8px 10px;
+  background: rgba(16, 17, 28, 0.96);
+  border: var(--px) solid var(--p-steel);
+  box-shadow: 4px 4px 0 #000;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text);
+  pointer-events: none;
+}
+
+.hud-tip.hidden {
+  display: none;
+}
+
+.hud-tip h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--p-white);
+  letter-spacing: 1px;
+}
+
+.hud-tip h4 em {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-left: 4px;
+}
+
+.hud-tip .tip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.hud-tip .tip-row span {
+  color: var(--text-dim);
+}
+
+.hud-tip p {
+  margin: 5px 0 0;
+  color: var(--text-dim);
+}
+
+.hud-tip .tip-bad {
+  color: #ff5d73;
 }

@@ -14,6 +14,7 @@ import { RogueMap } from './rogue/RogueMap.js';
 import { RogueMapRenderer } from './rendering/RogueMapRenderer.js';
 import { Minigame } from './minigame/Minigame.js';
 import { UIManager } from './ui/UIManager.js';
+import { BattleTips } from './ui/battleTips.js';
 import { rollSupplies, grantSupply, getSupply } from './rogue/Supplies.js';
 import { pickArena } from './core/Arenas.js';
 import { OPERATOR, skinColors } from './meta/Balls.js';
@@ -37,6 +38,7 @@ document.fonts?.load('16px "Pixel Digits"', '0123456789').catch(() => {});
 const canvas = document.getElementById('game-canvas');
 
 const game = new Game(canvas);
+const battleTips = new BattleTips(game, document.getElementById('battle-hud'));
 const minigame = new Minigame(canvas);
 let mapRenderer = null;
 // Dev panel only exists on the Vite dev server, never in release builds
@@ -326,8 +328,6 @@ function updateMechHud() {
 function updateGearHud(el, endBtn, ventBtn) {
   const hud = document.getElementById('battle-hud');
   hud?.classList.add('gear');
-  // The Status drawer covers the bottom-left: tuck the gun chips away while it's open
-  hud?.classList.toggle('drawer-open', !!document.querySelector('.run-drawer.open'));
   const guns = game.playerWeapons || [];
   const drones = game.playerDrones || [];
   const p = game.player;
@@ -358,15 +358,18 @@ function updateGearHud(el, endBtn, ventBtn) {
     const ready = live && st.ok;
     const why = !st.ok ? GUN_BLOCK_LABEL[st.reason] || '' : '';
     const ammo = w.ammo ? `<b class="gun-ammo">${w.ammoLeft}/${w.ammo}</b>` : '';
-    return `<button class="mech-chip gear-gun ${ready ? 'ready' : 'cooling'}" data-gun="${i}" style="--c:${w.color}" title="[${i ? 'E' : 'Q'}] ${w.name} · ${DTYPES[dtypeOf(w)].name}">
+    return `<button class="mech-chip gear-gun ${ready ? 'ready' : 'cooling'}" data-gun="${i}" style="--c:${w.color}" aria-label="${w.name}">
       <img src="${partIcon(w.id)}" alt="">${ammo}
       <span class="gun-dmg" style="color:${DTYPES[dtypeOf(w)].color}">${w.fx?.mine ? 'MINE' : st.dmg ? `~${st.dmg}` : ''}</span>
       <span class="gun-cost"><i class="c-en">${w.en || 0}</i><i class="c-heat">${w.heat || 0}</i></span>
       <span class="gun-why">${ready ? (st.cover ? 'COVER' : 'FIRE') : why}</span></button>`;
   }).join('') + drones.map((d, i) => {
     const en = d.heal ? D.healEn : d.forcefieldEvery ? D.shieldEn : D.dmgEn;
-    return `<button class="mech-chip drone gear-drone ${d.off ? 'off' : 'on'}" data-drone="${i}" style="--c:${d.color}" title="${d.name}: tap to switch ON/OFF. ON = acts at the end of your turn for ${en} energy.">
-      <img src="${partIcon(d.id)}" alt=""><span class="gun-cost"><i class="c-en">${en}</i></span><span class="gun-why">${d.off ? 'OFF' : 'ON'}</span></button>`;
+    // Docked: a bright DEPLOY button while you have an action for it; out: ON (tap to recall, free)
+    const state = !d.off ? 'on' : live ? 'ready' : 'off';
+    const label = !d.off ? 'ON' : live ? 'DEPLOY' : 'NO ACTIONS';
+    return `<button class="mech-chip drone gear-drone ${state}" data-drone="${i}" style="--c:${d.color}" aria-label="${d.name}">
+      <img src="${partIcon(d.id)}" alt=""><span class="gun-cost"><i class="c-en">${en}</i></span><span class="gun-why">${label}</span></button>`;
   }).join('');
   el.querySelectorAll('[data-gun]').forEach((b) => b.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
@@ -376,8 +379,14 @@ function updateGearHud(el, endBtn, ventBtn) {
   el.querySelectorAll('[data-drone]').forEach((b) => b.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
     if (battlePaused) return;
-    game.toggleDrone(Number(b.dataset.drone));
-    soundEngine.playUI();
+    const res = game.toggleDrone(Number(b.dataset.drone));
+    if (res.ok) {
+      soundEngine.playUI();
+      haptics.impact('light');
+    } else {
+      soundEngine.play('error');
+      if (res.reason === 'NO ACTIONS') game.renderer.addCallout(game.player, 'NO ACTIONS', '#94b0c2');
+    }
   }));
 }
 
@@ -1624,6 +1633,7 @@ function loop(now) {
     game.render();
     updateAbilityHud();
     updateMechHud();
+    battleTips.refresh();
   } else if (state === State.MINIGAME) {
     minigame.update(dt);
     minigame.render();

@@ -26,6 +26,14 @@ const FONT = '"Pixel Digits", "Pixelify Sans", monospace'; // clear digits: see 
 const DISPLAY = '"Press Start 2P", monospace';
 const BG_PIXEL = 3; // CSS px per backdrop pixel
 const SKY_CROP = 200; // world units of empty sky that wide phones may crop to draw the action bigger
+// Battle camera: frames the fighters and zooms in as they close in
+const CAM = {
+  margin: 140, // world units kept on each side of the outermost fighters
+  minWidth: 560, // never zoom in further than this much arena
+  floorShown: 70, // world units of floor under the ground line once zoomed in
+  headroom: 170, // sky kept above the highest fighter
+  ease: 3, // how quickly the camera catches up (per second)
+};
 
 // Per-floor backdrop palettes (Sweetie 16 based)
 const THEMES = {
@@ -119,6 +127,7 @@ export class Renderer {
 
   /** Forget per-battle state (hp tracking, floaters) when a new battle starts. */
   resetBattleFx() {
+    this._cam = null; // snap to the new arena
     this._floaters = [];
     this._callouts = [];
     this._ambient = [];
@@ -134,13 +143,14 @@ export class Renderer {
     const dt = Math.min(0.05, (now - this._lastFrame) / 1000);
     this._lastFrame = now;
 
-    const view = fitCanvas(this.canvas, W.width, W.height, SKY_CROP);
-    this._view = view;
+    const base = fitCanvas(this.canvas, W.width, W.height, SKY_CROP);
     this.worldRef = world;
     const { ctx } = this;
     const { player, enemies, turnSystem, particles } = world || {};
     const enemyList = enemies || [];
     const livingEnemies = enemyList.filter((e) => e && e.hp > 0);
+    const view = this._camera(base, [player, ...livingEnemies], world, dt);
+    this._view = view;
     const floor = Math.min(5, Math.max(1, world?.battleConfig?.floor || 1));
 
     this._trackHp([player, ...enemyList]);
@@ -160,7 +170,9 @@ export class Renderer {
     // 1. Backdrop (screen space, cached)
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(this._backdrop(view, floor), shakeX * 0.5, shakeY * 0.5, view.w, view.h);
+    // The backdrop is painted for the whole-arena view; draw it through the camera
+    const bz = view.k / base.k;
+    ctx.drawImage(this._backdrop(base, floor), Math.round(view.ox - base.ox * bz + shakeX * 0.5), Math.round(view.oy - base.oy * bz + shakeY * 0.5), Math.round(base.w * bz), Math.round(base.h * bz));
 
     // 2. World
     ctx.setTransform(view.k, 0, 0, view.k, view.ox + shakeX, view.oy + shakeY);
@@ -203,6 +215,45 @@ export class Renderer {
     if (turnSystem?.phase === 'GAME_OVER' && world.winner) {
       this._drawGameOver(ctx, view, world.winner, world.battleSummary);
     }
+  }
+
+  /**
+   * Battle camera: starts from `base` (the whole arena) and zooms in on the
+   * fighters, keeping CAM.margin around them, the ground near the bottom and
+   * headroom over anyone in the air. Eased, and frozen while you drag (so the
+   * slingshot doesn't slide under your finger).
+   */
+  _camera(base, balls, world, dt) {
+    const fighters = balls.filter((b) => b && b.hp > 0);
+    const inp = world?.slingshotInput;
+    const frozen = this._cam && (inp?.dragging || inp?.placementMode);
+    if (!frozen && fighters.length) {
+      const xs = fighters.map((b) => b.x);
+      const minX = Math.min(...xs) - CAM.margin;
+      const maxX = Math.max(...xs) + CAM.margin;
+      const topY = Math.min(...fighters.map((b) => b.y - b.radius)) - CAM.headroom;
+      const visW = Math.min(W.width, Math.max(CAM.minWidth, maxX - minX));
+      let k = Math.max(base.k, base.w / visW);
+      // Zooming in drops the floor below the ground line out of view
+      const zin = Math.min(1, (k / base.k - 1) / 0.4);
+      const bottomY = W.height - zin * (W.height - (W.groundY + CAM.floorShown));
+      k = Math.max(base.k, Math.min(k, base.h / Math.max(1, bottomY - topY)));
+      const vw = base.w / k;
+      const cx = (minX + maxX) / 2;
+      const left = vw >= W.width ? (W.width - vw) / 2 : Math.max(0, Math.min(W.width - vw, cx - vw / 2));
+      const target = { k, left, bottomY };
+      if (!this._cam) this._cam = target;
+      else {
+        const a = 1 - Math.exp(-CAM.ease * dt);
+        for (const key of Object.keys(target)) this._cam[key] += (target[key] - this._cam[key]) * a;
+      }
+    }
+    const cam = this._cam;
+    if (!cam) return base;
+    // Same fields as fitCanvas, so everything that maps world <-> screen follows the camera
+    // (fully zoomed out this gives exactly `base`: arena centred, world bottom on the screen bottom)
+    const k = Math.max(base.k, cam.k);
+    return { ...base, k, ox: -cam.left * k, oy: base.h - cam.bottomY * k };
   }
 
   // ---------- Change tracking → feedback ----------

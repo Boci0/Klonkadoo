@@ -1018,12 +1018,26 @@ export class Game {
   }
 
   /** Drones are switched ON/OFF by the player; ON drones act at the end of the turn. */
+  /**
+   * Drone chip: DEPLOY costs one action (it then acts at the end of every
+   * turn); recalling it is free. Returns { ok, reason }.
+   */
   toggleDrone(i) {
     const d = this.playerDrones[i];
-    if (!d) return false;
-    d.off = !d.off;
-    d.deployedAt = performance.now(); // renderer: drone flies out / docks
-    return true;
+    if (!d || !this.running || this.turnSystem.phase !== TurnPhase.PLAYER_AIM) return { ok: false, reason: 'WAIT' };
+    if (d.off) {
+      if (!this.canPlayerAct) return { ok: false, reason: 'NO ACTIONS' };
+      this.player.actionsLeft -= 1;
+      d.off = false;
+      d.deployedAt = performance.now(); // renderer: drone flies out
+      this._callout(this.player, 'DRONE DEPLOYED', d.color || '#a7f070');
+      this.autoEnd = 0;
+      this._afterPlayerAction();
+    } else {
+      d.off = true;
+      d.deployedAt = performance.now(); // renderer: drone docks
+    }
+    return { ok: true };
   }
 
   /** Out of actions: a moment to watch the result, then the turn ends itself. */
