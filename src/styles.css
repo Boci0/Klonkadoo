@@ -312,7 +312,7 @@ canvas {
 .menu-stat span {
   display: block;
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 1.5px;
   text-transform: uppercase;
   margin-bottom: 4px;
@@ -421,13 +421,13 @@ canvas {
   }
 
   .game-tagline {
-    font-size: 11px;
+    font-size: 12px;
   }
 }
 
 
 .risk-badge {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   padding: 3px 7px;
   letter-spacing: 0.5px;
@@ -516,7 +516,7 @@ canvas {
   display: grid;
   place-items: center;
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-dim);
   background: var(--bg-card);
   border: var(--px) solid var(--p-steel);
@@ -564,7 +564,7 @@ canvas {
 }
 
 .hud-chip span {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 1px;
   color: var(--text-dim);
 }
@@ -572,7 +572,7 @@ canvas {
 .hud-chip strong {
   font-family: var(--font-display);
   font-weight: 400;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-bright);
 }
 
@@ -630,7 +630,7 @@ canvas {
   height: 18px;
   padding: 0 3px;
   font-style: normal;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 18px;
   text-align: center;
   color: var(--p-white);
@@ -698,7 +698,7 @@ canvas {
   align-items: center;
   gap: 4px;
   padding: 4px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-dim);
   background: rgba(16, 17, 28, 0.85);
   border: 2px solid var(--p-steel);
@@ -711,7 +711,7 @@ canvas {
 }
 
 #zoom-level {
-  font-size: 10px;
+  font-size: 11px;
   text-align: center;
 }
 
@@ -787,7 +787,7 @@ canvas {
 .drawer-head h3 {
   font-family: var(--font-display);
   font-weight: 400;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 1px;
   color: var(--text-bright);
 }
@@ -871,7 +871,7 @@ canvas {
 
 .run-stat small {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--p-slate);
 }
 
@@ -1027,7 +1027,7 @@ canvas {
 .btn-battle-small {
   min-height: 38px;
   padding: 6px 10px calc(6px + var(--px));
-  font-size: 11px;
+  font-size: 12px;
 }
 
 #btn-retreat-battle {
@@ -1101,19 +1101,19 @@ canvas {
   position: absolute;
   top: 4px;
   left: 6px;
-  font-size: 10px;
+  font-size: 11px;
   opacity: 0.6;
 }
 
 .ability-name {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.5px;
 }
 
 .ability-cd {
   font-family: var(--font-display);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .ability-btn:not(.ready) .ability-cd {
@@ -1188,7 +1188,7 @@ canvas {
   text-align: center;
   font-family: var(--font-display);
   font-weight: 400;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--p-white);
   background: var(--p-red);
 }
@@ -1356,7 +1356,7 @@ canvas {
 }
 
 .tag-pill {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   padding: 2px 6px;
   border: 2px solid currentColor;
@@ -1412,7 +1412,7 @@ canvas {
 
 .shop-item-cat {
   margin-left: auto;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-dim);
   text-transform: uppercase;
 }
@@ -1484,7 +1484,7 @@ canvas {
 
 .result-stat span {
   display: block;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 1px;
   color: var(--text-dim);
 }
@@ -1500,7 +1500,7 @@ canvas {
 .result-tp {
   font-family: var(--font-display);
   color: var(--accent-gold);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .result-main .btn {
@@ -1586,7 +1586,7 @@ canvas {
 .credits-doc pre {
   padding: 10px;
   font-family: 'Courier New', monospace;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
   white-space: pre-wrap;
   color: var(--text-dim);
@@ -1622,7 +1622,7 @@ canvas {
 .result-risk {
   padding: 6px 8px;
   font-family: var(--font-display);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
   color: var(--p-orange);
   border: var(--px) solid var(--p-orange);
@@ -1675,13 +1675,13 @@ canvas {
 .ball-card strong {
   font-family: var(--font-display);
   font-weight: 400;
-  font-size: 8px;
+  font-size: 11px;
   letter-spacing: 0.5px;
   color: var(--ball);
 }
 
 .ball-role {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-dim);
   margin-bottom: 2px;
 }
@@ -1691,7 +1691,7 @@ canvas {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-dim);
 }
 
@@ -1864,7 +1864,7 @@ canvas {
 }
 
 .skin-label {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 2px;
   color: var(--text-dim);
 }
@@ -1875,7 +1875,7 @@ canvas {
   gap: 5px;
   padding: 3px 8px 3px 4px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text);
   background: var(--bg-card);
   border: 2px solid var(--p-steel);
@@ -1919,7 +1919,7 @@ canvas {
   margin-left: auto;
   min-height: 36px;
   padding: 4px 10px calc(4px + var(--px));
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* Two lines at most so the panel never grows off-screen */
@@ -2064,7 +2064,7 @@ canvas {
 }
 
 .daily-card span {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 1px;
 }
 
@@ -2144,7 +2144,7 @@ canvas {
 
 .medal-tp {
   font-style: normal;
-  font-size: 11px;
+  font-size: 12px;
   text-align: right;
   color: var(--p-yellow);
   white-space: nowrap;
@@ -2175,7 +2175,7 @@ canvas {
 
 .gear-slot-name {
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--p-silver);
   margin-bottom: 4px;
   display: flex;
@@ -2196,7 +2196,7 @@ canvas {
   border: 2px dashed var(--p-steel);
   color: var(--p-slate);
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .gear-item {
@@ -2225,7 +2225,7 @@ canvas {
 
 .gear-item-head strong {
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 11px;
   flex: 1;
 }
 
@@ -2235,7 +2235,7 @@ canvas {
 }
 
 .gear-slot-tag {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--p-slate);
 }
 
@@ -2253,7 +2253,7 @@ canvas {
   justify-content: space-between;
   margin: 10px 0 6px;
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--p-silver);
 }
 
@@ -2277,7 +2277,7 @@ canvas {
 
 .gear-actions .btn {
   flex: 1;
-  font-size: 10px;
+  font-size: 11px;
   padding: 6px 4px;
   min-height: 0;
 }
@@ -2304,7 +2304,7 @@ canvas {
 
 .gear-drop span {
   font-family: var(--font-display);
-  font-size: 9px;
+  font-size: 11px;
   color: var(--rarity);
 }
 
@@ -2472,7 +2472,7 @@ canvas {
 
 .rig-tabs button {
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 1px;
   padding: 8px 14px;
   color: var(--p-silver);
@@ -2605,7 +2605,7 @@ canvas {
 
 .rig-slot-name {
   font-family: var(--font-display);
-  font-size: 7px;
+  font-size: 11px;
   color: var(--p-silver);
   white-space: nowrap;
 }
@@ -2623,7 +2623,7 @@ canvas {
   min-width: 16px;
   padding: 1px 3px;
   font-style: normal;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--p-ink);
   background: var(--rar);
 }
@@ -2667,7 +2667,7 @@ canvas {
   margin-left: auto;
   font-style: normal;
   font-family: var(--font-display);
-  font-size: 9px;
+  font-size: 11px;
   color: #ff5d73;
   animation: px-blink 0.8s steps(2) infinite;
 }
@@ -2685,7 +2685,7 @@ canvas {
   display: flex;
   justify-content: space-between;
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--p-yellow);
 }
 
@@ -2721,7 +2721,7 @@ canvas {
   left: 3px;
   top: 1px;
   font-style: normal;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--p-slate);
 }
 
@@ -2749,7 +2749,7 @@ canvas {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.rig-gtab em { font-style: normal; font-size: 9px; color: var(--p-slate); }
+.rig-gtab em { font-style: normal; font-size: 11px; color: var(--p-slate); }
 .rig-gtab em img, .rig-gtab em canvas { width: 10px; height: 10px; vertical-align: -1px; }
 .rig-gtab.on { color: var(--p-white); border-color: var(--p-yellow); background: #30375a; }
 .rig-gtab.locked { opacity: 0.55; cursor: default; }
@@ -2790,12 +2790,12 @@ canvas {
 .rig-detail-head strong {
   display: block;
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--rar);
   margin-bottom: 3px;
 }
 
-.rig-detail-head span { font-size: 11px; color: var(--p-silver); }
+.rig-detail-head span { font-size: 12px; color: var(--p-silver); }
 .rig-detail-head span .pxi { padding: 0; box-shadow: none; background: none; width: auto; }
 
 .rig-chips {
@@ -2809,7 +2809,7 @@ canvas {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--p-silver);
 }
 
@@ -2845,7 +2845,7 @@ canvas {
   flex: 1;
   min-height: 34px;
   padding: 6px 4px calc(6px + var(--px));
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -2896,7 +2896,7 @@ canvas {
 
 .rig-pod strong {
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--pod);
 }
 
@@ -2914,7 +2914,7 @@ canvas {
   display: flex;
   justify-content: space-between;
   width: 100%;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .rig-pod .btn { width: 100%; }
@@ -2964,7 +2964,7 @@ canvas {
 
 .rig-reveal-rar {
   font-family: var(--font-display);
-  font-size: 9px;
+  font-size: 11px;
   color: var(--rar);
 }
 
@@ -3017,13 +3017,13 @@ canvas {
   border: 2px solid var(--c);
   color: var(--p-white);
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
 }
 
-.mech-chip b { color: var(--c); font-size: 11px; }
+.mech-chip b { color: var(--c); font-size: 12px; }
 .mech-chip img { width: 30px; height: auto; image-rendering: pixelated; }
-.mech-chip span { font-size: 10px; color: var(--p-silver); }
+.mech-chip span { font-size: 11px; color: var(--p-silver); }
 .mech-chip.ready span { color: var(--p-lime); }
 .mech-chip.cooling { opacity: 0.6; }
 .mech-chip.focus { box-shadow: 0 0 0 2px var(--p-yellow); }
@@ -3049,7 +3049,7 @@ canvas {
   min-height: 74px;
   padding: 8px 4px;
   font-family: var(--font-display);
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 1px;
   color: var(--p-ink);
   background: var(--p-yellow);
@@ -3071,7 +3071,7 @@ canvas {
   right: 6px;
   font-style: normal;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--p-plum);
 }
 
@@ -3118,7 +3118,7 @@ canvas {
 }
 
 .settings-data span {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 2px;
   color: var(--text-dim);
   margin-right: 4px;
@@ -3128,7 +3128,7 @@ canvas {
   flex: 1;
   min-height: 34px;
   padding: 6px 6px calc(6px + var(--px));
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .modal-node-icon .pxi {
@@ -3193,7 +3193,7 @@ canvas {
 
 .reward-tile .pxi { height: 28px; margin: 0; }
 .reward-tile strong { font-size: 16px; color: var(--c); }
-.reward-tile span { font-size: 10px; letter-spacing: 1px; color: var(--p-silver); text-align: center; }
+.reward-tile span { font-size: 11px; letter-spacing: 1px; color: var(--p-silver); text-align: center; }
 
 .shop-header-info { display: flex; align-items: center; }
 
@@ -3338,7 +3338,7 @@ canvas {
   border-color: var(--p-red);
   animation: px-pop 0.3s ease-out;
 }
-.node-line.clean { color: var(--p-lime) !important; font-family: var(--font-display); font-size: 11px !important; }
+.node-line.clean { color: var(--p-lime) !important; font-family: var(--font-display); font-size: 12px !important; }
 /* The sealed-Risk clue may wrap to two lines */
 .risk-summary:has(> .abyss-text:only-child) { white-space: normal; }
 
@@ -3370,7 +3370,7 @@ canvas {
   margin: 0;
   transform: translate(-50%, -50%);
 }
-.rig-odds-legend { font-size: 10px; gap: 2px; }
+.rig-odds-legend { font-size: 11px; gap: 2px; }
 
 .pod-stage {
   position: absolute;
@@ -3531,7 +3531,7 @@ canvas {
 .ball-risk {
   position: absolute;
   top: 3px;
-  font-size: 9px;
+  font-size: 11px;
   padding: 1px 4px;
   background: rgba(0, 0, 0, 0.45);
 }
@@ -3614,21 +3614,21 @@ canvas {
 }
 
 .ball-sub-row .ball-mastery b { font-weight: 400; color: var(--p-yellow); }
-.ball-sub-row .ball-mastery .dim-text { font-size: 11px; }
+.ball-sub-row .ball-mastery .dim-text { font-size: 12px; }
 .ball-sub-row .bm-bar { width: 90px; }
 
 /* Phones in landscape: everything on one screen, no scrolling */
 @media (max-height: 420px) {
   .modal-content:has(.ball-grid) { padding: 8px 12px 10px; }
-  .modal-content:has(.ball-grid) h3 { margin-bottom: 6px; padding-bottom: 5px; font-size: 11px; }
+  .modal-content:has(.ball-grid) h3 { margin-bottom: 6px; padding-bottom: 5px; font-size: 12px; }
   .ball-grid { gap: 6px; }
   .ball-card { padding: 16px 4px 5px; gap: 1px; }
   .ball-card .ball-sprite { width: 28px; height: 28px; }
   .ball-card .ball-role { display: none; }
-  .ball-card .ball-stat { font-size: 9px; }
+  .ball-card .ball-stat { font-size: 11px; }
   .ball-card .ball-stat i { width: 6px; height: 5px; }
   .ball-trait { margin: 6px 0 !important; font-size: 12px !important; gap: 4px 8px; }
-  .ball-trait .ball-mods span { font-size: 11px; padding: 0 4px; }
+  .ball-trait .ball-mods span { font-size: 12px; padding: 0 4px; }
   .ball-trait .ball-skill { font-size: 12px; padding: 1px 6px; }
   .ball-sub-row { margin-bottom: 6px; }
   .skin-btn img { width: 24px; height: 24px; }
@@ -3639,7 +3639,7 @@ canvas {
 /* Pod drop list */
 .rig-drops-btn {
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 1px;
   color: var(--p-silver);
   background: none;
@@ -3662,9 +3662,9 @@ canvas {
 }
 
 .drops-title { display: flex; align-items: center; gap: 10px; }
-.drops-title strong { font-family: var(--font-display); font-size: 11px; color: var(--pod); }
-.drops-title span { font-size: 11px; color: var(--p-silver); }
-.drops-title .btn { margin-left: auto; min-height: 28px; padding: 4px 10px calc(4px + var(--px)); font-size: 11px; }
+.drops-title strong { font-family: var(--font-display); font-size: 12px; color: var(--pod); }
+.drops-title span { font-size: 12px; color: var(--p-silver); }
+.drops-title .btn { margin-left: auto; min-height: 28px; padding: 4px 10px calc(4px + var(--px)); font-size: 12px; }
 
 .drops-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
 
@@ -3678,9 +3678,9 @@ canvas {
   font-size: 12px;
 }
 
-.drops-head b { font-weight: 400; font-family: var(--font-display); font-size: 8px; color: var(--rar); }
+.drops-head b { font-weight: 400; font-family: var(--font-display); font-size: 11px; color: var(--rar); }
 .drops-head span { color: var(--p-white); }
-.drops-head em { font-style: normal; font-size: 10px; color: var(--p-silver); }
+.drops-head em { font-style: normal; font-size: 11px; color: var(--p-silver); }
 
 .drops-items { display: flex; flex-wrap: wrap; gap: 4px; }
 
@@ -3698,7 +3698,7 @@ canvas {
 
 .drops-item img { width: 26px; image-rendering: pixelated; opacity: 0.45; }
 .drops-item.owned img { opacity: 1; }
-.drops-item i { position: absolute; top: -2px; right: 1px; font-style: normal; font-size: 9px; color: var(--p-lime); }
+.drops-item i { position: absolute; top: -2px; right: 1px; font-style: normal; font-size: 11px; color: var(--p-lime); }
 
 .drops-item { cursor: pointer; }
 .drops-item.sel { border-color: var(--p-yellow); }
@@ -3737,12 +3737,12 @@ canvas {
   position: absolute;
   top: 2px;
   right: 3px;
-  font-size: 9px;
+  font-size: 11px;
   color: var(--p-yellow);
 }
 
 .mech-chip .gun-dmg {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--p-white);
   min-height: 11px;
@@ -3751,7 +3751,7 @@ canvas {
 .mech-chip .gun-cost {
   display: flex;
   gap: 5px;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .mech-chip .gun-cost i {
@@ -3764,7 +3764,7 @@ canvas {
 .mech-chip .gun-cost .c-heat::before { content: '\25B2'; margin-right: 1px; }
 
 .mech-chip .gun-why {
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.3px;
 }
 
@@ -3786,7 +3786,7 @@ canvas {
 .team-bar {
   position: absolute;
   left: calc(8px + var(--safe-left));
-  top: calc(84px + var(--safe-top));
+  top: calc(110px + var(--safe-top));
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -3801,7 +3801,7 @@ canvas {
   width: 150px;
   padding: 4px 6px;
   font: inherit;
-  font-size: 10px;
+  font-size: 11px;
   text-align: left;
   color: var(--p-steel);
   background: rgba(26, 28, 44, 0.85);
@@ -3809,10 +3809,10 @@ canvas {
   cursor: default;
 }
 .team-chip b { color: var(--p-white); font-weight: normal; }
-.team-chip span { justify-self: end; font-size: 9px; }
+.team-chip span { justify-self: end; font-size: 11px; }
 .team-chip i { grid-column: 1; display: block; height: 5px; margin-top: 3px; background: #333c57; }
 .team-chip i em { display: block; height: 100%; background: var(--p-lime); }
-.team-chip small { justify-self: end; font-size: 9px; }
+.team-chip small { justify-self: end; font-size: 11px; }
 .team-chip.on { border-color: #41a6f6; }
 .team-chip.on span { color: #41a6f6; }
 .team-chip.ko { opacity: 0.45; }
@@ -3896,7 +3896,7 @@ canvas {
   gap: 3px;
   min-width: 92px;
   justify-content: center;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--p-white);
   white-space: nowrap;
 }
@@ -3905,7 +3905,7 @@ canvas {
   min-height: 26px;
   width: 26px;
   padding: 0;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .deploy-info {
@@ -3926,7 +3926,7 @@ canvas {
 }
 
 .deploy-stats span { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-.deploy-stats em { font-style: normal; font-size: 10px; color: var(--text-dim); }
+.deploy-stats em { font-style: normal; font-size: 11px; color: var(--text-dim); }
 
 .deploy-parts {
   display: flex;
@@ -3949,7 +3949,7 @@ canvas {
 .deploy .deploy-hint {
   margin: 0 !important; /* modal paragraphs are styled larger */
   min-height: 1.2em;
-  font-size: 11px !important;
+  font-size: 12px !important;
   color: var(--text-dim);
 }
 
@@ -3959,7 +3959,7 @@ canvas {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
@@ -3979,7 +3979,7 @@ canvas {
 
 .deploy-risk .risk-summary {
   margin: 0;
-  font-size: 10px;
+  font-size: 11px;
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -4059,7 +4059,7 @@ canvas {
 .br-col h3 {
   margin: 0 0 8px;
   font-family: var(--font-display);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--p-yellow);
   letter-spacing: 1px;
 }
@@ -4076,7 +4076,7 @@ canvas {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-dim);
 }
 
@@ -4089,12 +4089,12 @@ canvas {
   grid-template-columns: 30px 1fr 90px 40px;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--p-white);
 }
 
 .br-gun img { width: 30px; image-rendering: pixelated; }
-.br-gun em { font-style: normal; color: #1a1c2c; background: var(--p-yellow); padding: 1px 4px; font-size: 9px; }
+.br-gun em { font-style: normal; color: #1a1c2c; background: var(--p-yellow); padding: 1px 4px; font-size: 11px; }
 .br-gun b { text-align: right; }
 
 .br-bar {
@@ -4128,7 +4128,7 @@ canvas {
 
 .br-clean {
   margin: 0 0 8px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--p-lime);
 }
 
@@ -4176,7 +4176,7 @@ canvas {
   background: rgba(16, 17, 28, 0.96);
   border: var(--px) solid var(--p-steel);
   box-shadow: 4px 4px 0 #000;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.35;
   color: var(--text);
   pointer-events: none;
@@ -4195,7 +4195,7 @@ canvas {
 
 .hud-tip h4 em {
   font-style: normal;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-dim);
   margin-left: 4px;
 }
@@ -4246,12 +4246,12 @@ canvas {
   min-width: 70px;
   min-height: 32px;
   padding: 4px 8px calc(4px + var(--px));
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .alm-note {
   margin: 0 0 8px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .alm-list {
@@ -4301,7 +4301,7 @@ canvas {
 
 .alm-head em {
   font-style: normal;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-dim);
   white-space: nowrap;
 }
@@ -4310,7 +4310,7 @@ canvas {
   display: flex;
   flex-wrap: wrap;
   gap: 3px 10px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text);
 }
 
@@ -4320,7 +4320,7 @@ canvas {
   align-items: center;
   gap: 8px;
   margin-top: 6px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--p-steel);
 }
 .deploy-team img {

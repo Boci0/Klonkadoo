@@ -402,8 +402,9 @@ export class RigScreen {
    * while it glows (epic+ drops shift the glow to their colour halfway: a
    * tease), then bursts into two halves with sparks, a ring and a flash.
    */
-  _openPod(podId) {
-    const got = saveSystem.buyCrate(podId);
+  /** Open a pod (bought with Keys, or `free`: the daily pod) with the full reveal. */
+  _openPod(podId, { free = false } = {}) {
+    const got = saveSystem.buyCrate(podId, { free });
     if (!got) return soundEngine.play('error');
     this._renderWallet();
     const crate = CRATES.find((c) => c.id === podId);

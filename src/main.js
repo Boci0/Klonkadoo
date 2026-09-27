@@ -388,7 +388,7 @@ function updateAbilityHud() {
     btnStomp.classList.toggle('ready', canStomp);
   }
   if (cdStomp) {
-    const text = canStomp ? `${st.dmg} DMG` : st.reason === 'NOT ADJACENT' ? 'ADJACENT' : st.reason === 'NO ACTIONS' ? '' : st.reason;
+    const text = canStomp ? `${st.dmg} DMG` : st.reason === 'NOT ADJACENT' ? 'RANGE 1' : st.reason === 'NO ACTIONS' ? '' : st.reason;
     if (cdStomp.textContent !== text) cdStomp.textContent = text;
   }
 }

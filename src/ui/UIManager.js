@@ -760,8 +760,8 @@ export class UIManager {
     const d = saveSystem.getDailyStatus();
     el.classList.toggle('ready', d.canClaim);
     el.innerHTML = d.canClaim
-      ? `${ico('pod', '#ffcd75')}<strong>DAILY SUPPLY</strong><span>${ico('key')}+${d.reward} · DAY ${d.streak}</span>`
-      : `${ico('pod', '#566c86')}<strong>CLAIMED</strong><span>DAY ${d.streak} · BACK TOMORROW</span>`;
+      ? `${ico('pod', d.crate === 'elite' ? '#c46fd6' : '#ffcd75')}<strong>FREE ${d.crate === 'elite' ? 'ELITE ' : ''}POD</strong><span>DAY ${d.streak}${d.crate === 'elite' ? '' : ` · ELITE ON DAY ${Math.ceil(d.streak / 7) * 7}`}</span>`
+      : `${ico('pod', '#566c86')}<strong>OPENED</strong><span>DAY ${d.streak} · NEXT POD TOMORROW</span>`;
   }
 
   _claimDaily() {
@@ -770,11 +770,10 @@ export class UIManager {
       soundEngine.play('error');
       return;
     }
-    soundEngine.play('confirm');
-    haptics.impact('medium');
-    this.toast(`<span class="feed-boon">DAILY SUPPLY: +${got.reward} KEY${got.reward > 1 ? 'S' : ''} (DAY ${got.streak})</span>`);
+    // Straight to the Rig screen's pods tab, opening today's free pod
     this.celebrateMedals(checkMedals(saveSystem));
-    this.showMenu(saveSystem.getProfile(), saveSystem.getMeta());
+    this.showMech({ tab: 'pods' });
+    this.rig._openPod(got.crate, { free: true });
   }
 
   /** Toast for each newly earned medal. */

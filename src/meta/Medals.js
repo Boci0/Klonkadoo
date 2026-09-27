@@ -37,7 +37,7 @@ export const MEDALS = [
       return [Math.min(20, kinds), 20];
     },
   },
-  { id: 'm_streak_7', name: 'ON DUTY', desc: 'Claim the daily supply drop 7 days in a row.', stat: 'bestStreak', value: 7, keys: 5 },
+  { id: 'm_streak_7', name: 'ON DUTY', desc: 'Open the daily free pod 7 days in a row.', stat: 'bestStreak', value: 7, keys: 5 },
 ];
 
 /** [current, target] progress for a medal. */

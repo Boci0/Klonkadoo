@@ -284,13 +284,13 @@ export class SaveSystem {
     return true;
   }
 
-  // ---------- Daily supply drop (login streak) ----------
+  // ---------- Daily free pod (login streak) ----------
 
   static _dayKey(d = new Date()) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
-  /** { canClaim, streak (after claiming today), reward (Keys) } */
+  /** { canClaim, streak (after claiming today), crate: today's free pod ('elite' every 7th day in a row) } */
   getDailyStatus() {
     const daily = this.data.daily || { last: null, streak: 0 };
     const today = SaveSystem._dayKey();
@@ -299,14 +299,13 @@ export class SaveSystem {
     const continues = daily.last === SaveSystem._dayKey(y);
     const canClaim = daily.last !== today;
     const streak = canClaim ? (continues ? daily.streak + 1 : 1) : daily.streak;
-    return { canClaim, streak, reward: 1 + Math.min(3, Math.floor(streak / 2)) };
+    return { canClaim, streak, crate: streak % 7 === 0 ? 'elite' : 'standard' };
   }
 
   claimDaily() {
     const status = this.getDailyStatus();
     if (!status.canClaim) return null;
     this.data.daily = { last: SaveSystem._dayKey(), streak: status.streak };
-    this.data.mech.tokens += status.reward;
     const life = this.getLifetime();
     life.bestStreak = Math.max(life.bestStreak || 0, status.streak);
     this.data.lifetime = life;
@@ -608,12 +607,13 @@ export class SaveSystem {
     this.save();
   }
 
-  /** Buy and open a crate. Returns the new part, or null if you can't afford it. */
-  buyCrate(crateId) {
+  /** Buy and open a crate (`free`: the daily pod). Returns the new part, or null if you can't afford it. */
+  buyCrate(crateId, { free = false } = {}) {
     const m = this.data.mech;
     const crate = CRATES.find((c) => c.id === crateId);
-    if (!crate || m.tokens < crate.cost || (crate.minRisk && this.bestRiskAnyBall() < crate.minRisk)) return null;
-    m.tokens -= crate.cost;
+    if (!crate) return null;
+    if (!free && (m.tokens < crate.cost || (crate.minRisk && this.bestRiskAnyBall() < crate.minRisk))) return null;
+    if (!free) m.tokens -= crate.cost;
     const part = openCrate(crateId);
     m.owned.push(part);
     m.cratesOpened += 1;

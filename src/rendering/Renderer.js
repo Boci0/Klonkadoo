@@ -1358,25 +1358,25 @@ export class Renderer {
     const half = Math.floor((w - 4) / 2);
     const bar = (bx, frac, color) => {
       ctx.fillStyle = '#10111c';
-      ctx.fillRect(bx, y, half, 6);
+      ctx.fillRect(bx, y, half, 8);
       ctx.fillStyle = color;
-      ctx.fillRect(bx, y, Math.round(half * Math.max(0, Math.min(1, frac))), 6);
+      ctx.fillRect(bx, y, Math.round(half * Math.max(0, Math.min(1, frac))), 8);
     };
     bar(x, ball.energy / (ball.energyMax || 1), '#73eff7');
     bar(x + half + 4, ball.heat / (ball.heatCap || 1), ball.heat > ball.heatCap * 0.8 ? '#ff5d73' : '#ef7d57');
-    ctx.font = `700 9px ${FONT}`;
+    ctx.font = `700 12px ${FONT}`;
     ctx.textAlign = 'left';
     ctx.fillStyle = '#73eff7';
-    ctx.fillText(`EN ${Math.floor(ball.energy)}`, x, y + 16);
+    ctx.fillText(`EN ${Math.floor(ball.energy)}`, x, y + 21);
     ctx.fillStyle = ball.heat > ball.heatCap ? '#ff5d73' : '#ef7d57';
-    ctx.fillText(`HEAT ${Math.ceil(ball.heat)}/${ball.heatCap}`, x + half + 4, y + 16);
+    ctx.fillText(`HEAT ${Math.ceil(ball.heat)}/${ball.heatCap}`, x + half + 4, y + 21);
   }
 
   _drawHpPanels(ctx, view, player, enemies) {
     const pad = 8;
-    const panelW = Math.min(200, Math.max(150, view.cssW * 0.22));
+    const panelW = Math.min(250, Math.max(190, view.cssW * 0.26));
     const gear = !!this.worldRef?.gear;
-    const panelH = gear ? 58 : 40;
+    const panelH = gear ? 74 : 48;
     // Screen-space tap targets: tapping a panel inspects that ball's weapons
     this.panelHits = [];
 
@@ -1385,15 +1385,15 @@ export class Renderer {
       const y = pad;
       this._panel(ctx, x, y, panelW, panelH);
       ctx.textAlign = 'left';
-      ctx.font = `700 12px ${FONT}`;
+      ctx.font = `700 15px ${FONT}`;
       ctx.fillStyle = '#73eff7';
-      ctx.fillText('YOU', x + 8, y + 14);
+      ctx.fillText(fitText(ctx, player.displayName || 'YOU', panelW - 110), x + 8, y + 16);
       ctx.textAlign = 'right';
       ctx.fillStyle = '#f4f4f4';
       const shieldHp = player.shieldHp || 0;
-      ctx.fillText(`${Math.ceil(player.hp)}/${player.maxHp}${shieldHp > 0 ? ` +${Math.ceil(shieldHp)}` : ''}`, x + panelW - 8, y + 14);
-      this._hpBar(ctx, x + 8, y + 20, panelW - 16, 12, player, '#41a6f6');
-      if (gear) this._reactorBars(ctx, x + 8, y + 36, panelW - 16, player);
+      ctx.fillText(`${Math.ceil(player.hp)}/${player.maxHp}${shieldHp > 0 ? ` +${Math.ceil(shieldHp)}` : ''}`, x + panelW - 8, y + 16);
+      this._hpBar(ctx, x + 8, y + 25, panelW - 16, 14, player, '#41a6f6');
+      if (gear) this._reactorBars(ctx, x + 8, y + 45, panelW - 16, player);
       this._drawStatusTags(ctx, player, x, y + panelH + 6, panelW, false);
       this.panelHits.push({ x, y, w: panelW, h: panelH, ball: player });
     }
@@ -1403,15 +1403,15 @@ export class Renderer {
       const y = pad + i * (panelH + 16);
       this._panel(ctx, x, y, panelW, panelH);
       const arch = CONFIG.enemyArchetypes[enemy.archetype];
-      ctx.font = `700 11px ${FONT}`;
+      ctx.font = `700 15px ${FONT}`;
       ctx.textAlign = 'left';
       ctx.fillStyle = arch?.color || '#ff5d73';
-      ctx.fillText(fitText(ctx, enemy.displayName || 'HOSTILE', panelW - 70), x + 8, y + 14);
+      ctx.fillText(fitText(ctx, enemy.displayName || 'HOSTILE', panelW - 100), x + 8, y + 16);
       ctx.textAlign = 'right';
       ctx.fillStyle = '#f4f4f4';
-      ctx.fillText(`${Math.ceil(enemy.hp)}/${enemy.maxHp}`, x + panelW - 8, y + 14);
-      this._hpBar(ctx, x + 8, y + 20, panelW - 16, 12, enemy, '#ef7d57');
-      if (gear) this._reactorBars(ctx, x + 8, y + 36, panelW - 16, enemy);
+      ctx.fillText(`${Math.ceil(enemy.hp)}/${enemy.maxHp}`, x + panelW - 8, y + 16);
+      this._hpBar(ctx, x + 8, y + 25, panelW - 16, 14, enemy, '#ef7d57');
+      if (gear) this._reactorBars(ctx, x + 8, y + 45, panelW - 16, enemy);
       this._drawStatusTags(ctx, enemy, x, y + panelH + 4, panelW, true);
       const bw = this._drawGunBadges(ctx, enemy, x, y);
       this.panelHits.push({ x: x - bw, y, w: panelW + bw, h: panelH, ball: enemy });
@@ -1425,7 +1425,7 @@ export class Renderer {
   _drawGunBadges(ctx, enemy, panelX, panelY) {
     const guns = enemy.weapons || [];
     const inspected = this.worldRef?.inspected?.ball === enemy;
-    const size = 30;
+    const size = 38;
     guns.forEach((g, i) => {
       const bx = panelX - (i + 1) * (size + 3);
       ctx.fillStyle = 'rgba(26, 28, 44, 0.92)';
@@ -1436,13 +1436,13 @@ export class Renderer {
       const gear = !!this.worldRef?.gear;
       const spent = g.ammo && g.ammoLeft <= 0;
       ctx.globalAlpha = spent ? 0.45 : 1;
-      ctx.drawImage(ic, Math.round(bx + (size - ic.width * 2) / 2), Math.round(panelY + 5 + (size - 3 - ic.height * 2) / 2), ic.width * 2, ic.height * 2);
+      ctx.drawImage(ic, Math.round(bx + (size - ic.width * 2.5) / 2), Math.round(panelY + 5 + (size - 3 - ic.height * 2.5) / 2), ic.width * 2.5, ic.height * 2.5);
       ctx.globalAlpha = 1;
       if (g.ammo) {
-        ctx.font = `700 10px ${FONT}`;
+        ctx.font = `700 13px ${FONT}`;
         ctx.textAlign = 'right';
         ctx.fillStyle = g.ammoLeft > 0 ? '#ffcd75' : '#566c86';
-        ctx.fillText(`${g.ammoLeft}`, bx + size - 3, panelY + 16);
+        ctx.fillText(`${g.ammoLeft}`, bx + size - 3, panelY + 18);
       }
     });
     return guns.length ? guns.length * (size + 3) : 0;
@@ -1453,7 +1453,7 @@ export class Renderer {
     if (ball.burnTicks > 0)
       tags.push({ label: `BURN ${ball.burnTicks}`, color: '#ef7d57', desc: `Burning! Takes ${ball.burnDmg || 8} damage at the start of each turn. ${ball.burnTicks} turn(s) remaining.` });
     if (ball.isFrozen)
-      tags.push({ label: 'FROZEN', color: '#73eff7', desc: 'Frozen! Next launch speed reduced by 35%.' });
+      tags.push({ label: 'CHILLED', color: '#73eff7', desc: 'Chilled: its next move is 1 position shorter.' });
     if (ball.exposed)
       tags.push({ label: 'EXPOSED', color: '#ffcd75', desc: 'Rammed! Takes +25% gun damage until its next turn.' });
     if (ball.heatCap && ball.heat > ball.heatCap)
@@ -1465,8 +1465,8 @@ export class Renderer {
     if (tags.length === 0) return;
 
     const rect = this.canvas.getBoundingClientRect();
-    ctx.font = `700 10px ${FONT}`;
-    const tagH = 15;
+    ctx.font = `700 12px ${FONT}`;
+    const tagH = 18;
     const gap = 3;
     const widths = tags.map((t) => Math.ceil(ctx.measureText(t.label).width) + 10);
     const total = widths.reduce((a, b) => a + b, 0) + gap * (tags.length - 1);
