@@ -333,8 +333,9 @@ export class Game {
     p.x = posX(p.pos);
     p.anim = { from: p.x, to: p.x, t: 0, dur: 0.6, jump: true };
     this.projectiles = this.projectiles.filter((pr) => pr.target !== p); // shots at the old mech are gone
+    this.renderer.forgetHp(p); // a different mech: its HP isn't damage or healing
     this.renderer.showBanner(`${p.displayName} ${why}`, '#41a6f6');
-    soundEngine.play('alarm');
+    soundEngine.playDropIn();
     this.renderer.addScreenShake(8);
   }
 
@@ -413,7 +414,7 @@ export class Game {
     unit.anim = { from: unit.x, to: posX(pos), t: 0, dur: how === 'jump' ? L.jumpTime : Math.max(0.15, steps * L.walkTime), jump: how === 'jump' };
     unit.pos = pos;
     unit.launchedAt = performance.now(); // renderer: legs spring
-    soundEngine.playLaunch(how === 'jump' ? 1.1 : 0.5);
+    soundEngine.playMove(how, steps);
     if (unit === this.player) haptics.impact('light');
   }
 
@@ -448,8 +449,7 @@ export class Game {
       const dmg = u.team === 'player' ? this.collisionSystem.calculatePlayerDamage(8, { bypassDef: true }) : 8;
       const killed = u.takeDamage(dmg);
       this._spawnHitParticles(u.x, W.groundY);
-      soundEngine.play('hurt');
-      this._callout(u, `SPIKES ${dmg}`, '#ff5d73');
+      this._callout(u, 'SPIKES', '#ff5d73');
       this.events.emit('damage', { attacker: u.team === 'player' ? this.activeEnemy || u : this.player, victim: u, damage: dmg, killed });
       if (killed) return;
     }
@@ -461,7 +461,7 @@ export class Game {
     const killed = u.takeDamage(dmg);
     this.particles.push({ type: 'shockwave', x: u.x, y: W.groundY, radius: 10, maxRadius: 160, life: 0.35, maxLife: 0.35 });
     this._spawnDefeatParticles(u.x, W.groundY, '#ef7d57');
-    soundEngine.playDefeat();
+    soundEngine.playExplosion();
     this.renderer.addScreenShake(14);
     this._callout(u, 'MINE!', '#ef7d57');
     this.events.emit('damage', { attacker: u.team === 'player' ? this.activeEnemy || u : this.player, victim: u, damage: dmg, killed });
@@ -489,7 +489,7 @@ export class Game {
     if (blocked && n > 0 && unit.hp > 0) {
       const slam = unit.team === 'player' ? this.collisionSystem.calculatePlayerDamage(8) : 8;
       const killed = unit.takeDamage(slam);
-      this._callout(unit, `SLAMMED ${slam}`, '#f4f4f4');
+      this._callout(unit, 'SLAMMED', '#f4f4f4');
       this.events.emit('damage', { attacker: from, victim: unit, damage: slam, killed });
     }
   }
@@ -527,7 +527,7 @@ export class Game {
     u.burnTicks -= 1;
     const killed = u.takeDamage(dmg);
     this._spawnHitParticles(u.x, u.y);
-    this._callout(u, `BURN ${dmg}`, DTYPES.heat.color);
+    this._callout(u, 'BURN', DTYPES.heat.color);
     const other = u === this.player ? this.activeEnemy || u : this.player;
     this.events.emit('damage', { attacker: other, victim: u, damage: dmg, killed });
     return !killed;
@@ -542,7 +542,8 @@ export class Game {
     const canAct = this._upkeep(p);
     this.moveMap = this.reachable(p);
     this.events.emit('player-turn-start');
-    if (!canAct) this._afterAction(p, 1.1);
+    if (canAct) soundEngine.playTurn(true);
+    else this._afterAction(p, 1.1);
   }
 
   _startEnemyTurn() {
@@ -557,6 +558,7 @@ export class Game {
     if (!this._tickBurn(e)) return;
     if (!this._upkeep(e)) return this._afterAction(e, 1.1);
     this.enemyThink = L.thinkTime * (1 - 0.35 * this.aggression);
+    soundEngine.playTurn(false);
   }
 
   _dropIn() {
@@ -568,7 +570,7 @@ export class Game {
     e.anim = { from: e.x, to: e.x, t: 0, dur: 0.6, jump: true }; // drops in with a hop
     this.enemies.push(e);
     this.renderer.showBanner(`${e.displayName} DROPS IN`, '#ff5d73');
-    soundEngine.play('alarm');
+    soundEngine.playDropIn();
     this.renderer.addScreenShake(10);
   }
 
@@ -655,6 +657,7 @@ export class Game {
       d.off = false;
       d.deployedAt = performance.now(); // renderer: drone flies out
       this._callout(this.player, 'DRONE DEPLOYED', d.color || '#a7f070');
+      soundEngine.playDrone();
       this._afterAction(this.player);
     } else {
       d.off = true;
@@ -688,7 +691,7 @@ export class Game {
     u.launchedAt = performance.now(); // renderer: legs spring
     this.renderer.addScreenShake(12);
     this.particles.push({ type: 'shockwave', x: target.x, y: W.groundY, radius: 10, maxRadius: 80, life: 0.3, maxLife: 0.3 });
-    soundEngine.play('hurt');
+    soundEngine.playStomp();
     this._weaponHit(u, target, STOMP_GUN, u.stompDmg);
     if (target.hp > 0 && this.turnSystem.phase !== TurnPhase.GAME_OVER) this._shove(target, u, 1, '#f4f4f4');
   }
@@ -786,7 +789,7 @@ export class Game {
       this.particles.push({ x: u.x + (Math.random() - 0.5) * u.radius, y: u.y - u.radius * 0.5, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, float: true, size: 6 + Math.random() * 8, color: i % 3 ? '#dfe6ee' : '#73eff7', life: 0.7, maxLife: 0.7 });
     }
     this.particles.push({ type: 'shockwave', x: u.x, y: u.y, radius: 10, maxRadius: 90, life: 0.35, maxLife: 0.35 });
-    soundEngine.playUI(330);
+    soundEngine.playVent();
     this._callout(u, `VENT -${Math.round(cooled)} HEAT`, '#73eff7');
   }
 
@@ -819,7 +822,7 @@ export class Game {
         onHit: (last) => this._landShot(shooter, w, target, last),
       });
     }
-    soundEngine.playUI(kind === 'lob' ? 180 : kind === 'beam' ? 880 : 520, 0.05);
+    soundEngine.playShot(kind, dtypeOf(w));
     if (shooter === this.player) haptics.impact(kind === 'lob' || w.dmg > 60 ? 'medium' : 'light');
   }
 
@@ -849,7 +852,7 @@ export class Game {
     if (!spot) return this._callout(shooter, 'NO ROOM FOR A MINE', '#94b0c2');
     this.hazards.push({ type: 'mine', pos: spot, x: posX(spot) - 24, w: 48, armed: true, born: performance.now(), owner: shooter.team, dmg: w.dmg });
     this.particles.push({ type: 'shockwave', x: posX(spot), y: W.groundY, radius: 6, maxRadius: 60, life: 0.3, maxLife: 0.3 });
-    soundEngine.playUI(300);
+    soundEngine.playShot('lob', 'phys', true);
     this._callout(shooter, 'MINE PLANTED', '#ef7d57');
   }
 
@@ -858,9 +861,7 @@ export class Game {
    * heat (never HP), Energy guns drain energy, and a drain past zero hits HP 1:1.
    */
   _weaponHit(from, target, w, rawDmg, owner = from) {
-    soundEngine.playUI(target.team === 'player' ? 220 : 660, 0.04);
     const type = dtypeOf(w);
-    const color = DTYPES[type].color;
     if (target.team === 'enemy') {
       const yours = owner === this.player;
       const critChance = (w.fx?.crit || 0) + (yours ? 0.05 + (this.rigStats?.critChance || 0) : 0);
@@ -877,7 +878,7 @@ export class Game {
       if (w.fx?.freeze) target.isFrozen = true;
       if (w.fx?.corrode) target.res = { ...target.res, phys: Math.max(-(target.def || 0), (target.res?.phys || 0) - w.fx.corrode) };
       if (yours) this._reportHit(w, dmg);
-      this._callout(target, `${dmg}${crit ? '!' : ''}`, color);
+      if (crit) this._callout(target, 'CRIT!', '#ffcd75');
       this.events.emit('damage', { attacker: owner, victim: target, damage: dmg, killed, crit });
       return;
     }
@@ -897,7 +898,6 @@ export class Game {
       const r = this.player.res;
       r.phys = Math.max(-(this.collisionSystem.stats.playerTotalDef || 0), (r.phys || 0) - w.fx.corrode);
     }
-    this._callout(this.player, `${dmg}`, color);
     this.events.emit('damage', { attacker: owner, victim: this.player, damage: dmg, killed });
   }
 
@@ -920,7 +920,7 @@ export class Game {
       target.energy -= took;
       extra = want - took;
       if (took) this._callout(target, `-${took} EN`, DTYPES.energy.color);
-      if (extra) this._callout(target, `ENERGY BREAK ${extra}`, '#ff5d73');
+      if (extra) this._callout(target, 'ENERGY BREAK', '#ff5d73');
     }
     return extra;
   }
@@ -968,6 +968,7 @@ export class Game {
       const target = this.activeEnemy;
       if (!target) return;
       d.firedAt = performance.now();
+      soundEngine.playShot('bullet', dtypeOf(d), true);
       const from = d._muzzle || { x: shooter.x, y: shooter.y - shooter.radius * 2 };
       this.projectiles.push({
         kind: 'bullet',
@@ -1141,7 +1142,7 @@ export class Game {
       }
       if (killed) {
         this.addHitStop(0.14);
-        soundEngine.playDefeat();
+        soundEngine.playExplosion();
         this._spawnDefeatParticles(victim.x, victim.y, victim.color);
         this.renderer.addScreenShake(12);
       }

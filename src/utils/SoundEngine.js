@@ -180,13 +180,6 @@ class SoundEngine {
     this._tone({ type: 'square', freq, to: freq * 1.5, dur: duration, vol: 0.12 });
   }
 
-  playLaunch(powerPct = 0.5) {
-    if (!this._ready()) return;
-    const p = Math.max(0.2, Math.min(1.5, powerPct));
-    this._noise({ dur: 0.22, vol: 0.35 * p, filter: 'bandpass', freq: 600, to: 3000 });
-    this._tone({ type: 'square', freq: 220 + p * 200, to: 900 + p * 400, dur: 0.12, vol: 0.12 });
-  }
-
   playImpact(force = 1.0) {
     if (!this._ready() || !this._throttle('impact', 90)) return;
     const f = Math.max(0.3, Math.min(2, force));
@@ -194,25 +187,104 @@ class SoundEngine {
     this._noise({ dur: 0.08 + f * 0.05, vol: 0.3 + f * 0.15, freq: 1800 + f * 1200, to: 200 });
   }
 
-  playWallBounce() {
-    if (!this._ready() || !this._throttle('wall', 120)) return;
-    this._tone({ type: 'square', freq: 660, to: 330, dur: 0.07, vol: 0.12 });
+  // ---------- Battle voices ----------
+  // One family: short noise bursts for mechanics (steps, steam, blasts),
+  // square/saw tones for guns, triangle/sine for weight (thuds, booms).
+
+  /**
+   * A gun going off. `kind` is how the shot flies (Game.vfxOf): bullet,
+   * lob, beam, spray, hook, pulse. `dtype` adds a layer: Electric a
+   * high zap, Explosive a crackle. `small` for drones.
+   */
+  playShot(kind = 'bullet', dtype = 'phys', small = false) {
+    if (!this._ready() || !this._throttle('shot', 45)) return;
+    const v = small ? 0.55 : 1;
+    switch (kind) {
+      case 'lob': // thump out of the tube, then a rising whistle
+        this._tone({ type: 'sine', freq: 140, to: 50, dur: 0.16, vol: 0.55 * v });
+        this._noise({ dur: 0.1, vol: 0.2 * v, freq: 900, to: 200 });
+        this._tone({ type: 'triangle', freq: 500, to: 1100, dur: 0.35, vol: 0.06 * v, at: 0.08 });
+        break;
+      case 'beam': // sustained saw zap
+        this._tone({ type: 'sawtooth', freq: 980, to: 620, dur: 0.2, vol: 0.1 * v });
+        this._tone({ type: 'square', freq: 1960, to: 1240, dur: 0.12, vol: 0.04 * v });
+        break;
+      case 'spray': // pressurised hiss
+        this._noise({ dur: 0.3, vol: 0.28 * v, filter: 'bandpass', freq: 1400, to: 700 });
+        break;
+      case 'hook': // metal launch + chain rattle
+        this._tone({ type: 'square', freq: 720, to: 240, dur: 0.1, vol: 0.12 * v });
+        this._noise({ dur: 0.18, vol: 0.12 * v, filter: 'highpass', freq: 4000, at: 0.04 });
+        break;
+      case 'pulse': // low shove of air
+        this._tone({ type: 'sine', freq: 220, to: 70, dur: 0.22, vol: 0.5 * v });
+        this._noise({ dur: 0.15, vol: 0.15 * v, freq: 600, to: 150 });
+        break;
+      default: // bullet: sharp crack
+        this._noise({ dur: 0.07, vol: 0.4 * v, filter: 'bandpass', freq: 2600, to: 900 });
+        this._tone({ type: 'square', freq: 320, to: 110, dur: 0.07, vol: 0.12 * v });
+    }
+    if (dtype === 'energy') this._tone({ type: 'sine', freq: 2400, to: 3600, dur: 0.06, vol: 0.05 * v, at: 0.02 });
+    if (dtype === 'heat') this._noise({ dur: 0.12, vol: 0.1 * v, filter: 'highpass', freq: 5000, at: 0.03 });
   }
 
-  playAbility(type = 'overdrive') {
-    if (!this._ready() || !this._throttle(`ability-${type}`, 100)) return;
-    if (type === 'overdrive') {
-      [0, 4, 7, 12].forEach((n, i) => this._tone({ type: 'sawtooth', freq: NOTE(64 + n), dur: 0.1, vol: 0.12, at: i * 0.045 }));
-    } else {
-      this._tone({ type: 'square', freq: 300, to: 900, dur: 0.18, vol: 0.14 });
-      this._noise({ dur: 0.2, vol: 0.12, filter: 'highpass', freq: 3000 });
+  /** Moving along the lane: servo steps for a walk, a thruster hop for a jump. */
+  playMove(how = 'walk', steps = 1) {
+    if (!this._ready() || !this._throttle('move', 80)) return;
+    if (how === 'jump') {
+      this._noise({ dur: 0.3, vol: 0.22, filter: 'bandpass', freq: 500, to: 2200 });
+      this._tone({ type: 'sine', freq: 90, to: 40, dur: 0.14, vol: 0.45, at: 0.5 }); // landing
+      return;
+    }
+    const n = Math.min(4, Math.max(1, steps));
+    for (let i = 0; i < n; i++) {
+      this._tone({ type: 'triangle', freq: 190, to: 110, dur: 0.06, vol: 0.22, at: i * 0.2 });
+      this._noise({ dur: 0.03, vol: 0.06, filter: 'highpass', freq: 3500, at: i * 0.2 + 0.02 });
     }
   }
 
-  playDefeat() {
-    if (!this._ready() || !this._throttle('defeat', 150)) return;
-    this._noise({ dur: 0.5, vol: 0.55, freq: 2500, to: 80 });
-    this._tone({ type: 'triangle', freq: 120, to: 30, dur: 0.45, vol: 0.6 });
+  /** VENT: a long steam release. */
+  playVent() {
+    if (!this._ready()) return;
+    this._noise({ dur: 0.7, vol: 0.3, filter: 'highpass', freq: 2500, to: 900 });
+    this._tone({ type: 'triangle', freq: 180, to: 90, dur: 0.4, vol: 0.12 });
+  }
+
+  /** STOMP: the heaviest thud in the game. */
+  playStomp() {
+    if (!this._ready()) return;
+    this._tone({ type: 'sine', freq: 95, to: 28, dur: 0.35, vol: 0.8 });
+    this._noise({ dur: 0.18, vol: 0.35, freq: 800, to: 90 });
+  }
+
+  /** Mines and big blasts. */
+  playExplosion() {
+    if (!this._ready() || !this._throttle('boom', 120)) return;
+    this._noise({ dur: 0.6, vol: 0.6, freq: 3000, to: 60 });
+    this._tone({ type: 'sine', freq: 110, to: 30, dur: 0.5, vol: 0.7 });
+  }
+
+  /** A mech dropping in (reserve, SWAP): a falling whoosh and a heavy landing. */
+  playDropIn() {
+    if (!this._ready()) return;
+    this._noise({ dur: 0.45, vol: 0.2, filter: 'bandpass', freq: 2500, to: 400 });
+    this._tone({ type: 'sine', freq: 120, to: 35, dur: 0.3, vol: 0.7, at: 0.45 });
+    this._noise({ dur: 0.12, vol: 0.25, freq: 700, to: 100, at: 0.45 });
+  }
+
+  /** A drone launching from its dock. */
+  playDrone() {
+    if (!this._ready()) return;
+    this._tone({ type: 'square', freq: 300, to: 900, dur: 0.18, vol: 0.08 });
+    this._noise({ dur: 0.25, vol: 0.08, filter: 'bandpass', freq: 1800 });
+  }
+
+  /** Turn start: two rising notes for you, two falling for the enemy. */
+  playTurn(mine = true) {
+    if (!this._ready()) return;
+    const [a, b] = mine ? [72, 79] : [67, 60];
+    this._tone({ type: 'triangle', freq: NOTE(a), dur: 0.08, vol: 0.18 });
+    this._tone({ type: 'triangle', freq: NOTE(b), dur: 0.14, vol: 0.18, at: 0.08 });
   }
 
   playVictory() {
@@ -258,9 +330,6 @@ class SoundEngine {
         for (let i = 0; i < 6; i++) {
           this._tone({ type: 'square', freq: i % 2 ? 440 : 660, dur: 0.18, vol: 0.12, at: i * 0.2 });
         }
-        break;
-      case 'step':
-        this._tone({ type: 'triangle', freq: 200, to: 120, dur: 0.06, vol: 0.2 });
         break;
       default:
         this.playUI();

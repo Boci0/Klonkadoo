@@ -106,6 +106,11 @@ export class Renderer {
     this._floaters.push({ x, y, text, color, big, t: 0, life: big ? 1.2 : 1.0, stack });
   }
 
+  /** Start HP tracking over for a ball (a swapped-in mech isn't damage or healing). */
+  forgetHp(ball) {
+    this._hpSeen.set(ball, ball.hp);
+  }
+
   /** Label that follows a ball for a moment: hits, status changes. */
   addCallout(ball, text, color = '#f4f4f4') {
     const stack = this._callouts.filter((c) => c.ball === ball).length;
