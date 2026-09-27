@@ -58,6 +58,8 @@ export function slopeAt(x) {
 
 // A slow ball stays put on slopes gentler than this (~24°), so turns can settle
 const STATIC_SLOPE = 0.45;
+// Falling faster than this onto the ground is a landing (it bites into the skid)
+const LANDING_SPEED = 80;
 
 /**
  * Apply gravity + air drag to a ball's velocity.
@@ -88,7 +90,7 @@ export function integrate(ball, dt) {
  * Resolve collisions against the ground and side walls.
  * Returns an array of collision events: { type: 'ground' | 'wall', ball }
  */
-export function resolveWorldCollisions(ball) {
+export function resolveWorldCollisions(ball, dt = 1 / 120) {
   const events = [];
   const r = ball.radius || B.radius;
 
@@ -104,11 +106,12 @@ export function resolveWorldCollisions(ball) {
     if (ball.y + r > gy) {
       ball.y = gy - r;
       if (ball.vy > 0) {
+        if (ball.vy > LANDING_SPEED) ball.vx *= W.groundFriction; // a real landing, not resting contact
         ball.vy = -ball.vy * groundE;
-        ball.vx *= W.groundFriction;
         events.push({ type: 'ground', ball });
       }
       if (Math.abs(ball.vy) < 15) ball.vy = 0;
+      ball.vx = skid(ball.vx, dt);
       if (Math.abs(ball.vx) < 15) ball.vx *= 0.8;
       if (Math.abs(ball.vx) < 4) ball.vx = 0;
     }
@@ -126,11 +129,12 @@ export function resolveWorldCollisions(ball) {
       let vn = ball.vx * nx + ball.vy * ny;
       let vt = ball.vx * tx + ball.vy * ty;
       if (vn < 0) {
+        if (-vn > LANDING_SPEED) vt *= W.groundFriction;
         vn = -vn * groundE;
-        vt *= W.groundFriction;
         events.push({ type: 'ground', ball });
       }
       if (Math.abs(vn) < 15) vn = 0;
+      if (vn === 0) vt = skid(vt, dt);
       // Static friction: a slow ball rests on gentle slopes; steep ones keep it rolling
       if (vn === 0 && Math.abs(vt) < 20 && Math.abs(s) < STATIC_SLOPE) vt = 0;
       ball.vx = vn * nx + vt * tx;
@@ -359,10 +363,16 @@ export function resolvePads(ball, pads, dt, live = false) {
   return events;
 }
 
+/** Ground braking: mechs skid to a stop instead of rolling on. */
+function skid(v, dt) {
+  const cut = W.rollDecel * dt;
+  return Math.abs(v) <= cut ? 0 : v - Math.sign(v) * cut;
+}
+
 export function stepBall(ball, dt) {
   applyForces(ball, dt);
   integrate(ball, dt);
-  return resolveWorldCollisions(ball);
+  return resolveWorldCollisions(ball, dt);
 }
 
 export function stepWorld(balls, dt, barriers = [], platforms = [], obstacles = [], pads = []) {

@@ -80,7 +80,7 @@ export const PARTS = [
   { id: 'lg_hopper', type: 'legs', name: 'HOPPER LEGS', rarity: 'common', move: { min: 150, max: 650 }, desc: 'Short, precise hops. Can\'t go far.' },
   { id: 'lg_treads', type: 'legs', name: 'TANK TREADS', rarity: 'common', hp: 12, move: { min: 250, max: 1150, minDeg: -10, maxDeg: 25 }, desc: 'Low, skimming launches only. +12 HP.' },
   { id: 'lg_catapult', type: 'legs', name: 'CATAPULT LEGS', rarity: 'rare', move: { min: 900, max: 1400 }, desc: 'Long leaps only: no small steps.' },
-  { id: 'lg_jumpjets', type: 'legs', name: 'JUMP JETS', rarity: 'rare', move: { min: 350, max: 1250, minDeg: 50, maxDeg: 88 }, desc: 'Steep arcs only: hop over cover.' },
+  { id: 'lg_jumpjets', type: 'legs', name: 'JUMP JETS', rarity: 'rare', move: { min: 350, max: 1250, minDeg: 35, maxDeg: 72 }, desc: 'The only legs that jump high: hop over cover.' },
   { id: 'lg_coil', type: 'legs', name: 'COIL SPRINGS', rarity: 'epic', move: { min: 150, max: 1150 }, desc: 'Short to long range.' },
   { id: 'lg_anchor', type: 'legs', name: 'ANCHOR CLAMPS', rarity: 'epic', hp: 30, def: 4, atkPct: 0.2, anchored: true, desc: 'Bolted down: you can\'t move. +30 HP, +4 DEF, +20% gun damage.' },
   { id: 'lg_thrusters', type: 'legs', name: 'THRUSTERS', rarity: 'legendary', move: { min: 150, max: 1400 }, moveEn: 6, desc: 'Any range, but each move costs 6 energy.' },
@@ -244,7 +244,7 @@ export function partChips(owned) {
 export function moveLabel(p) {
   const m = p.move || DEFAULT_MOVE;
   const reach = m.max <= 700 ? 'SHORT' : m.min >= 850 ? 'LONG' : m.min <= 200 && m.max >= 1100 ? 'ANY' : 'MID';
-  const arc = m.minDeg >= 40 ? ' HIGH' : m.maxDeg !== undefined && m.maxDeg <= 30 ? ' LOW' : '';
+  const arc = m.minDeg >= 30 ? ' HIGH' : m.maxDeg !== undefined && m.maxDeg <= 30 ? ' LOW' : '';
   return reach + arc;
 }
 

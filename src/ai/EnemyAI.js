@@ -105,9 +105,10 @@ export class EnemyAI {
     const m = legs?.move || {};
     const lo = Math.max(S.minPower, m.min ?? S.minPower + 100);
     const hi = Math.max(lo, m.max ?? S.maxPower);
-    const a0 = Math.max(2, m.minDeg ?? 6);
-    const a1 = Math.min(88, m.maxDeg ?? 84);
-    const angles = 16;
+    // Same low band as yours (CONFIG.move) unless its legs set one
+    const a0 = Math.max(2, m.minDeg ?? CONFIG.move.minDeg);
+    const a1 = Math.min(88, m.maxDeg ?? CONFIG.move.maxDeg);
+    const angles = 10;
     const powers = 9;
     for (const dir of [1, -1]) {
       for (let a = 0; a < angles; a++) {

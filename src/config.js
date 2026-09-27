@@ -32,10 +32,12 @@ export const CONFIG = {
     groundY: 620, // y-coordinate of the ground surface
     gravity: 1500, // px/s^2
     airDrag: 0.0012, // velocity damping per second (0 = none)
-    groundFriction: 0.85, // horizontal velocity multiplier per second on ground contact
-    groundRestitution: 0.55, // bounce factor off ground
-    wallRestitution: 0.7, // bounce factor off side walls
-    ballRestitution: 0.75, // bounce factor between balls
+    // Mechs are heavy: they thud down, skid a little and stop (no ricochets)
+    groundFriction: 0.4, // horizontal velocity kept on a landing
+    rollDecel: 1100, // px/s^2 of skid braking while touching the ground
+    groundRestitution: 0.12, // bounce factor off ground
+    wallRestitution: 0.1, // bounce factor off side walls and cover
+    ballRestitution: 0.3, // bounce factor between balls
     settleSpeed: 12, // px/s — below this both balls are "settled"
     settleTime: 0.5, // seconds both balls must be settled to end turn
   },
@@ -45,6 +47,10 @@ export const CONFIG = {
     radius: 24, // base size; ball classes scale it (Balls.js radiusMult)
     maxHp: 100,
   },
+
+  // --- Movement: launches stay low (degrees above horizontal) ---
+  // Legs can narrow this band; Jump Jets are the only legs that go higher.
+  move: { minDeg: -10, maxDeg: 35 },
 
   // --- Slingshot (player) ---
   slingshot: {
