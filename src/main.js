@@ -179,8 +179,6 @@ function addFeedEntry(html) {
 // ---------- Battle ability HUD ----------
 
 function bindAbilityButtons() {
-  const btnBarrier = document.getElementById('btn-barrier');
-
   const triggerBarrier = (e) => {
     if (e) {
       e.preventDefault();
@@ -201,7 +199,6 @@ function bindAbilityButtons() {
       onCancel: () => { battlePaused = false; },
     });
   });
-  if (btnBarrier) bindBarrierDrag(btnBarrier);
 
   // Gear combat: END TURN (skip the actions you have left) and VENT (1 action)
   document.getElementById('btn-end-turn')?.addEventListener('click', () => {
@@ -231,82 +228,11 @@ function bindAbilityButtons() {
   });
 }
 
-/**
- * BARRIER is drag-and-drop: press the button, drag onto the arena and release
- * to place it. Dragging back onto the button (or releasing without moving)
- * cancels. The ghost wall follows the finger.
- */
-function bindBarrierDrag(btn) {
-  let drag = null;
-  const input = game.slingshotInput;
-  const overButton = (e) => {
-    const r = btn.getBoundingClientRect();
-    const m = 10; // generous cancel zone
-    return e.clientX >= r.left - m && e.clientX <= r.right + m && e.clientY >= r.top - m && e.clientY <= r.bottom + m;
-  };
-  const end = (e, cancelled) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    const moved = drag.moved;
-    drag = null;
-    btn.classList.remove('dragging');
-    game.renderer.barrierCancelHover = false;
-    input.placementCancel = false;
-    input.cancelPlacement();
-    if (cancelled || !moved || overButton(e)) {
-      soundEngine.playUI(440);
-      if (!moved) game.renderer.showBanner('DRAG ONTO THE ARENA', '#73eff7');
-      return;
-    }
-    const pos = game.renderer.clientToWorld(e.clientX, e.clientY);
-    if (game.deployBarrierAt(pos.x, pos.y)) {
-      haptics.impact('medium');
-      updateAbilityHud();
-    }
-  };
-
-  btn.addEventListener('pointerdown', (e) => {
-    if (state !== State.BATTLE || drag) return;
-    const ab = game.abilities?.barrier;
-    // Placing a barrier is one of your actions, on your turn only
-    if (!game.canPlayerAct || battlePaused || !ab?.ready || game.playerBarrierCount >= game._maxBarriers()) {
-      soundEngine.play('error');
-      return;
-    }
-    e.preventDefault();
-    btn.setPointerCapture?.(e.pointerId);
-    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
-    btn.classList.add('dragging');
-    input.placementMode = 'barrier';
-    input.placementPos = game.renderer.clientToWorld(e.clientX, e.clientY);
-    haptics.impact('light');
-    soundEngine.playUI(660);
-  });
-  btn.addEventListener('pointermove', (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 12) drag.moved = true;
-    input.placementPos = game.renderer.clientToWorld(e.clientX, e.clientY);
-    const cancel = overButton(e);
-    input.placementCancel = cancel;
-    game.renderer.barrierCancelHover = cancel;
-    btn.classList.toggle('cancel-hover', cancel && drag.moved);
-  });
-  btn.addEventListener('pointerup', (e) => {
-    btn.classList.remove('cancel-hover');
-    end(e, false);
-  });
-  btn.addEventListener('pointercancel', (e) => {
-    btn.classList.remove('cancel-hover');
-    end(e, true);
-  });
-  // Keyboard [2] keeps the old tap-to-place flow on desktop
-  btn.addEventListener('click', (e) => e.preventDefault());
-}
-
 // ---------- Rig weapon chips ----------
 // Classic: tap one to see its range. Gear combat: tap to fire it; each chip
 // shows its energy / heat cost, ammo and why it can't fire right now.
 
-const GUN_BLOCK_LABEL = { EMPTY: 'EMPTY', HOT: 'TOO HOT', ENERGY: 'NO ENERGY', RANGE: 'OUT OF RANGE', 'TOO CLOSE': 'TOO CLOSE', BLOCKED: 'NO LINE', 'NO TARGET': 'NO TARGET', 'NO ACTIONS': 'NO ACTIONS', WAIT: '' };
+const GUN_BLOCK_LABEL = { USED: 'USED', EMPTY: 'EMPTY', HOT: 'TOO HOT', ENERGY: 'NO ENERGY', RANGE: 'OUT OF RANGE', 'TOO CLOSE': 'TOO CLOSE', BLOCKED: 'NO LINE', 'NO TARGET': 'NO TARGET', 'NO ACTIONS': 'NO ACTIONS', WAIT: '' };
 
 function fireGun(i) {
   const res = game.firePlayerWeapon(i);
@@ -397,6 +323,8 @@ function updateAbilityHud() {
   const cdBarrier = document.getElementById('cd-barrier');
   const br = game.abilities?.barrier;
   if (!br) return;
+  // The barrier returns with cover on the lane (2.0 stage 3)
+  btnBarrier?.classList.toggle('hidden', !!br.disabled);
   const usable = br.ready && game.canPlayerAct;
   if (btnBarrier) {
     btnBarrier.disabled = !usable;

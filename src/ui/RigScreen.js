@@ -15,12 +15,12 @@ import { OPERATOR, skinColors } from '../meta/Balls.js';
 import { torsoCanvas, legsCanvas } from '../rendering/mechSprite.js';
 import { partIcon, partCanvas, ico, uiIcon } from '../rendering/pixelIcons.js';
 import {
-  SLOTS, PARTS, CRATES, getPart, partChips, partNote, TYPE_LABEL, rarityColor, rarityName,
-  upgradeCost, salvageValue, loadoutTotals, MAX_LEVEL, INVENTORY_CAP, DTYPES, DTYPE_KEYS,
+  SLOTS, PARTS, CRATES, getPart, partChips, partNote, describePart, TYPE_LABEL, rarityColor, rarityName,
+  upgradeCost, salvageValue, loadoutTotals, MAX_LEVEL, INVENTORY_CAP, DTYPES, DTYPE_KEYS, LANE_SIZE, reachLabel,
 } from '../meta/Mech.js';
 
 const RANK = { common: 0, rare: 1, epic: 2, legendary: 3, mythic: 4 };
-const RANGE_MAX = 1400;
+const REACH_MAX = LANE_SIZE - 1; // farthest distance on the lane
 // Where each slot tile sits around the bay
 const LEFT = ['weapon1', 'armor', 'module1'];
 const RIGHT = ['weapon2', 'drone', 'module2'];
@@ -166,9 +166,9 @@ export class RigScreen {
     const tooHeavy = !inThis && after > capAfter;
     const cost = upgradeCost(owned);
     const maxed = owned.level >= MAX_LEVEL;
-    const range = p.range ? `<div class="rig-range" title="Range ${p.range[0]}-${p.range[1]}">
-        ${ico('range')}<div class="rig-range-bar"><i style="left:${(p.range[0] / RANGE_MAX) * 100}%;width:${((Math.min(p.range[1], RANGE_MAX) - p.range[0]) / RANGE_MAX) * 100}%;--c:${p.color}"></i></div>
-        <span>${p.range[1] >= RANGE_MAX ? 'ANY' : p.range[0] ? 'FAR' : 'NEAR'}</span>
+    const range = p.reach ? `<div class="rig-range" title="Hits at ${reachLabel(p.reach)} positions away">
+        ${ico('range')}<div class="rig-range-bar"><i style="left:${((p.reach[0] - 1) / REACH_MAX) * 100}%;width:${((p.reach[1] - p.reach[0] + 1) / REACH_MAX) * 100}%;--c:${p.color}"></i></div>
+        <span>${reachLabel(p.reach)}</span>
       </div>` : '';
     const note = partNote(p);
 
@@ -374,7 +374,7 @@ export class RigScreen {
       el.classList.add('sel');
       const info = document.getElementById('drops-info');
       info.style.setProperty('--rar', rarityColor(p.rarity));
-      info.innerHTML = `<b>${p.name}</b> · ${rarityName(p.rarity)} ${TYPE_LABEL[p.type]}${owned.has(p.id) ? ' · owned' : ''}${partNote(p) ? ` · ${partNote(p)}` : ''}`;
+      info.innerHTML = `<b>${p.name}</b> · ${rarityName(p.rarity)} ${TYPE_LABEL[p.type]}${owned.has(p.id) ? ' · owned' : ''}${describePart({ id: p.id, level: 1 }).map((l) => ` · ${l}`).join('')}`;
       soundEngine.play('select');
     }));
   }

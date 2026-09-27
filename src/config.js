@@ -74,6 +74,18 @@ export const CONFIG = {
     barrierImpactMinSpeed: 200, // min ball speed to damage a barrier
   },
 
+  // --- The battle lane: positions 1..size, one mech per position ---
+  lane: {
+    size: 12,
+    playerStart: 2,
+    enemyStart: 11,
+    walkTime: 0.2, // seconds per position walked
+    jumpTime: 0.55, // seconds for a jump (any length)
+    jumpHeight: 150, // world px at the top of a jump arc
+    thinkTime: 0.6, // enemy pause before acting, so you can follow it
+    settle: 0.4, // pause after an action resolves, before the turn passes
+  },
+
   // --- Gear combat: guns are the only damage ---
   gear: {
     dmgScale: 2.2, // gun/drone damage vs the classic numbers (bodies no longer hit)
@@ -85,8 +97,8 @@ export const CONFIG = {
     dtypeSpill: 0.5,
     ramSpeed: 380, // impact speed (px/s) that counts as a ram
     shotGap: 0.45, // seconds between an enemy's actions, so you can follow them
-    actions: 2, // actions per turn: MOVE (slingshot), FIRE one gun, or VENT
-    vent: { coolMult: 2, energyPct: 0.5 }, // VENT: cools 2x your cooling, refills half your regen
+    actions: 2, // actions per turn: WALK / JUMP, FIRE a gun (each gun once per turn), DEPLOY a drone; VENT takes the rest of the turn
+    vent: { coolMult: 2, energyPct: 0 }, // VENT (cooldown): cools 2x your cooling; energy only comes from regen
     drone: { dmgEn: 4, dmgHeat: 2, healEn: 6, shieldEn: 8 }, // ON drones pay this at the end of your turn
     // Energy pool / refill per turn, heat cap / cooling per turn when no frame sets them
     baseRig: { energy: 30, regen: 14, heatCap: 30, cool: 12 },

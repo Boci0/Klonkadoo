@@ -7,22 +7,20 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
-import { DTYPES, dtypeOf, partNote } from '../meta/Mech.js';
+import { DTYPES, dtypeOf, partNote, reachLabel } from '../meta/Mech.js';
 
 const G = CONFIG.gear;
 
-const WHY = { EMPTY: 'Out of ammo', HOT: 'At the heat cap: vent or wait a turn (over it, your next turn starts with forced vents)', ENERGY: 'Not enough energy', RANGE: 'Target out of range: move closer / further', 'TOO CLOSE': 'Too close for this gun', BLOCKED: 'No clear line to the target', 'NO TARGET': 'No target', 'NO ACTIONS': 'No actions left', WAIT: 'Wait for your turn' };
+const WHY = { USED: 'Already fired this turn: each gun fires once per turn', EMPTY: 'Out of ammo', HOT: 'Over your heat cap: VENT, or your next turn is lost', ENERGY: 'Not enough energy', RANGE: 'Out of reach: move closer', 'TOO CLOSE': 'Too close for this gun', BLOCKED: 'No clear line to the target', 'NO TARGET': 'No target', 'NO ACTIONS': 'No actions left', WAIT: 'Wait for your turn' };
 
 const row = (label, value, color = '') => `<div class="tip-row"><span>${label}</span><b${color ? ` style="color:${color}"` : ''}>${value}</b></div>`;
 
 function ventTip(game) {
   const p = game.player;
   const cooled = Math.round(Math.min(p.heat, p.cool * G.vent.coolMult));
-  const gain = Math.round(Math.min(p.energyMax - p.energy, p.regen * G.vent.energyPct));
-  return `<h4>VENT <em>[V] · 1 action</em></h4>
+  return `<h4>VENT <em>[V] · ends your turn</em></h4>
     ${row('Heat', `${Math.ceil(p.heat)} → ${Math.ceil(p.heat - cooled)} (-${cooled})`, '#ef7d57')}
-    ${row('Energy', `${Math.floor(p.energy)} → ${Math.floor(p.energy + gain)} (+${gain})`, '#73eff7')}
-    <p>Cools ${p.cool * G.vent.coolMult} heat and refills ${Math.round(p.regen * G.vent.energyPct)} energy, at most.</p>`;
+    <p>The cooldown: cools ${p.cool * G.vent.coolMult} heat (2× your cooling). Energy only comes back from regeneration.</p>`;
 }
 
 function endTip(game) {
@@ -37,7 +35,7 @@ function endTip(game) {
     <p>Your next turn starts with:</p>
     ${row('Energy', `+${p.regen} (max ${p.energyMax})`, '#73eff7')}
     ${row('Heat', `-${p.cool}`, '#ef7d57')}
-    ${p.heat - p.cool > p.heatCap ? `<p class="tip-bad">Still over the heat cap after cooling: your next turn starts with a forced vent.</p>` : ''}`;
+    ${p.heat > p.heatCap ? `<p class="tip-bad">Over your heat cap: your next turn is lost (overheat)${p.heat - p.cool > p.heatCap ? ', and the one after (shutdown)' : ''}.</p>` : ''}`;
 }
 
 function barrierTip(game) {
@@ -59,12 +57,12 @@ function gunTip(game, i) {
   const hits = w.fx?.burst ? ` (${w.fx.burst} hits)` : '';
   return `<h4 style="color:${w.color || '#f4f4f4'}">${w.name} <em>[${i ? 'E' : 'Q'}] · 1 action</em></h4>
     ${row('Damage', w.fx?.mine ? `${Math.round(w.dmg)} mine` : `~${st.dmg || Math.round(w.dmg)}${hits} ${t.name}`, t.color)}
-    ${row('Range', `${w.range[0]}-${w.range[1]}${w.arc ? ' · lobbed' : ''}`)}
+    ${row('Range', `${reachLabel(w.reach)} position${w.reach[1] > 1 ? 's' : ''}${w.arc ? ' · lobbed' : ''}`)}
     ${row('Energy', `${w.en || 0} (have ${Math.floor(p.energy)})`, '#73eff7')}
     ${row('Heat', `+${w.heat || 0} (${Math.ceil(p.heat)}/${p.heatCap})`, '#ef7d57')}
     ${w.ammo ? row('Ammo', `${w.ammoLeft}/${w.ammo}`, '#ffcd75') : ''}
     <p>${partNote(w)}</p>
-    ${st.ok && st.overheats ? `<p class="tip-bad">Overheats you (${Math.ceil(p.heat + (w.heat || 0))}/${p.heatCap}): next turn starts with a forced vent, both actions if one isn't enough.</p>` : ''}
+    ${st.ok && st.overheats ? `<p class="tip-bad">Overheats you (${Math.ceil(p.heat + (w.heat || 0))}/${p.heatCap}): your next turn is lost, more if cooling can't bring you back under.</p>` : ''}
     ${st.ok ? '' : `<p class="tip-bad">${WHY[st.reason] || st.reason}</p>`}`;
 }
 
@@ -102,11 +100,14 @@ export class BattleTips {
 
   show(el) {
     this.target = el;
+    // A hovered gun lights up the plates it can hit
+    this.game.previewGun = el.dataset?.gun !== undefined ? Number(el.dataset.gun) : null;
     this.refresh();
   }
 
   hide() {
     this.target = null;
+    this.game.previewGun = null;
     this.el.classList.add('hidden');
   }
 

@@ -15,7 +15,7 @@ import { CONFIG } from '../config.js';
 import { getTerrain, groundAt } from '../core/Physics.js';
 import { fitCanvas, clientToWorld } from './viewport.js';
 import { partCanvas, iconCanvas } from './pixelIcons.js';
-import { DTYPES, DTYPE_KEYS, dtypeOf, resistOf } from '../meta/Mech.js';
+import { DTYPES, DTYPE_KEYS, dtypeOf, resistOf, legsLabel, reachLabel, LANE_SIZE } from '../meta/Mech.js';
 import { mechLook, torsoCanvas, legsCanvas } from './mechSprite.js';
 
 const C = CONFIG.colors;
@@ -176,6 +176,7 @@ export class Renderer {
 
     // 2. World
     ctx.setTransform(view.k, 0, 0, view.k, view.ox + shakeX, view.oy + shakeY);
+    if (world.lane) this._drawLane(ctx, world, now);
     this._drawHazards(ctx, world.hazards || [], now);
     this._drawPlatformsAndObstacles(ctx, world.platforms || [], world.obstacles || []);
     this._drawBarriers(ctx, world.barriers || [], now);
@@ -224,6 +225,11 @@ export class Renderer {
    * slingshot doesn't slide under your finger).
    */
   _camera(base, balls, world, dt) {
+    // The lane always fits whole: no camera
+    if (world?.lane) {
+      this._cam = null;
+      return base;
+    }
     const fighters = balls.filter((b) => b && b.hp > 0);
     const inp = world?.slingshotInput;
     const frozen = this._cam && (inp?.dragging || inp?.placementMode);
@@ -555,26 +561,6 @@ export class Renderer {
 
   // ---------- Mech weapons: range rings and the inspect card ----------
 
-  _rangeRing(ctx, x, y, w, alpha, now) {
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.strokeStyle = w.color || '#f4f4f4';
-    ctx.lineWidth = 4;
-    ctx.setLineDash([14, 10]);
-    ctx.lineDashOffset = -now / 40;
-    ctx.beginPath();
-    ctx.arc(x, y, Math.min(w.range[1], 1500), 0, Math.PI * 2);
-    ctx.stroke();
-    if (w.range[0] > 0) {
-      ctx.globalAlpha = alpha * 0.6;
-      ctx.setLineDash([4, 10]);
-      ctx.beginPath();
-      ctx.arc(x, y, w.range[0], 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
   /**
    * Shots in flight (Game.projectiles). Each gun's look comes from vfxOf:
    *   bullet – a bright slug with a short streak
@@ -864,30 +850,97 @@ export class Renderer {
     }
   }
 
-  _drawMechRanges(ctx, world) {
-    const now = performance.now();
-    const usable = (w) => !(w.ammo && w.ammoLeft <= 0) && w.range[1] < 1400;
-    // While aiming: where your ready guns will reach from the predicted landing spot
-    const traj = world.slingshotInput?.dragging ? world.slingshotInput.trajectory : null;
-    if (traj && traj.length) {
-      const land = traj[traj.length - 1];
-      for (const w of world.playerWeapons || []) {
-        if (usable(w)) this._rangeRing(ctx, land.x, land.y, w, 0.45, now);
+  // ---------- The lane: floor plates, moves, gun reach ----------
+
+  /** Plate `pos` (1..size): its left edge and width in world px. */
+  _plate(pos, size) {
+    const pw = W.width / size;
+    return { x: (pos - 1) * pw, w: pw };
+  }
+
+  /**
+   * The floor plates, numbered. On your turn the plates you can move to
+   * light up: green = walk there, blue = jump there (brighter under the mouse).
+   */
+  _drawLane(ctx, world, now) {
+    const lane = world.lane;
+    const y = W.groundY;
+    for (let pos = 1; pos <= lane.size; pos++) {
+      const { x, w } = this._plate(pos, lane.size);
+      ctx.fillStyle = pos % 2 ? 'rgba(148, 176, 194, 0.10)' : 'rgba(148, 176, 194, 0.04)';
+      ctx.fillRect(Math.round(x + 3), y + 4, Math.round(w - 6), 14);
+      ctx.fillStyle = 'rgba(26, 28, 44, 0.8)';
+      ctx.fillRect(Math.round(x), y, 3, 22);
+      ctx.fillStyle = '#566c86';
+      ctx.font = `700 13px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(pos), x + w / 2, y + 34);
+    }
+    const moves = lane.moves;
+    if (!moves || !moves.size) return;
+    const pulse = 0.55 + 0.25 * Math.sin(now / 180);
+    for (const [pos, how] of moves) {
+      const { x, w } = this._plate(pos, lane.size);
+      const col = how === 'jump' ? '65, 166, 246' : '167, 240, 112';
+      const hot = lane.hover === pos;
+      ctx.fillStyle = `rgba(${col}, ${hot ? 0.55 : 0.28 * pulse})`;
+      ctx.fillRect(Math.round(x + 4), y - 6, Math.round(w - 8), 24);
+      ctx.fillStyle = `rgba(${col}, ${hot ? 1 : 0.8})`;
+      ctx.fillRect(Math.round(x + 4), y - 6, Math.round(w - 8), 4);
+      // A chevron over the plate: where you'd stand
+      const cx = Math.round(x + w / 2);
+      const cy = Math.round(y - 70 - (hot ? 6 : 0) + Math.sin(now / 250 + pos) * 3);
+      ctx.fillStyle = `rgba(${col}, ${hot ? 1 : 0.7})`;
+      ctx.fillRect(cx - 12, cy, 24, 5);
+      ctx.fillRect(cx - 8, cy + 5, 16, 5);
+      ctx.fillRect(cx - 4, cy + 10, 8, 5);
+      if (hot) {
+        ctx.font = `700 14px ${FONT}`;
+        ctx.textAlign = 'center';
+        ctx.fillText(how === 'jump' ? 'JUMP' : 'WALK', cx, cy - 12);
       }
     }
-    // Gear combat, your fire phase: your reach from where you stand, and the aimed-at enemy
+  }
+
+  /** Lane reach of guns: the plates each gun can hit from where its mech stands. */
+  _drawMechRanges(ctx, world) {
+    const now = performance.now();
+    const lane = world.lane;
+    const p = world.player;
     const ph = world.turnSystem?.phase;
-    if (world.gear && world.player?.hp > 0 && ph === 'PLAYER_AIM' && !traj) {
-      if (world.player.actionsLeft > 0) for (const w of world.playerWeapons || []) if (usable(w)) this._rangeRing(ctx, world.player.x, world.player.y, w, 0.22, now);
+    if (lane && p?.hp > 0) {
+      // Show: a hovered gun chip, else an inspected mech's guns
+      let from = null;
+      let guns = [];
+      if (lane.previewGun != null && world.playerWeapons?.[lane.previewGun]) {
+        from = p;
+        guns = [world.playerWeapons[lane.previewGun]];
+      } else if (world.inspected) {
+        const ins = world.inspected;
+        from = ins.ball;
+        const all = ins.ball === p ? world.playerWeapons || [] : ins.ball.weapons || [];
+        guns = ins.weapon === undefined ? all : all.filter((_, i) => i === ins.weapon);
+      }
+      guns.forEach((w, gi) => {
+        if (!w.reach || (w.ammo && w.ammoLeft <= 0)) return;
+        for (let pos = 1; pos <= lane.size; pos++) {
+          const d = Math.abs(pos - from.pos);
+          if (d < w.reach[0] || d > w.reach[1]) continue;
+          const { x, w: pw } = this._plate(pos, lane.size);
+          ctx.globalAlpha = 0.28;
+          ctx.fillStyle = w.color || '#f4f4f4';
+          ctx.fillRect(Math.round(x + 6), W.groundY - 150 + gi * 10, Math.round(pw - 12), 150 - gi * 10);
+          ctx.globalAlpha = 0.9;
+          ctx.fillRect(Math.round(x + 6), W.groundY - 150 + gi * 10, Math.round(pw - 12), 4);
+        }
+      });
+      ctx.globalAlpha = 1;
+    }
+    if (world.gear && p?.hp > 0 && ph === 'PLAYER_AIM') {
       const t = world.fireTarget;
       if (t && t.hp > 0) this._reticle(ctx, t, now);
     }
-    const ins = world.inspected;
-    if (!ins) return;
-    const guns = ins.ball === world.player ? world.playerWeapons || [] : ins.ball.weapons || [];
-    guns.forEach((w, i) => {
-      if (ins.weapon === undefined || ins.weapon === i) this._rangeRing(ctx, ins.ball.x, ins.ball.y, w, 0.8, now);
-    });
   }
 
   /** Brackets around the enemy your guns are aimed at (gear combat). */
@@ -947,8 +1000,7 @@ export class Renderer {
     ctx.fillText(isPlayer ? 'YOUR RIG' : fitText(ctx, ball.displayName || 'ENEMY', w - 300), x + 16, y + 30);
     if (ball.legs) {
       // Its legs: how it can move
-      const m = ball.legs.move;
-      const how = ball.legs.anchored ? "CAN'T MOVE" : m ? `MOVE ${m.min}-${m.max}${m.minDeg >= 40 ? ' HIGH' : m.maxDeg !== undefined && m.maxDeg <= 30 ? ' LOW' : ''}` : '';
+      const how = legsLabel(ball.legs);
       ctx.textAlign = 'right';
       ctx.fillStyle = '#94b0c2';
       ctx.font = `700 16px ${FONT}`;
@@ -1007,12 +1059,16 @@ export class Renderer {
       icon('range', cx, cy);
       const bx = cx + 32;
       const bw = 170;
-      ctx.fillStyle = '#10111c';
-      ctx.fillRect(bx, cy - 8, bw, 16);
-      ctx.fillStyle = g.color || '#f4f4f4';
-      const r0 = Math.min(1, g.range[0] / 1400);
-      const r1 = Math.min(1, g.range[1] / 1400);
-      ctx.fillRect(Math.round(bx + r0 * bw), cy - 5, Math.max(4, Math.round((r1 - r0) * bw)), 10);
+      // Reach strip: one cell per distance 1..11, lit where the gun hits, then '3-7'
+      const cells = LANE_SIZE - 1;
+      const cw = (bw - 60) / cells;
+      for (let d = 1; d <= cells; d++) {
+        const on = g.reach && d >= g.reach[0] && d <= g.reach[1];
+        ctx.fillStyle = on ? g.color || '#f4f4f4' : '#10111c';
+        ctx.fillRect(Math.round(bx + (d - 1) * cw), cy - 7, Math.max(2, Math.round(cw - 2)), 14);
+      }
+      ctx.fillStyle = '#f4f4f4';
+      ctx.fillText(g.reach ? reachLabel(g.reach) : '', bx + bw - 52, cy);
       cx = bx + bw + 16;
       {
         // Energy and heat per shot, then ammo left (strong guns only)
@@ -1571,7 +1627,7 @@ export class Renderer {
     if (!world.showHints || (world.battleStats?.turns || 0) > 1) return;
     if (turnSystem?.phase !== 'PLAYER_AIM' || world.slingshotInput?.dragging || world.slingshotInput?.placementMode) return;
     if (world.gear && !(world.player?.actionsLeft > 0)) return;
-    this._centerNotice(ctx, view, world.gear ? '2 ACTIONS: DRAG TO MOVE, TAP A GUN TO FIRE, OR VENT' : 'DRAG ANYWHERE, PULL BACK & RELEASE TO FIRE', '#f4f4f4', view.cssH * 0.66);
+    this._centerNotice(ctx, view, 'TAP A LIT PLATE TO MOVE, TAP A GUN TO FIRE, OR VENT', '#f4f4f4', view.cssH * 0.66);
   }
 
   /**

@@ -3008,7 +3008,7 @@ canvas {
 
 .menu-tiles {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 
@@ -4158,4 +4158,90 @@ canvas {
 
 .mech-chip.gear-gun.overheat .gun-why {
   color: #ff5d73;
+}
+
+/* ---------- Almanac ---------- */
+
+.modal-content.modal-wide {
+  width: min(760px, 100%);
+}
+
+.alm-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.alm-tab {
+  flex: 1;
+  min-width: 70px;
+  min-height: 32px;
+  padding: 4px 8px calc(4px + var(--px));
+  font-size: 11px;
+}
+
+.alm-note {
+  margin: 0 0 8px;
+  font-size: 11px;
+}
+
+.alm-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 8px;
+}
+
+.alm-card {
+  display: flex;
+  gap: 10px;
+  padding: 8px;
+  background: var(--bg-card);
+  border: var(--px) solid var(--p-steel);
+  border-left-color: var(--rar);
+  opacity: 0.75;
+}
+
+.alm-card.owned {
+  opacity: 1;
+}
+
+.alm-card img {
+  width: 44px;
+  height: auto;
+  flex: none;
+  align-self: flex-start;
+  image-rendering: pixelated;
+}
+
+.alm-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.alm-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.alm-head b {
+  color: var(--rar);
+  font-size: 12px;
+}
+
+.alm-head em {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.alm-lines {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  font-size: 11px;
+  color: var(--text);
 }

@@ -1,15 +1,8 @@
 // ============================================================
-// TurnSystem — manages the turn flow:
-//   PLAYER_AIM → PLAYER_FLY → SETTLING → ENEMY_AIM → ENEMY_FLY → ...
-// Gear combat adds a fire phase after each landing:
-//   PLAYER_AIM → PLAYER_FLY → PLAYER_FIRE → ENEMY_AIM → ENEMY_FLY → ENEMY_FIRE → ...
+// TurnSystem — whose turn it is on the lane (Game drives it):
+//   PLAYER_AIM (choosing) → PLAYER_FLY (an action resolving) → ENEMY_AIM
+//   (thinking) → ENEMY_FLY → ... → GAME_OVER
 // ============================================================
-
-import { CONFIG } from '../config.js';
-import { isSettled } from '../core/Physics.js';
-
-const W = CONFIG.world;
-const T = CONFIG.turn;
 
 export const TurnPhase = {
   PLAYER_AIM: 'PLAYER_AIM',
@@ -74,40 +67,6 @@ export class TurnSystem {
       this.turnTime = 0;
       this.events.emit('launch', { turn: 'enemy' });
     }
-  }
-
-  /**
-   * Update settle detection. Called every frame while flying.
-   * Returns true when the turn should end.
-   */
-  update(dt, balls) {
-    this.turnTime += dt;
-
-    if (!this.isFlying) return false;
-
-    const allSettled = balls.every((b) => isSettled(b));
-
-    if (allSettled) {
-      this.settleTimer += dt;
-    } else {
-      this.settleTimer = 0;
-    }
-
-    // Require both a minimum turn time and a sustained settle period,
-    // OR force-end if max turn time (6 seconds) is reached.
-    const maxTurnTime = 6.0;
-    if ((this.turnTime >= T.minTurnTime && this.settleTimer >= W.settleTime) || this.turnTime >= maxTurnTime) {
-      if (this.turnTime >= maxTurnTime) {
-        for (const b of balls) {
-          b.vx = 0;
-          b.vy = 0;
-        }
-      }
-      this.endTurn();
-      return true;
-    }
-
-    return false;
   }
 
   endTurn() {

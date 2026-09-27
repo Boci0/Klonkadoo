@@ -22,7 +22,7 @@ import { OPERATOR, skinsFor, isSkinUnlocked, skinProgress, skinColors } from '..
 import { mechDataUrl } from '../rendering/mechSprite.js';
 import { MEDALS, medalProgress, checkMedals } from '../meta/Medals.js';
 import { masteryLevel, MILESTONES, MAX_MASTERY } from '../meta/Mastery.js';
-import { getPart, loadoutTotals, SLOTS, PARTS, rarityColor, CLEAN_WIN_KEYS, DTYPES, DTYPE_KEYS } from '../meta/Mech.js';
+import { getPart, loadoutTotals, SLOTS, PARTS, rarityColor, rarityName, describePart, CLEAN_WIN_KEYS, DTYPES, DTYPE_KEYS } from '../meta/Mech.js';
 import { getSupply } from '../rogue/Supplies.js';
 import { RigScreen } from './RigScreen.js';
 import { ico, partIcon } from '../rendering/pixelIcons.js';
@@ -69,6 +69,10 @@ export class UIManager {
         return;
       }
       this.cb.onPlay();
+    });
+    document.getElementById('btn-almanac')?.addEventListener('click', () => {
+      soundEngine.playUI();
+      this.showAlmanac();
     });
     document.getElementById('btn-medals')?.addEventListener('click', () => {
       soundEngine.playUI();
@@ -738,6 +742,7 @@ export class UIManager {
     const rig = loadoutTotals(saveSystem.getLoadoutParts());
     const tiles = {
       'btn-gear': { img: gun ? `<img class="pxi" src="${partIcon(gun.id)}" alt="">` : ico('gun'), label: 'RIG', count: rig.overweight ? '!' : '', warn: rig.overweight },
+      'btn-almanac': { img: ico('book'), label: 'ALMANAC', count: `${new Set(saveSystem.getMech().owned.map((o) => o.id)).size}/${PARTS.length}` },
       'btn-medals': { img: ico('star'), label: 'MEDALS', count: `${owned}/${MEDALS.length}` },
     };
     for (const [id, t] of Object.entries(tiles)) {
@@ -782,6 +787,37 @@ export class UIManager {
     this.closeModal();
     this._setVisible('rig');
     this.rig.show(opts);
+  }
+
+  /**
+   * Almanac: every part in the game, by type, with its level-1 stats and
+   * what it does (the same lines the Rig screen shows). Parts you own are ticked.
+   */
+  showAlmanac(type = 'weapon') {
+    const owned = new Set(saveSystem.getMech().owned.map((o) => o.id));
+    const TABS = [['weapon', 'GUNS'], ['legs', 'LEGS'], ['frame', 'FRAMES'], ['armor', 'ARMOR'], ['drone', 'DRONES'], ['module', 'MODS']];
+    const RANK = { common: 0, rare: 1, epic: 2, legendary: 3, mythic: 4 };
+    const list = PARTS.filter((p) => p.type === type).sort((a, b) => RANK[a.rarity] - RANK[b.rarity] || a.name.localeCompare(b.name));
+    const cards = list.map((p) => {
+      const has = owned.has(p.id);
+      const lines = describePart({ id: p.id, level: 1 });
+      return `<div class="alm-card ${has ? 'owned' : ''}" style="--rar:${rarityColor(p.rarity)}">
+        <img src="${partIcon(p.id)}" alt="">
+        <div class="alm-body">
+          <div class="alm-head"><b>${p.name}</b><em>${rarityName(p.rarity)}${has ? ' · OWNED' : ''}</em></div>
+          <div class="alm-lines">${lines.map((l) => `<span>${l}</span>`).join('')}</div>
+        </div>
+      </div>`;
+    }).join('');
+    const tabs = TABS.map(([t, label]) => `<button class="btn ${t === type ? 'btn-accent' : 'btn-outline'} alm-tab" data-alm="${t}">${label}</button>`).join('');
+    const found = PARTS.filter((p) => owned.has(p.id)).length;
+    this.openModal(`ALMANAC ${found}/${PARTS.length}`, `<div class="alm-tabs">${tabs}</div><p class="dim-text alm-note">Stats at level 1. Upgrading a part adds 5% per level to its HP, damage and bonuses.</p><div class="alm-list">${cards}</div>`,
+      '<div class="btn-row"><button class="btn btn-accent" data-act="close">CLOSE</button></div>', { wide: true });
+    this.modalBody.querySelectorAll('[data-alm]').forEach((b) => b.addEventListener('click', () => {
+      soundEngine.playUI();
+      this.showAlmanac(b.dataset.alm);
+    }));
+    this.modalActions.querySelector('[data-act="close"]').addEventListener('click', () => this.closeModal());
   }
 
   showMedals() {
@@ -961,7 +997,8 @@ export class UIManager {
 
   // ---------- Node modal ----------
 
-  openModal(title, bodyHTML, actionsHTML) {
+  openModal(title, bodyHTML, actionsHTML, { wide = false } = {}) {
+    this.nodeModal.querySelector('.modal-content')?.classList.toggle('modal-wide', wide);
     this.modalTitle.textContent = title;
     this.modalBody.innerHTML = bodyHTML;
     this.modalActions.innerHTML = actionsHTML;

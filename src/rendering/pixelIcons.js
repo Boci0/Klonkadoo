@@ -332,6 +332,7 @@ const UI_GRIDS = {
   load: ['..kkkk..', '.k....k.', '.kkkkkk.', 'kllllllk', 'klwllldk', 'kllllldk', 'kddddddk', '.kkkkkk.'],
   gun: ['........', 'kkkkkkk.', 'klllllwk', 'kddddkk.', 'kddk....', 'kkk.....'],
   star: ['...kk...', '..kyyk..', 'kkkyykkk', 'kyyyyyyk', '.kyyyok.', '.kyokyk.', 'kyk..kok', 'kk....kk'],
+  book: ['kkkkkkk.', 'kssswwwk', 'ksswkkwk', 'kssswwwk', 'ksswkkwk', 'kssswwwk', 'kssssssk', 'kkkkkkkk'],
   heal: ['..kkk...', '..kgk...', 'kkkgkkk.', 'kgggggk.', 'kkkgkkk.', '..kgk...', '..kkk...'],
   move: ['...kk...', '..kgek..', '.kggeek.', 'kkkgekkk', '..kgek..', '..kgek..', '..kkkk..'],
   energy: ['....kkk.', '...kcck.', '..kcck..', '.kccckk.', 'kkkccck.', '..kcck..', '.kcck...', '.kkk....'],

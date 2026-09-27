@@ -55,7 +55,7 @@ export const dtypeOf = (w) => (DTYPES[w?.dtype] ? w.dtype : 'phys');
 export const resistOf = (ball, type) => (ball.def || 0) + (ball.res?.[type] || 0);
 
 // ---------- Catalog (51 parts) ----------
-// Weapons: range [min, max] in world px, dmg per shot, en = energy per shot, heat = heat per shot,
+// Weapons: reach [min, max] in lane positions (1 = the next position), dmg per shot, en = energy per shot, heat = heat per shot,
 // ammo = shots per battle (strong guns only), arc = lobbed over cover
 // (everything else needs a clear line to the target).
 // fx: burn / freeze / corrode / splash / chain / pierce (ignores DEF) / leech / crit
@@ -73,18 +73,20 @@ export const PARTS = [
   { id: 'fr_colossus', type: 'frame', name: 'COLOSSUS FRAME', rarity: 'legendary', hp: 40, capacity: 104, energy: 44, regen: 19, heatCap: 56, cool: 17 },
   { id: 'fr_leviathan', type: 'frame', name: 'LEVIATHAN FRAME', rarity: 'mythic', hp: 46, capacity: 112, powerPct: 0.05, energy: 50, regen: 21, heatCap: 62, cool: 19, color: '#ff5d73' },
 
-  // Legs (weightless, like frames): move = { min, max } launch speed (px/s) you can use, optional
-  // minDeg / maxDeg launch elevation; anchored = can't move at all;
+  // Legs (weightless, like frames) decide how you move on the lane:
+  // walk = up to N positions along the ground (not through mechs or cover);
+  // jump = [min, max] positions, landing exactly there, over mechs and cover;
+  // stomp = damage to a mech on the next position; anchored = can't move at all;
   // moveEn = energy per move; freeMove = first move each turn uses no action
-  { id: 'lg_strider', type: 'legs', name: 'STRIDER LEGS', rarity: 'common', move: { min: 380, max: 1000 }, desc: 'Medium jumps.' },
-  { id: 'lg_hopper', type: 'legs', name: 'HOPPER LEGS', rarity: 'common', move: { min: 150, max: 650 }, desc: 'Short, precise hops. Can\'t go far.' },
-  { id: 'lg_treads', type: 'legs', name: 'TANK TREADS', rarity: 'common', hp: 12, move: { min: 250, max: 1150, minDeg: -10, maxDeg: 25 }, desc: 'Low, skimming launches only. +12 HP.' },
-  { id: 'lg_catapult', type: 'legs', name: 'CATAPULT LEGS', rarity: 'rare', move: { min: 900, max: 1400 }, desc: 'Long leaps only: no small steps.' },
-  { id: 'lg_jumpjets', type: 'legs', name: 'JUMP JETS', rarity: 'rare', move: { min: 350, max: 1250, minDeg: 35, maxDeg: 72 }, desc: 'The only legs that jump high: hop over cover.' },
-  { id: 'lg_coil', type: 'legs', name: 'COIL SPRINGS', rarity: 'epic', move: { min: 150, max: 1150 }, desc: 'Short to long range.' },
-  { id: 'lg_anchor', type: 'legs', name: 'ANCHOR CLAMPS', rarity: 'epic', hp: 30, def: 4, atkPct: 0.2, anchored: true, desc: 'Bolted down: you can\'t move. +30 HP, +4 DEF, +20% gun damage.' },
-  { id: 'lg_thrusters', type: 'legs', name: 'THRUSTERS', rarity: 'legendary', move: { min: 150, max: 1400 }, moveEn: 6, desc: 'Any range, but each move costs 6 energy.' },
-  { id: 'lg_phase', type: 'legs', name: 'PHASE STRIDERS', rarity: 'mythic', move: { min: 150, max: 1300 }, freeMove: true, color: '#ff5d73', desc: 'Your first move each turn uses no action.' },
+  { id: 'lg_strider', type: 'legs', name: 'STRIDER LEGS', rarity: 'common', walk: 2, stomp: 10, desc: 'The all-rounder.' },
+  { id: 'lg_hopper', type: 'legs', name: 'HOPPER LEGS', rarity: 'common', walk: 1, jump: [1, 2], stomp: 8, desc: 'Short, precise hops.' },
+  { id: 'lg_treads', type: 'legs', name: 'TANK TREADS', rarity: 'common', hp: 12, walk: 3, stomp: 14, desc: "Fast on the ground, can't clear cover. +12 HP." },
+  { id: 'lg_catapult', type: 'legs', name: 'CATAPULT LEGS', rarity: 'rare', walk: 0, jump: [3, 4], stomp: 12, desc: 'Long leaps only: no small steps.' },
+  { id: 'lg_jumpjets', type: 'legs', name: 'JUMP JETS', rarity: 'rare', walk: 1, jump: [1, 4], stomp: 10, desc: 'Best over cover.' },
+  { id: 'lg_coil', type: 'legs', name: 'COIL SPRINGS', rarity: 'epic', walk: 2, jump: [1, 2], stomp: 10, desc: 'Walk or hop.' },
+  { id: 'lg_anchor', type: 'legs', name: 'ANCHOR CLAMPS', rarity: 'epic', hp: 30, def: 4, atkPct: 0.2, anchored: true, desc: "Bolted down: you can't move. +30 HP, +4 DEF, +20% gun damage." },
+  { id: 'lg_thrusters', type: 'legs', name: 'THRUSTERS', rarity: 'legendary', walk: 3, jump: [1, 3], stomp: 10, moveEn: 6, desc: 'Go anywhere, but each move costs 6 energy.' },
+  { id: 'lg_phase', type: 'legs', name: 'PHASE STRIDERS', rarity: 'mythic', walk: 2, jump: [1, 3], stomp: 12, freeMove: true, color: '#ff5d73', desc: 'Your first move each turn uses no action.' },
 
   // Armor
   { id: 'ar_scrap', type: 'armor', name: 'SCRAP PLATES', rarity: 'common', weight: 10, hp: 15 },
@@ -95,28 +97,28 @@ export const PARTS = [
   { id: 'ar_void', type: 'armor', name: 'VOID CARAPACE', rarity: 'mythic', weight: 28, hp: 34, res: { phys: 3, heat: 3, energy: 3 }, startForcefield: true, color: '#ff5d73', desc: 'Start each battle with a Forcefield.' },
 
   // Weapons
-  { id: 'wp_blaster', type: 'weapon', name: 'PULSE BLASTER', rarity: 'common', dtype: 'phys', weight: 12, range: [0, 340], dmg: 8, en: 8, heat: 6, color: '#73eff7' },
-  { id: 'wp_scatter', type: 'weapon', name: 'SCATTERGUN', rarity: 'common', dtype: 'phys', weight: 14, range: [0, 210], dmg: 14, en: 10, heat: 10, color: '#ffcd75' },
-  { id: 'wp_acid', type: 'weapon', name: 'ACID SPRAYER', rarity: 'common', dtype: 'heat', weight: 12, range: [0, 270], dmg: 5, en: 6, heat: 4, fx: { corrode: 1 }, color: '#a7f070', desc: 'Strips 1 DEF per hit.' },
-  { id: 'wp_smg', type: 'weapon', name: 'AUTO SMG', rarity: 'common', dtype: 'phys', weight: 12, range: [0, 300], dmg: 3, en: 6, heat: 12, fx: { burst: 3 }, color: '#f4f4f4', desc: 'Fires 3 rounds. Runs hot.' },
-  { id: 'wp_repulsor', type: 'weapon', name: 'REPULSOR', rarity: 'common', dtype: 'phys', weight: 10, range: [0, 260], dmg: 4, en: 8, heat: 6, fx: { push: 620 }, color: '#41a6f6', desc: 'Blasts the target away.' },
-  { id: 'wp_rifle', type: 'weapon', name: 'LONG RIFLE', rarity: 'rare', dtype: 'phys', weight: 18, range: [320, 780], dmg: 14, en: 10, heat: 12, color: '#f4f4f4' },
-  { id: 'wp_flamer', type: 'weapon', name: 'FLAMER', rarity: 'rare', dtype: 'heat', weight: 16, range: [0, 190], dmg: 6, en: 6, heat: 14, fx: { burn: 2 }, color: '#ef7d57', desc: 'Burns for 2 turns.' },
-  { id: 'wp_mortar', type: 'weapon', name: 'MORTAR', rarity: 'rare', dtype: 'phys', weight: 22, range: [360, 1000], dmg: 15, en: 14, heat: 10, arc: true, fx: { splash: 110 }, color: '#ef7d57', desc: 'Lobbed. Splashes enemies near the target.' },
-  { id: 'wp_cryo', type: 'weapon', name: 'CRYO CANNON', rarity: 'rare', dtype: 'heat', weight: 18, range: [150, 520], dmg: 8, en: 12, heat: 2, fx: { freeze: true }, color: '#73eff7', desc: 'Freezes: their next launch is weaker.' },
-  { id: 'wp_beam', type: 'weapon', name: 'LASER BEAM', rarity: 'rare', dtype: 'energy', weight: 16, range: [0, 620], dmg: 7, en: 12, heat: 14, fx: { line: true }, color: '#ff5d73', desc: 'Hits every enemy along the beam.' },
-  { id: 'wp_emp', type: 'weapon', name: 'EMP BURST', rarity: 'rare', dtype: 'energy', weight: 14, range: [0, 380], dmg: 4, en: 10, heat: 6, fx: { drain: 14 }, color: '#c46fd6', desc: 'Drains 14 of their energy.' },
-  { id: 'wp_grapple', type: 'weapon', name: 'GRAPPLE HOOK', rarity: 'rare', dtype: 'phys', weight: 12, range: [180, 720], dmg: 4, en: 8, heat: 4, fx: { pull: 620 }, color: '#94b0c2', desc: 'Drags the target toward you.' },
-  { id: 'wp_minelauncher', type: 'weapon', name: 'MINE LAUNCHER', rarity: 'rare', dtype: 'phys', weight: 16, range: [150, 900], dmg: 16, en: 8, heat: 6, ammo: 3, arc: true, fx: { mine: true }, color: '#ef7d57', desc: 'Lobs a mine near the target: it blasts whoever steps on it. 3 mines.' },
-  { id: 'wp_rocket', type: 'weapon', name: 'ROCKET LAUNCHER', rarity: 'rare', dtype: 'phys', weight: 20, range: [220, 950], dmg: 20, en: 10, heat: 10, ammo: 2, arc: true, fx: { splash: 90 }, color: '#ffcd75', desc: 'Lobbed. 2 rockets per battle.' },
-  { id: 'wp_tesla', type: 'weapon', name: 'TESLA COIL', rarity: 'epic', dtype: 'energy', weight: 20, range: [0, 400], dmg: 11, en: 16, heat: 12, fx: { chain: 260 }, color: '#c46fd6', desc: 'Arcs to a second enemy.' },
-  { id: 'wp_missiles', type: 'weapon', name: 'MISSILE POD', rarity: 'epic', dtype: 'phys', weight: 24, range: [0, 1400], dmg: 12, en: 12, heat: 8, ammo: 3, arc: true, color: '#ff5d73', desc: 'Any range, over cover. 3 salvos.' },
-  { id: 'wp_rail', type: 'weapon', name: 'RAIL LANCE', rarity: 'epic', dtype: 'energy', weight: 26, range: [450, 1150], dmg: 22, en: 20, heat: 18, fx: { pierce: true }, color: '#41a6f6', desc: 'Ignores DEF.' },
-  { id: 'wp_heatray', type: 'weapon', name: 'HEAT RAY', rarity: 'epic', dtype: 'heat', weight: 18, range: [0, 480], dmg: 6, en: 10, heat: 8, fx: { heat: 16 }, color: '#ef7d57', desc: 'Pumps 16 heat into the target.' },
-  { id: 'wp_howitzer', type: 'weapon', name: 'SIEGE HOWITZER', rarity: 'legendary', dtype: 'phys', weight: 34, range: [520, 1400], dmg: 32, en: 24, heat: 16, ammo: 2, arc: true, fx: { splash: 140 }, color: '#ffcd75', desc: 'Lobbed. 2 shells per battle.' },
-  { id: 'wp_scythe', type: 'weapon', name: 'PLASMA SCYTHE', rarity: 'legendary', dtype: 'energy', weight: 24, range: [0, 230], dmg: 26, en: 12, heat: 16, fx: { leech: 0.25 }, color: '#c46fd6', desc: 'Heals you for 25% of damage.' },
-  { id: 'wp_sniper', type: 'weapon', name: 'SNIPER CANNON', rarity: 'legendary', dtype: 'phys', weight: 26, range: [620, 1400], dmg: 38, en: 20, heat: 24, ammo: 3, color: '#f4f4f4', desc: 'Huge hit at long range. 3 shots.' },
-  { id: 'wp_nova', type: 'weapon', name: 'NOVA LANCE', rarity: 'mythic', dtype: 'energy', weight: 30, range: [0, 1400], dmg: 28, en: 26, heat: 20, ammo: 2, fx: { pierce: true }, color: '#ff5d73', desc: 'Any range. Ignores DEF. 2 shots.' },
+  { id: 'wp_blaster', type: 'weapon', name: 'PULSE BLASTER', rarity: 'common', dtype: 'phys', weight: 12, reach: [1, 3], dmg: 8, en: 8, heat: 6, color: '#73eff7' },
+  { id: 'wp_scatter', type: 'weapon', name: 'SCATTERGUN', rarity: 'common', dtype: 'phys', weight: 14, reach: [1, 2], dmg: 14, en: 10, heat: 10, color: '#ffcd75' },
+  { id: 'wp_acid', type: 'weapon', name: 'ACID SPRAYER', rarity: 'common', dtype: 'heat', weight: 12, reach: [1, 2], dmg: 5, en: 6, heat: 4, fx: { corrode: 1 }, color: '#a7f070', desc: 'Strips 1 DEF per hit.' },
+  { id: 'wp_smg', type: 'weapon', name: 'AUTO SMG', rarity: 'common', dtype: 'phys', weight: 12, reach: [1, 2], dmg: 3, en: 6, heat: 12, fx: { burst: 3 }, color: '#f4f4f4', desc: 'Fires 3 rounds. Runs hot.' },
+  { id: 'wp_repulsor', type: 'weapon', name: 'REPULSOR', rarity: 'common', dtype: 'phys', weight: 10, reach: [1, 2], dmg: 4, en: 8, heat: 6, fx: { push: 2 }, color: '#41a6f6', desc: 'Pushes the target back 2 positions.' },
+  { id: 'wp_rifle', type: 'weapon', name: 'LONG RIFLE', rarity: 'rare', dtype: 'phys', weight: 18, reach: [3, 7], dmg: 14, en: 10, heat: 12, color: '#f4f4f4' },
+  { id: 'wp_flamer', type: 'weapon', name: 'FLAMER', rarity: 'rare', dtype: 'heat', weight: 16, reach: [1, 2], dmg: 6, en: 6, heat: 14, fx: { burn: 2 }, color: '#ef7d57', desc: 'Burns for 2 turns.' },
+  { id: 'wp_mortar', type: 'weapon', name: 'MORTAR', rarity: 'rare', dtype: 'phys', weight: 22, reach: [3, 9], dmg: 15, en: 14, heat: 10, arc: true, fx: { splash: 1 }, color: '#ef7d57', desc: 'Lobbed over cover.' },
+  { id: 'wp_cryo', type: 'weapon', name: 'CRYO CANNON', rarity: 'rare', dtype: 'heat', weight: 18, reach: [2, 4], dmg: 8, en: 12, heat: 2, fx: { freeze: true }, color: '#73eff7', desc: 'Chills: their next move is 1 position shorter.' },
+  { id: 'wp_beam', type: 'weapon', name: 'LASER BEAM', rarity: 'rare', dtype: 'energy', weight: 16, reach: [1, 5], dmg: 7, en: 12, heat: 14, fx: { line: true }, color: '#ff5d73', desc: 'Burns through cover.' },
+  { id: 'wp_emp', type: 'weapon', name: 'EMP BURST', rarity: 'rare', dtype: 'energy', weight: 14, reach: [1, 3], dmg: 4, en: 10, heat: 6, fx: { drain: 14 }, color: '#c46fd6', desc: 'Drains 14 of their energy.' },
+  { id: 'wp_grapple', type: 'weapon', name: 'GRAPPLE HOOK', rarity: 'rare', dtype: 'phys', weight: 12, reach: [2, 6], dmg: 4, en: 8, heat: 4, fx: { pull: 2 }, color: '#94b0c2', desc: 'Pulls the target 2 positions toward you.' },
+  { id: 'wp_minelauncher', type: 'weapon', name: 'MINE LAUNCHER', rarity: 'rare', dtype: 'phys', weight: 16, reach: [2, 8], dmg: 16, en: 8, heat: 6, ammo: 3, arc: true, fx: { mine: true }, color: '#ef7d57', desc: 'Plants a mine next to the target: it blasts whoever steps there. 3 mines.' },
+  { id: 'wp_rocket', type: 'weapon', name: 'ROCKET LAUNCHER', rarity: 'rare', dtype: 'phys', weight: 20, reach: [2, 8], dmg: 20, en: 10, heat: 10, ammo: 2, arc: true, fx: { splash: 1 }, color: '#ffcd75', desc: 'Lobbed. 2 rockets per battle.' },
+  { id: 'wp_tesla', type: 'weapon', name: 'TESLA COIL', rarity: 'epic', dtype: 'energy', weight: 20, reach: [1, 3], dmg: 11, en: 16, heat: 12, fx: { chain: 2 }, color: '#c46fd6', desc: 'Arcs to an enemy within 2 positions.' },
+  { id: 'wp_missiles', type: 'weapon', name: 'MISSILE POD', rarity: 'epic', dtype: 'phys', weight: 24, reach: [1, 11], dmg: 12, en: 12, heat: 8, ammo: 3, arc: true, color: '#ff5d73', desc: 'Any range, over cover. 3 salvos.' },
+  { id: 'wp_rail', type: 'weapon', name: 'RAIL LANCE', rarity: 'epic', dtype: 'energy', weight: 26, reach: [4, 11], dmg: 22, en: 20, heat: 18, fx: { pierce: true }, color: '#41a6f6', desc: 'Ignores DEF.' },
+  { id: 'wp_heatray', type: 'weapon', name: 'HEAT RAY', rarity: 'epic', dtype: 'heat', weight: 18, reach: [1, 4], dmg: 6, en: 10, heat: 8, fx: { heat: 16 }, color: '#ef7d57', desc: 'Pumps 16 heat into the target.' },
+  { id: 'wp_howitzer', type: 'weapon', name: 'SIEGE HOWITZER', rarity: 'legendary', dtype: 'phys', weight: 34, reach: [5, 11], dmg: 32, en: 24, heat: 16, ammo: 2, arc: true, fx: { splash: 1 }, color: '#ffcd75', desc: 'Lobbed. 2 shells per battle.' },
+  { id: 'wp_scythe', type: 'weapon', name: 'PLASMA SCYTHE', rarity: 'legendary', dtype: 'energy', weight: 24, reach: [1, 1], dmg: 26, en: 12, heat: 16, fx: { leech: 0.25 }, color: '#c46fd6', desc: 'Heals you for 25% of damage.' },
+  { id: 'wp_sniper', type: 'weapon', name: 'SNIPER CANNON', rarity: 'legendary', dtype: 'phys', weight: 26, reach: [6, 11], dmg: 38, en: 20, heat: 24, ammo: 3, color: '#f4f4f4', desc: 'Huge hit at long range. 3 shots.' },
+  { id: 'wp_nova', type: 'weapon', name: 'NOVA LANCE', rarity: 'mythic', dtype: 'energy', weight: 30, reach: [1, 11], dmg: 28, en: 26, heat: 20, ammo: 2, fx: { pierce: true }, color: '#ff5d73', desc: 'Any range. Ignores resists. 2 shots.' },
 
   // Drones: act every turn, any range, free to run
   { id: 'dr_gnat', type: 'drone', name: 'GNAT DRONE', rarity: 'common', dtype: 'phys', weight: 6, dmg: 3, color: '#94b0c2' },
@@ -136,7 +138,7 @@ export const PARTS = [
   { id: 'md_repair', type: 'module', name: 'NANO REPAIR', rarity: 'rare', weight: 6, healAfterWin: 0.05, desc: 'Heal after every won battle.' },
   { id: 'md_heatsink', type: 'module', name: 'HEAT SINK', rarity: 'rare', weight: 5, heatCap: 12, desc: '+12 heat capacity.' },
   { id: 'md_generator', type: 'module', name: 'POWER CORE', rarity: 'rare', weight: 6, regen: 5, desc: 'Refills 5 more energy per turn.' },
-  { id: 'md_range', type: 'module', name: 'RANGE EXTENDER', rarity: 'epic', weight: 5, rangePct: 0.15 },
+  { id: 'md_range', type: 'module', name: 'RANGE EXTENDER', rarity: 'epic', weight: 5, reachBonus: 1, desc: '+1 max range on every gun.' },
   { id: 'md_overclock', type: 'module', name: 'OVERCLOCK CORE', rarity: 'legendary', weight: 8, atkPct: 0.1, weaponDmgPct: 0.12 },
   { id: 'md_singularity', type: 'module', name: 'SINGULARITY CHIP', rarity: 'mythic', weight: 8, atkPct: 0.12, weaponDmgPct: 0.15, crit: 0.03, color: '#ff5d73' },
 ];
@@ -146,17 +148,26 @@ export const getPart = (id) => PART_BY_ID[id];
 
 export const STARTER_PARTS = ['fr_scout', 'lg_strider', 'ar_scrap', 'wp_blaster', 'dr_gnat'];
 export const STARTER_LOADOUT = { frame: 'fr_scout', legs: 'lg_strider', armor: 'ar_scrap', weapon1: 'wp_blaster', drone: 'dr_gnat' };
-/** Movement with no legs fitted (or before legs existed). */
-export const DEFAULT_MOVE = { min: 380, max: 1000 };
+/** Positions on the battle lane (1..LANE_SIZE). */
+export const LANE_SIZE = 12;
+
+/** Movement with no legs fitted. */
+export const DEFAULT_LEGS = { id: 'lg_strider', name: 'NO LEGS', walk: 2, jump: null, stomp: 6, anchored: false, moveEn: 0, freeMove: false };
+
+/** The movement rules a battle needs from a legs part (level-scaled stomp included). */
+export function legsRules(p) {
+  if (!p) return { ...DEFAULT_LEGS };
+  return { id: p.id, name: p.name, walk: p.walk || 0, jump: p.jump || null, stomp: Math.round(p.stomp || 0), anchored: !!p.anchored, moveEn: p.moveEn || 0, freeMove: !!p.freeMove };
+}
 
 export const MAX_LEVEL = 10;
 export const INVENTORY_CAP = 60;
 
-/** Stats grow 5% per level (LV 10 = x1.45); weight and range don't. */
+/** Stats grow 5% per level (LV 10 = x1.45); weight, reach and movement don't. */
 export const levelMult = (lvl) => 1 + 0.05 * (lvl - 1);
 
 // Numeric fields that scale with level
-const SCALING = ['hp', 'def', 'dmg', 'heal', 'atkPct', 'crit', 'powerPct', 'goldPct', 'healAfterWin', 'weaponDmgPct', 'rangePct'];
+const SCALING = ['hp', 'def', 'dmg', 'heal', 'stomp', 'atkPct', 'crit', 'powerPct', 'goldPct', 'healAfterWin', 'weaponDmgPct'];
 
 /** A part's stats at the owned item's level. */
 export function partStats(owned) {
@@ -164,7 +175,7 @@ export function partStats(owned) {
   if (!base) return null;
   const k = levelMult(owned.level || 1);
   const out = { ...base, level: owned.level || 1, uid: owned.uid };
-  for (const f of SCALING) if (typeof base[f] === 'number') out[f] = base[f] * (f === 'hp' || f === 'dmg' || f === 'heal' ? k : 1 + (k - 1) * 0.5);
+  for (const f of SCALING) if (typeof base[f] === 'number') out[f] = base[f] * (f === 'hp' || f === 'dmg' || f === 'heal' || f === 'stomp' ? k : 1 + (k - 1) * 0.5);
   if (base.res) out.res = Object.fromEntries(Object.entries(base.res).map(([t, v]) => [t, v * (1 + (k - 1) * 0.5)]));
   return out;
 }
@@ -183,9 +194,10 @@ export function describePart(owned) {
   if (p.hp) L.push(`HP +${Math.round(p.hp)}`);
   if (p.def) L.push(`DEF +${p.def.toFixed(1)} (ALL)`);
   for (const t of DTYPE_KEYS) if (p.res?.[t]) L.push(`${DTYPES[t].short} RES +${p.res[t].toFixed(1)}`);
-  if (p.dmg) L.push(`DMG ${Math.round(p.dmg)} ${DTYPES[dtypeOf(p)].name}`);
-  if (p.range) L.push(`RNG ${p.range[0]}-${p.range[1]}`);
-  if (p.move) L.push(`MOVE ${moveLabel(p)}`);
+  if (p.dmg) L.push(`DMG ${battleDmg(p)} ${DTYPES[dtypeOf(p)].name}`);
+  if (p.reach) L.push(`RANGE ${reachLabel(p.reach)}`);
+  if (p.type === 'legs' && !p.anchored) L.push(`MOVE ${legsLabel(p)}`);
+  if (p.stomp) L.push(`STOMP ${Math.round(p.stomp)}`);
   if (p.anchored) L.push('CAN\'T MOVE');
   if (p.en) L.push(`EN ${p.en}`);
   if (p.heat) L.push(`HEAT ${p.heat}`);
@@ -200,7 +212,7 @@ export function describePart(owned) {
   if (p.crit) L.push(`CRIT +${(p.crit * 100).toFixed(1)}%`);
   if (p.powerPct) L.push(`POWER +${Math.round(p.powerPct * 100)}%`);
   if (p.goldPct) L.push(`GOLD +${Math.round(p.goldPct * 100)}%`);
-  if (p.rangePct) L.push(`RANGE +${Math.round(p.rangePct * 100)}%`);
+  if (p.reachBonus) L.push(`RANGE +${p.reachBonus}`);
   if (p.healAfterWin) L.push(`+${Math.round(p.healAfterWin * 100)}% HP/win`);
   if (p.desc) L.push(p.desc);
   return L;
@@ -218,8 +230,10 @@ export function partChips(owned) {
   add(p.hp, 'hp', `+${Math.round(p.hp)}`);
   add(p.def, 'def', `+${p.def?.toFixed(1)}`);
   for (const t of DTYPE_KEYS) add(p.res?.[t], 'def', `${DTYPES[t].short} +${p.res?.[t]?.toFixed(1)}`);
-  add(p.dmg, DTYPES[dtypeOf(p)].icon, `${Math.round(p.dmg)} ${DTYPES[dtypeOf(p)].short}`);
-  add(p.move, 'move', moveLabel(p));
+  add(p.dmg, DTYPES[dtypeOf(p)].icon, `${battleDmg(p)} ${DTYPES[dtypeOf(p)].short}`);
+  add(p.type === 'legs' && !p.anchored, 'move', legsLabel(p));
+  add(p.stomp, 'dmg', `STOMP ${Math.round(p.stomp || 0)}`);
+  add(p.reach, 'range', p.reach ? reachLabel(p.reach) : '');
   add(p.anchored, 'lock', 'ANCHORED');
   add(p.moveEn, 'energy', `${p.moveEn}/MOVE`);
   add(p.en, 'energy', `${p.en}`);
@@ -235,18 +249,25 @@ export function partChips(owned) {
   add(p.crit, 'star', `+${(p.crit * 100).toFixed(1)}%`);
   add(p.powerPct, 'move', `+${Math.round(p.powerPct * 100)}%`);
   add(p.goldPct, 'gold', `+${Math.round(p.goldPct * 100)}%`);
-  add(p.rangePct, 'range', `+${Math.round(p.rangePct * 100)}%`);
+  add(p.reachBonus, 'range', `+${p.reachBonus}`);
   add(p.healAfterWin, 'heal', `+${Math.round(p.healAfterWin * 100)}%/WIN`);
   return C;
 }
 
-/** Short words for a legs' move band. */
-export function moveLabel(p) {
-  const m = p.move || DEFAULT_MOVE;
-  const reach = m.max <= 700 ? 'SHORT' : m.min >= 850 ? 'LONG' : m.min <= 200 && m.max >= 1100 ? 'ANY' : 'MID';
-  const arc = m.minDeg >= 30 ? ' HIGH' : m.maxDeg !== undefined && m.maxDeg <= 30 ? ' LOW' : '';
-  return reach + arc;
+/** A gun's or drone's damage per hit as battles deal it (CONFIG.gear.dmgScale), before ATK and resists. */
+export const battleDmg = (p) => Math.round((p.dmg || 0) * CONFIG.gear.dmgScale);
+
+/** Short words for how legs move: 'WALK 2 · JUMP 1-4'. */
+export function legsLabel(p) {
+  if (p.anchored) return "CAN'T MOVE";
+  const parts = [];
+  if (p.walk) parts.push(`WALK ${p.walk}`);
+  if (p.jump) parts.push(`JUMP ${p.jump[0] === p.jump[1] ? p.jump[0] : `${p.jump[0]}-${p.jump[1]}`}`);
+  return parts.join(' · ') || 'NONE';
 }
+
+/** A gun's reach in positions: '3-7', or '1' for melee. */
+export const reachLabel = (r) => (r[0] === r[1] ? `${r[0]}` : `${r[0]}-${r[1]}`);
 
 /** One-line effect text for a part (fx and special rules only). */
 export function partNote(p) {
@@ -264,11 +285,11 @@ export const TYPE_LABEL = { frame: 'FRAME', legs: 'LEGS', armor: 'ARMOR', weapon
 export function loadoutTotals(ownedParts) {
   const t = {
     capacity: 0, weight: 0, hp: 0, def: 0, res: { phys: 0, heat: 0, energy: 0 }, atkPct: 0, crit: 0, powerPct: 0, goldPct: 0,
-    healAfterWin: 0, weaponDmgPct: 0, rangePct: 0, startForcefield: false,
+    healAfterWin: 0, weaponDmgPct: 0, reachBonus: 0, startForcefield: false,
     weapons: [], drones: [],
     // Reactor (gear combat): the frame sets it, modules add to it
     energy: 0, regen: 0, heatCap: 0, cool: 0, hasFrame: false,
-    legs: null, // the fitted legs (movement rules), null = DEFAULT_MOVE
+    legs: null, // the fitted legs part (movement rules), null = DEFAULT_LEGS
   };
   const parts = ownedParts.filter(Boolean).map(partStats).filter(Boolean);
   for (const p of parts) {
@@ -278,7 +299,7 @@ export function loadoutTotals(ownedParts) {
     }
     for (const f of ['energy', 'regen', 'heatCap', 'cool']) t[f] += p[f] || 0;
     t.weight += p.weight || 0;
-    for (const f of ['hp', 'def', 'atkPct', 'crit', 'powerPct', 'goldPct', 'healAfterWin', 'weaponDmgPct', 'rangePct']) t[f] += p[f] || 0;
+    for (const f of ['hp', 'def', 'atkPct', 'crit', 'powerPct', 'goldPct', 'healAfterWin', 'weaponDmgPct', 'reachBonus']) t[f] += p[f] || 0;
     if (p.startForcefield) t.startForcefield = true;
     for (const k of DTYPE_KEYS) t.res[k] += p.res?.[k] || 0;
     if (p.type === 'weapon') t.weapons.push(p);
@@ -289,7 +310,7 @@ export function loadoutTotals(ownedParts) {
   t.weapons = t.weapons.map((w) => ({
     ...w,
     dmg: w.dmg * (1 + t.weaponDmgPct),
-    range: [w.range[0], Math.round(w.range[1] * (1 + t.rangePct))],
+    reach: [w.reach[0], Math.min(LANE_SIZE - 1, w.reach[1] + t.reachBonus)],
   }));
   if (!t.hasFrame) {
     // No frame: a bare-bones reactor, plus whatever modules add
@@ -319,7 +340,7 @@ export function withMech(base, ownedParts) {
       healAfterWin: t.healAfterWin,
       startForcefield: t.startForcefield,
       rig: { energy: t.energy, regen: t.regen, heatCap: t.heatCap, cool: t.cool },
-      legs: t.legs ? { id: t.legs.id, name: t.legs.name, move: t.legs.move || null, anchored: !!t.legs.anchored, moveEn: t.legs.moveEn || 0, freeMove: !!t.legs.freeMove } : null,
+      legs: legsRules(t.legs),
     },
   };
 }
@@ -388,8 +409,7 @@ export const ENEMY_LOADOUTS = {
 const ENEMY_FRAME = { combat: 'fr_scout', elite: 'fr_brawler', miniboss: 'fr_titan', boss: 'fr_colossus' };
 
 function legsInfo(id) {
-  const p = getPart(id);
-  return { id: p.id, name: p.name, move: p.move || null, anchored: !!p.anchored, moveEn: p.moveEn || 0, freeMove: !!p.freeMove };
+  return legsRules(getPart(id));
 }
 
 /** Reactor for one enemy: by fight tier; Risk XI (gunCdCut) makes them cool faster. */
