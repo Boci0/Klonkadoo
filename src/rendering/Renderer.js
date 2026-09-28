@@ -18,6 +18,19 @@ import { partCanvas, iconCanvas } from './pixelIcons.js';
 import { showTip, hideTip, battlePartHtml } from '../ui/partCard.js';
 import { DTYPES, DTYPE_KEYS, dtypeOf, resistOf, legsLabel, reachLabel, LANE_SIZE, dmgLabel } from '../meta/Mech.js';
 import { mechLook, torsoCanvas, legsCanvas } from './mechSprite.js';
+import { drawEffect } from './fxDraw.js';
+
+// Boss crown (k outline, y gold, o gold shade, w glint, r / c gems), drawn in the mech's sprite pixels
+const CROWN = [
+  '.k...k...k.',
+  'kwk.kyk.kyk',
+  'kyykyyykyyk',
+  'kyyyyyyyyyk',
+  'kyrywycyryk',
+  'kyyyyyyyyyk',
+  'koooooooook',
+  'kkkkkkkkkkk',
+];
 
 const C = CONFIG.colors;
 const W = CONFIG.world;
@@ -725,25 +738,26 @@ export class Renderer {
       const t = torsoCanvas(frame, armor, ball.color, ball.darkColor);
       const half = (t.width * pose.P) / 2;
       const shoulder = pose.torsoBottom - t.height * pose.P * 0.6;
+      const k = ball.giant || 1; // the raid boss carries guns to match its size
       guns.forEach((g, i) => {
         const side = guns.length === 1 ? (nearest && nearest.x < ball.x ? -1 : 1) : i % 2 === 0 ? -1 : 1;
         if ((side === pose.face) !== (layer === 'front')) return;
-        const mx = ball.x + side * (half - 2);
-        const my = shoulder - Math.floor(i / 2) * 22;
+        const mx = ball.x + side * (half - 2 * k);
+        const my = shoulder - Math.floor(i / 2) * 22 * k;
         const since = now - (g.firedAt || -1e9);
         const tgt = since < 700 && g.aimAt?.hp > 0 ? g.aimAt : nearest;
         const want = tgt ? Math.atan2(tgt.y - my, tgt.x - mx) : side < 0 ? Math.PI : 0;
         g._ang = g._ang === undefined ? want : turn(g._ang, want, since < 700 ? 0.5 : 0.12);
         const ic = partCanvas(g.id);
-        const w = ic.width * S;
-        const h = ic.height * S;
-        const recoil = since < 180 ? (1 - since / 180) * 10 : 0;
+        const w = ic.width * S * k;
+        const h = ic.height * S * k;
+        const recoil = since < 180 ? (1 - since / 180) * 10 * k : 0;
         ctx.save();
         ctx.translate(Math.round(mx), Math.round(my));
         ctx.rotate(g._ang);
         if (Math.cos(g._ang) < 0) ctx.scale(1, -1); // keep the sprite upright
         ctx.globalAlpha = alpha * (g.ammo && g.ammoLeft <= 0 ? 0.6 : 1);
-        ctx.drawImage(ic, Math.round(-6 - recoil), Math.round(-h / 2), w, h);
+        ctx.drawImage(ic, Math.round(-6 * k - recoil), Math.round(-h / 2), w, h);
         const hot = ball.heatCap ? ball.heat / ball.heatCap : 0;
         if (hot > 0.75) {
           // Running hot: the muzzle glows (steam puffs are drawn after, upright)
@@ -1202,17 +1216,25 @@ export class Renderer {
     ctx.scale(pose.face, 1);
     ctx.drawImage(torso(isFlashing), Math.round(-dw / 2), top, dw, dh);
     ctx.restore();
+    if (ball.fx) drawEffect(ctx, ball.fx, ball.x, top, dw, dh, pose.P, now); // special effect (cosmetic)
     if (ball.rank) {
-      // Pixel crown marks mini-bosses and bosses (red once enraged)
-      const cx = Math.round(ball.x);
-      const cy = Math.round(top - 20);
-      ctx.fillStyle = '#000';
-      ctx.fillRect(cx - 17, cy - 1, 34, 16);
-      ctx.fillStyle = ball.phase2 ? '#ff5d73' : '#ffcd75';
-      ctx.fillRect(cx - 15, cy + 5, 30, 8);
-      ctx.fillRect(cx - 15, cy - 3, 6, 8);
-      ctx.fillRect(cx - 3, cy - 7, 6, 12);
-      ctx.fillRect(cx + 9, cy - 3, 6, 8);
+      // A pixel crown floats over mini-bosses and bosses (red once enraged). One crown
+      // pixel = one sprite pixel of this mech, so it grows with the frame (and the raid giant).
+      const px = Math.max(2, Math.round(pose.P));
+      const gold = ball.phase2 ? '#ff5d73' : '#ffcd75';
+      const shade = ball.phase2 ? '#b13e53' : '#ef7d57';
+      const pal = { k: '#1a1c2c', y: gold, o: shade, w: '#f4f4f4', r: ball.phase2 ? '#ffcd75' : '#ff5d73', c: '#73eff7' };
+      const bob = Math.round(Math.sin(now / 420) * px * 0.8);
+      const x0 = Math.round(ball.x - (CROWN[0].length * px) / 2);
+      const y0 = Math.round(top - (CROWN.length + 3) * px + bob);
+      CROWN.forEach((row, yy) => {
+        for (let xx = 0; xx < row.length; xx++) {
+          const c = pal[row[xx]];
+          if (!c) continue;
+          ctx.fillStyle = c;
+          ctx.fillRect(x0 + xx * px, y0 + yy * px, px, px);
+        }
+      });
     }
     if (ball.isFrozen) {
       // Icy tint: checkerboard of pale-blue pixels over the torso

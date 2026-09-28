@@ -30,6 +30,7 @@ import { partIcon, ico } from './rendering/pixelIcons.js';
 import { pickNode, pickChoice, pickBuys, supplyValue } from './rogue/AutoRun.js';
 import { withMastery, masteryLevel, runXp } from './meta/Mastery.js';
 import { writeRun, readRun, clearRun, hasSavedRun, savedRunInfo, patchRunQuests } from './rogue/RunSave.js';
+import { fieldTop } from './meta/Raid.js';
 
 // Canvas text only uses a web font once it's loaded: fetch the digit face up front
 document.fonts?.load('16px "Pixel Digits"', '0123456789').catch(() => {});
@@ -81,8 +82,8 @@ function setState(next) {
 
   // Background music follows the screen
   if (next === State.BATTLE) {
-    const t = activeNode?.type || run?.currentNode?.type;
-    soundEngine.playMusic(t === 'miniboss' || t === 'boss' || t === 'elite' ? 'boss' : 'battle');
+    const t = battleNode?.type === 'raid' ? 'raid' : activeNode?.type || run?.currentNode?.type;
+    soundEngine.playMusic(t === 'miniboss' || t === 'boss' || t === 'elite' || t === 'raid' ? 'boss' : 'battle');
   } else if (next === State.RUN_MAP || next === State.MINIGAME) {
     soundEngine.playMusic('map');
   } else if (next === State.RESULT) {
@@ -165,6 +166,7 @@ const ui = new UIManager({
   },
   onMinigameStart: startMinigame,
   onMinigameDone: finishMinigame,
+  onRaidAttack: (boss) => startRaidBattle(boss),
 });
 
 /** Shop reroll price. */
@@ -206,6 +208,21 @@ function bindAbilityButtons() {
     soundEngine.playUI();
     battlePaused = true;
     takeControl();
+    // Raid: leaving ends the attempt; the damage dealt so far still counts
+    if (raidBattle) {
+      ui.showConfirm({
+        title: 'END THIS ATTEMPT?',
+        text: 'The damage you dealt so far still counts toward this week.',
+        confirmLabel: 'END ATTEMPT',
+        cancelLabel: 'KEEP FIGHTING',
+        onConfirm: () => {
+          game.abortBattle();
+          endRaidAttempt(false);
+        },
+        onCancel: () => { battlePaused = false; },
+      });
+      return;
+    }
     // Bosses and mini-bosses: you can leave, but it's a lost fight (the run ends)
     if (isBossFight()) {
       ui.showConfirm({
@@ -1023,7 +1040,7 @@ function isBossFight() {
 /** Can the player leave the current battle? Bosses can be left too, as a loss. */
 function canRetreatFromBattle() {
   // A normal retreat steps back to the tile you came from: only for fights you walked into
-  return state === State.BATTLE && (isBossFight() || (!!prevPosition && activeNode === battleNode));
+  return state === State.BATTLE && (!!raidBattle || isBossFight() || (!!prevPosition && activeNode === battleNode));
 }
 
 /** Leave a boss / mini-boss fight: it counts as a lost fight, so the run ends. */
@@ -1256,6 +1273,7 @@ function startCombat(node) {
   // Escorts fight first: the boss waits in reserve and drops in once they fall
   if (node.type === 'boss' && enemies.length > 1) enemies.push(enemies.shift());
 
+  const teamFx = saveSystem.getTeamFx();
   const battleConfig = {
     player: {
       maxHp: run.maxHp,
@@ -1266,11 +1284,12 @@ function startCombat(node) {
       totalDef: run.totalDef,
       res: run.res,
       damageReductionPct: run.damageReductionPct,
+      fx: teamFx[0], // special effect (cosmetic)
     },
     // Garage mechs 2 and 3 (SWAP in, or drop in after a knock-out)
     team: (run.team || []).map((_, i) => {
       const s = run.member(i + 1);
-      return { rigStats: s.perm, hp: s.hp, maxHp: s.maxHp, atk: s.atk * (run.condition === 'glass_war' ? 1.3 : 1), def: s.def, totalDef: s.totalDef, res: { ...(s.perm.res || {}) }, damageReductionPct: run.damageReductionPct };
+      return { rigStats: s.perm, hp: s.hp, maxHp: s.maxHp, atk: s.atk * (run.condition === 'glass_war' ? 1.3 : 1), def: s.def, totalDef: s.totalDef, res: { ...(s.perm.res || {}) }, damageReductionPct: run.damageReductionPct, fx: teamFx[i + 1] };
     }),
     enemies,
     nodeType: node.type,
@@ -1330,6 +1349,88 @@ function startCombat(node) {
       game.renderer.showBanner('FIGHT!', '#ff5d73');
     });
   }
+}
+
+// ---------- Weekly raid (meta/Raid.js) ----------
+
+/** The raid attempt on screen: { prevRun, dealt }, or null. */
+let raidBattle = null;
+
+/**
+ * One raid attempt: your garage team at full HP (no run boons) against the
+ * week's boss, whose HP is what's left of its pool. A throwaway RunState
+ * stands in for `run` during the fight, so a saved run is never touched.
+ */
+function startRaidBattle(boss) {
+  const mastery = masteryLevel(saveSystem.getMasteryXp(OPERATOR.id)).level;
+  const [lead, ...rest] = saveSystem.getTeamLoadouts();
+  const fx = saveSystem.getTeamFx();
+  const r = new RunState(withMastery(withMech({}, lead), mastery), OPERATOR.id);
+  r.team = rest.map((parts) => ({ perm: withMastery(withMech({}, parts), mastery), hp: 0 }));
+  r.team.forEach((m, i) => (m.hp = r.member(i + 1).maxHp));
+  let skin = 'default';
+  try {
+    skin = localStorage.getItem(`slingshot-skin-${OPERATOR.id}`) || 'default';
+  } catch (_) {}
+
+  const raid = saveSystem.getRaid();
+  const enemy = { ...boss, hp: Math.max(1, CONFIG.raid.pool - raid.damage) };
+  raidBattle = { prevRun: run, startHp: enemy.hp };
+  run = r; // the battle HUD reads `run`
+  battleNode = { type: 'raid' };
+
+  setState(State.BATTLE);
+  ui.showBattleHud(r, 'raid');
+  const battleConfig = {
+    player: { maxHp: r.maxHp, hp: r.maxHp, atk: r.atk, def: r.def, totalDef: r.totalDef, res: r.res, damageReductionPct: r.damageReductionPct, fx: fx[0] },
+    team: r.team.map((_, i) => {
+      const s = r.member(i + 1);
+      return { rigStats: s.perm, hp: s.maxHp, maxHp: s.maxHp, atk: s.atk, def: s.def, totalDef: s.totalDef, res: { ...(s.perm.res || {}) }, damageReductionPct: r.damageReductionPct, fx: fx[i + 1] };
+    }),
+    enemies: [enemy],
+    nodeType: 'raid',
+    turnCap: CONFIG.raid.turnCap,
+    ballType: OPERATOR.id,
+    skinColors: skinColors(OPERATOR, skin),
+    rigStats: r.permanent,
+    riskLevel: 0,
+    floor: 5,
+    arena: pickArena(0, () => 0), // flat ground: nothing but the boss
+  };
+
+  game.events.off('battle-end');
+  game.events.off('player-dealt-damage');
+  game.events.off('ability-used');
+  game.events.off('enemy-ability');
+  game.events.off('enemy-dealt-damage');
+  game.events.on('battle-end', ({ won }) => endRaidAttempt(won));
+
+  game.startBattle(battleConfig);
+  setAutoBattle(autoBattle);
+  battlePaused = true;
+  ui.showBossIntro({ title: `WEEKLY RAID · ${DTYPES[boss.element].name}`, name: boss.displayName, desc: boss.desc, color: boss.color }, () => {
+    battlePaused = false;
+    game.renderer.showBanner('FIGHT!', '#ff5d73');
+  });
+}
+
+/** The attempt is over (team down, boss withdrew, pool emptied, or you left): bank the damage. */
+function endRaidAttempt(won) {
+  if (!raidBattle) return;
+  // What the boss lost this attempt (every source: guns, drones, stomps, burns, mines)
+  const boss = game.enemies[0];
+  const dealt = Math.max(0, Math.round(raidBattle.startHp - Math.max(0, boss?.hp ?? raidBattle.startHp)));
+  const total = saveSystem.addRaidDamage(dealt).damage;
+  run = raidBattle.prevRun;
+  raidBattle = null;
+  battleNode = null;
+  battlePaused = true;
+  ui.showRaidAttempt({ dealt, total, top: fieldTop(total), withdrew: game.withdrew, cleared: won || total >= CONFIG.raid.pool }, () => {
+    battlePaused = false;
+    setState(State.MENU);
+    ui.clearBattleHud();
+    ui.showRaid();
+  });
 }
 
 /** Pick an enemy archetype based on floor weights. */

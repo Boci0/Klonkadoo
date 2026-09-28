@@ -62,6 +62,7 @@ const stompGun = (legs) => ({ ...STOMP_GUN, dtype: legs?.stompType || 'phys' });
 /** On-screen size by frame: heavier frames stand bigger on the lane. */
 const MECH_R = 32;
 const FRAME_SIZE = { fr_scout: 0.9, fr_phantom: 0.95, fr_conduit: 0.95, fr_brawler: 1, fr_furnace: 1.05, fr_titan: 1.1, fr_reclaimer: 1.15, fr_colossus: 1.2, fr_leviathan: 1.28 };
+const GIANT_SCALE = 2.4; // the weekly raid boss (meta/Raid.js)
 export const mechRadius = (parts) => Math.round(MECH_R * (FRAME_SIZE[(parts || []).find((id) => FRAME_SIZE[id])] || 1));
 
 /** World x of the centre of lane position `pos` (1..size). */
@@ -132,6 +133,7 @@ export class Game {
 
   reset(config = DEFAULT_BATTLE) {
     this.battleConfig = config;
+    this.withdrew = false; // raid: the boss left at the turn cap
     this.battleStats = this._freshBattleStats();
     this.rigStats = config.rigStats || {};
     const mech = this.rigStats.mech || {};
@@ -167,7 +169,8 @@ export class Game {
     const defs = (config.enemies || []).map((e) => ({ ...e }));
     this.enemies = [];
     this.enemyReserve = defs.slice(1);
-    if (defs[0]) this.enemies.push(this._makeEnemy(defs[0], L.enemyStart));
+    // (the giant raid boss starts a step further in, so its guns fit on screen)
+    if (defs[0]) this.enemies.push(this._makeEnemy(defs[0], defs[0].giant ? L.enemyStart - 1 : L.enemyStart));
 
     this.collisionSystem.setStats({
       playerAtk: config.player.atk ?? 1,
@@ -213,21 +216,24 @@ export class Game {
 
   _makeEnemy(e, pos) {
     const arch = CONFIG.enemyArchetypes[e.archetype] || CONFIG.enemyArchetypes.standard;
+    const radius = mechRadius(e.parts) * (e.giant ? GIANT_SCALE : 1); // the radius sets the sprite scale too
     const b = new Ball({
       x: posX(pos),
-      y: W.groundY - mechRadius(e.parts),
+      y: W.groundY - radius,
       team: 'enemy',
-      color: arch.color || C.enemy,
-      darkColor: arch.darkColor || C.enemyDark,
+      color: e.color || arch.color || C.enemy,
+      darkColor: e.darkColor || arch.darkColor || C.enemyDark,
       maxHp: e.maxHp || B.maxHp,
       displayName: e.displayName || arch.name,
       archetype: e.archetype || 'standard',
       atk: e.atk,
       def: e.def,
       aiDifficulty: e.aiDifficulty,
-      radius: mechRadius(e.parts),
+      radius,
     });
     b.pos = pos;
+    if (e.hp != null) b.hp = Math.max(1, Math.min(b.maxHp, e.hp)); // raid boss: its pool carries over
+    b.giant = e.giant ? GIANT_SCALE : 0; // raid boss: drawn huge (its guns too: Renderer._drawGear)
     b.rank = e.rank || null;
     b.element = e.element || null; // its damage type (Mech.ENEMY_LOADOUTS)
     b.weapons = (e.weapons || []).map((w) => ({ ...laneGun(w), ammoLeft: w.ammo || 0 }));
@@ -292,10 +298,11 @@ export class Game {
       burnTicks: 0,
       burnDmg: 0,
       isFrozen: false,
+      fx: src.fx || null, // special effect (cosmetic, meta/Raid.js EFFECTS)
     };
   }
 
-  static MEMBER_FIELDS = ['maxHp', 'hp', 'def', 'res', 'legs', 'stompDmg', 'parts', 'forcefield', 'energyMax', 'energy', 'regen', 'heatCap', 'heat', 'cool', 'burnTicks', 'burnDmg', 'isFrozen', 'coolLost', 'regenLost', 'jamNext', 'jammed'];
+  static MEMBER_FIELDS = ['fx', 'maxHp', 'hp', 'def', 'res', 'legs', 'stompDmg', 'parts', 'forcefield', 'energyMax', 'energy', 'regen', 'heatCap', 'heat', 'cool', 'burnTicks', 'burnDmg', 'isFrozen', 'coolLost', 'regenLost', 'jamNext', 'jammed'];
 
   /** Put the active mech's state back into its team record. */
   _saveMember() {
@@ -592,6 +599,14 @@ export class Game {
     const p = this.player;
     p.idleTurns = (p.idleTurns || 0) + 1; // reset when it lands a hit (anti-stall, LaneAI.score)
     for (const x of this.enemies) x.jammed = false; // a jam lasts one turn
+    // Raid: after the turn cap the boss withdraws and the attempt ends
+    const cap = this.battleConfig.turnCap;
+    if (cap && this.battleStats.turns >= cap) {
+      this.withdrew = true;
+      this.winner = 'enemy';
+      this.renderer.showBanner(`${this.activeEnemy?.displayName || 'THE BOSS'} WITHDRAWS`, '#ffcd75');
+      return this._endBattle();
+    }
     // Napalm fires burn out after their turns
     for (const h of this.hazards) if (h.type === 'fire') h.turns -= 1;
     this.hazards = this.hazards.filter((h) => h.type !== 'fire' || h.turns > 0);
@@ -1020,7 +1035,12 @@ export class Game {
       soundEngine.playShot('hook');
       this._callout(target, 'HOOKED', sp.color);
       // Mag Tether: the cable drains them too
-      if (sp.drain && target.hp > 0) this._reactorFx(target, { dtype: 'energy', fx: { drain: sp.drain } }, 0, u);
+      // (past empty, the drain comes off HP: an energy break, like a gun's)
+      const extra = sp.drain && target.hp > 0 ? this._reactorFx(target, { dtype: 'energy', fx: { drain: sp.drain } }, 0, u) : 0;
+      if (extra > 0) {
+        const killed = target.takeDamage(extra);
+        this.events.emit('damage', { attacker: u, victim: target, damage: extra, killed });
+      }
     } else if (sp.special === 'charge') {
       // Retro Rockets fly the other way and never ram
       const step = sp.away ? -dir : dir;

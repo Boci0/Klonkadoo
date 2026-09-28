@@ -16,6 +16,7 @@ import { CONFIG } from '../src/config.js';
 import { planTurn, applyAction } from '../src/ai/LaneAI.js';
 import { enemyMech, enemyRig, enemyTier, pickEnemyElement, elementLean, roleElements, riskShred, withMech, getPart, legsRules, riskEase, tierRange, maxLevel, RARITY_ORDER, ELEMENT_DMG } from '../src/meta/Mech.js';
 import { withMastery } from '../src/meta/Mastery.js';
+import { raidBoss } from '../src/meta/Raid.js';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => (a.startsWith('--') ? a.slice(2).split('=') : ['runs', a])));
 const RUNS = Number(args.runs || 400);
@@ -295,6 +296,61 @@ function battle(team, type, floor, rnd, rules) {
   return { won: true, turns };
 }
 
+/** The weekly raid boss (meta/Raid.js raidBoss) as a sim unit, at full pool. */
+function raidUnit(b) {
+  return {
+    team: 'enemy', pos: 9, hp: b.maxHp, maxHp: b.maxHp, heat: 0, heatCap: b.rig.heatCap, cool: b.rig.cool, energy: b.rig.energy, energyMax: b.rig.energy, regen: b.rig.regen,
+    actions: G.actions, maxActions: G.actions, legs: b.legs, def: b.def, res: { ...b.res },
+    stompDmg: Math.round((b.legs.stomp || 0) * G.dmgScale * G.enemyDmgScale * 0.75 * 1.4),
+    shield: false,
+    specials: b.specials.map((sp) => ({ kind: sp.special, uses: sp.uses, en: sp.en || 0, heat: sp.heat || 0, range: sp.range || 0, dist: sp.dist || 0, ram: sp.ram || 0 })),
+    guns: b.weapons.map((w) => ({ ...gunOf(w, w.dmg), backfire: w.backfire || 0 })),
+    drones: b.drones.map((d) => ({ dmg: d.dmg || 0, heal: d.heal || 0, en: d.upkeep?.en ?? 4, dtype: d.dtype || 'phys' })),
+    difficulty: b.aiDifficulty,
+  };
+}
+
+/**
+ * One raid attempt: your team (full HP) vs the boss until the team is down or
+ * the turn cap. Returns { dealt, turns, locked (boss turns lost to heat), broke (boss hit empty) }.
+ */
+function raidAttempt(team, boss, rnd) {
+  const e = raidUnit(boss);
+  const start = e.hp;
+  let idx = 0;
+  let p = playerUnit(team[idx].perm, team[idx].hp, team[idx].maxHp);
+  const mines = [];
+  p.pos = 3;
+  e.pos = Math.min(SIZE, p.pos + 6);
+  let turns = 0;
+  let locked = 0;
+  let broke = 0;
+  let pt = 0;
+  let first = true;
+  while (e.hp > 0 && turns < CONFIG.raid.turnCap) {
+    turns += 1;
+    if (first || upkeep(p)) playTurn(p, e, mines, SKILL, rnd);
+    first = false;
+    drones(p, e, ++pt, 1);
+    if (e.energy <= 0) broke += 1;
+    if (e.hp <= 0) break;
+    if (upkeep(e)) playTurn(e, p, mines, e.difficulty, rnd);
+    else locked += 1;
+    drones(e, p, turns, 1);
+    if (p.hp <= 0) {
+      team[idx].hp = 0;
+      idx = team.findIndex((m) => m.hp > 0);
+      if (idx < 0) break;
+      const pos = p.pos;
+      p = playerUnit(team[idx].perm, team[idx].hp, team[idx].maxHp);
+      p.pos = pos;
+      first = true;
+      pt = 0;
+    }
+  }
+  return { dealt: start - Math.max(0, e.hp), turns, locked, broke };
+}
+
 /** Your team for a run: --team=N copies of the loadout (garage mechs 2 and 3), each with its own HP. */
 // --boons=def,atk,hp,swift,power,regen: run boons (RunState.applyBoon; one of each counts)
 const BOONS = (args.boons || '').split(',').filter(Boolean);
@@ -411,6 +467,27 @@ if (args.extra) {
   sets.push({ ...NEW, name: 'NEW + rest 65%', rest: (maxHp) => maxHp * 0.65 });
 }
 for (const s of sets) s.healMult = Math.max(0.2, 1 - riskData().minusHeal / 100);
+
+// --raid: weekly raid attempts against each element's boss (size CONFIG.raid.pool: ~100 maxed attempts)
+if (args.raid) {
+  if (args.rigMult) CONFIG.raid.rigMult = { heat: Number(args.rigMult), energy: Number(args.rigMult) }; // --rigMult=2.5
+  for (const g of gear) {
+    console.log(`\n=== raid, gear: ${g}, skill ${SKILL}, team ${args.team || 1}, pool ${CONFIG.raid.pool} ===`);
+    for (const week of [0, 1, 2].map((k) => 3000 + k)) { // one week of each element
+      const boss = raidBoss(week);
+      const rnd = mulberry(11);
+      let dealt = 0, turns = 0, locked = 0, broke = 0, capped = 0;
+      for (let i = 0; i < RUNS; i++) {
+        const r = raidAttempt(makeTeam(LOADOUTS[g]), boss, rnd);
+        dealt += r.dealt; turns += r.turns; locked += r.locked; broke += r.broke;
+        if (r.turns >= CONFIG.raid.turnCap) capped += 1;
+      }
+      const avg = dealt / RUNS;
+      console.log(`${boss.element.padEnd(6)} ${boss.displayName.padEnd(18)} armor ${boss.strong}, bare ${boss.weak} | dmg/attempt ${Math.round(avg)} (${((avg / CONFIG.raid.pool) * 100).toFixed(2)}% of pool) | turns ${(turns / RUNS).toFixed(1)} (${Math.round((capped / RUNS) * 100)}% hit the cap) | boss turns lost to heat ${(locked / RUNS).toFixed(2)} | boss drained ${(broke / RUNS).toFixed(2)} turns`);
+    }
+  }
+  process.exit(0);
+}
 
 // --fights: single fights from full HP, to calibrate against play ("a sloppy fight costs 40-60% HP")
 if (args.fights) {

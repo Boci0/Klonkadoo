@@ -27,6 +27,7 @@ import { partCardHtml, bindHoverTips, chipHtml, tierDots, hideTip, iconKeyHtml }
 import { getSupply } from '../rogue/Supplies.js';
 import { RigScreen } from './RigScreen.js';
 import { ico, partIcon, uiIcon } from '../rendering/pixelIcons.js';
+import { raidBoss, weekIndex, weekEnds, weekElement, fieldTop, raidTier } from '../meta/Raid.js';
 
 export class UIManager {
   /**
@@ -40,6 +41,7 @@ export class UIManager {
       battleHud: document.getElementById('battle-hud'),
       result: document.getElementById('screen-result'),
       rig: document.getElementById('screen-rig'),
+      raid: document.getElementById('screen-raid'),
     };
     this.rig = new RigScreen({ onBack: () => this.cb.onBackToMenu() });
     this.nodeModal = document.getElementById('node-modal');
@@ -74,6 +76,19 @@ export class UIManager {
         return;
       }
       this.cb.onPlay();
+    });
+    document.getElementById('btn-raid')?.addEventListener('click', () => {
+      if (!saveSystem.raidUnlocked()) {
+        soundEngine.play('error');
+        this.toast(`<span class="feed-enemy-ability">WEEKLY RAID: BEAT RISK ${CONFIG.raid.unlockRisk - 1} TO UNLOCK</span>`);
+        return;
+      }
+      soundEngine.playUI();
+      this.showRaid();
+    });
+    document.getElementById('btn-raid-back')?.addEventListener('click', () => {
+      soundEngine.playUI();
+      this.cb.onBackToMenu();
     });
     document.getElementById('btn-almanac')?.addEventListener('click', () => {
       soundEngine.playUI();
@@ -760,6 +775,16 @@ export class UIManager {
       }
       play.classList.toggle('resume', !!saved);
     }
+    // Weekly raid: greyed out until Risk 3 is beaten; last week's rewards pay out here
+    const raidBtn = document.getElementById('btn-raid');
+    if (raidBtn) {
+      const open = saveSystem.raidUnlocked();
+      raidBtn.classList.toggle('locked', !open);
+      raidBtn.innerHTML = open ? `RAID<small>${DTYPES[weekElement(weekIndex())].short}</small>` : `${ico('lock')} RAID<small>BEAT RISK ${CONFIG.raid.unlockRisk - 1}</small>`;
+      raidBtn.title = open ? 'Weekly raid: a giant boss, damage ranked for rewards' : `Unlocks after beating Risk ${CONFIG.raid.unlockRisk - 1}`;
+      const paid = saveSystem.claimRaid();
+      if (paid) this.showRaidPayout(paid);
+    }
     // Icon tiles: your first gun, medal star (with counts)
     const owned = MEDALS.filter((m) => saveSystem.hasMedal(m.id)).length;
     const gun = saveSystem.getLoadoutParts().find((o) => o && getPart(o.id).type === 'weapon');
@@ -815,6 +840,101 @@ export class UIManager {
       if (t.overweight) return { i, t };
     }
     return null;
+  }
+
+  // ---------- Weekly raid ----------
+
+  /** The raid screen: this week's boss, its pool, your damage and rank, the reward tiers. */
+  showRaid() {
+    this.closeModal();
+    this._setVisible('raid');
+    const week = weekIndex();
+    const boss = raidBoss(week);
+    const raid = saveSystem.getRaid();
+    const R = CONFIG.raid;
+    const left = Math.max(0, R.pool - raid.damage);
+    const top = fieldTop(raid.damage);
+    const cur = raid.damage > 0 ? raidTier(top).tier : 0;
+    const el = DTYPES[boss.element];
+    const ms = Math.max(0, weekEnds(week) - Date.now());
+    const d = Math.floor(ms / 86400000);
+    const h = Math.floor((ms % 86400000) / 3600000);
+    document.getElementById('raid-clock').textContent = `ENDS IN ${d ? `${d}D ` : ''}${h}H`;
+    const n = (v) => Math.round(v).toLocaleString('en-US');
+    const tierRow = (t, i) => `<div class="raid-tier ${cur === i + 1 ? 'on' : ''}" title="Tier ${i + 1}: players ranked in the top ${t.top}%">
+        <b>T${i + 1}</b><em>TOP ${t.top}%</em>
+        <span><span title="Keys">${ico('key')}${t.keys}</span><span title="Scrap">${ico('scrap')}${t.scrap}</span><span title="${boss.effect.name} (special effect) copies">${ico('star', boss.effect.color)}x${t.effects}</span></span>
+      </div>`;
+    document.getElementById('raid-body').innerHTML = `
+      <div class="raid-boss" style="--rar:${el.color}">
+        <img class="raid-portrait" src="${mechDataUrl(boss.parts, boss.color, boss.darkColor)}" alt="">
+        <h3>${boss.displayName}</h3>
+        <div class="raid-chips">
+          <span title="Its guns deal ${el.name} damage">${ico(el.icon, el.color)}${el.name} GUNS</span>
+          <span title="It resists ${DTYPES[boss.strong].name} damage heavily">${ico('def')}${DTYPES[boss.strong].short} ARMOR</span>
+          <span title="It has no resist against ${DTYPES[boss.weak].name} damage">${ico(DTYPES[boss.weak].icon, DTYPES[boss.weak].color)}BARE vs ${DTYPES[boss.weak].short}</span>
+          <span title="Huge heat cap, cooling, battery and regen: overheating or draining it is hard">${ico('heat')}${ico('energy')}HUGE REACTOR</span>
+        </div>
+        <div class="raid-pool" title="The boss's HP for the week: every attempt chips at it"><b style="width:${(left / R.pool) * 100}%"></b><span>${n(left)} / ${n(R.pool)} HP</span></div>
+        ${left > 0
+          ? '<button id="btn-raid-attack" class="btn btn-primary btn-large raid-attack">&#9654; ATTACK</button>'
+          : '<button class="btn btn-disabled btn-large raid-attack" disabled>RAID CLEARED</button>'}
+      </div>
+      <div class="raid-rank">
+        <div class="raid-me">
+          <div title="Your damage to the boss this week"><span>DAMAGE</span><strong>${n(raid.damage)}</strong></div>
+          <div title="Your rank among all raiders this week"><span>RANK</span><strong class="accent">${raid.damage > 0 ? `TOP ${top < 1 ? top.toFixed(1) : Math.round(top)}%` : '-'}</strong></div>
+          <div title="Attempts this week (no limit)"><span>ATTEMPTS</span><strong>${raid.attempts}</strong></div>
+        </div>
+        <p class="rig-note">Your team fights until it falls or the boss withdraws after ${R.turnCap} turns. Rewards pay out when the week ends, by your rank.</p>
+        <div class="raid-tiers">${R.tiers.map(tierRow).join('')}</div>
+      </div>`;
+    document.getElementById('btn-raid-attack')?.addEventListener('click', () => {
+      if (this._overloadedMech()) {
+        soundEngine.play('error');
+        this.toast('<span class="feed-enemy-ability">A MECH IS OVERLOADED: LIGHTEN IT IN THE RIG</span>');
+        return;
+      }
+      soundEngine.playUI();
+      this.cb.onRaidAttack?.(boss);
+    });
+  }
+
+  /** After an attempt: what it dealt and where you stand now. */
+  showRaidAttempt({ dealt, total, top, withdrew, cleared }, onDone) {
+    const n = (v) => Math.round(v).toLocaleString('en-US');
+    const t = raidTier(top);
+    this.openModal(cleared ? 'RAID CLEARED' : withdrew ? 'THE BOSS WITHDREW' : 'TEAM DOWN',
+      `<div class="raid-me">
+        <div><span>THIS ATTEMPT</span><strong class="accent">${n(dealt)}</strong></div>
+        <div><span>THIS WEEK</span><strong>${n(total)}</strong></div>
+        <div><span>RANK</span><strong class="accent">TOP ${top < 1 ? top.toFixed(1) : Math.round(top)}% · T${t.tier}</strong></div>
+      </div>`,
+      '<button class="btn btn-primary" data-act="ok">CONTINUE</button>');
+    this.modalActions.querySelector('[data-act="ok"]').addEventListener('click', () => {
+      soundEngine.playUI();
+      this.closeModal();
+      onDone();
+    });
+  }
+
+  /** Last week's raid rewards, paid on the menu. */
+  showRaidPayout(p) {
+    const n = (v) => Math.round(v).toLocaleString('en-US');
+    this.openModal(`RAID WEEK OVER: TIER ${p.tier}`,
+      `<p class="rig-note">You dealt ${n(p.damage)} damage: TOP ${p.top < 1 ? p.top.toFixed(1) : Math.round(p.top)}% of raiders.</p>
+      <div class="raid-chips">
+        <span>${ico('key')}+${p.keys} KEYS</span><span>${ico('scrap')}+${p.scrap} SCRAP</span>
+        <span title="${p.effect.desc}">${ico('star', p.effect.color)}+${p.effects} ${p.effect.name}</span>
+      </div>
+      <p class="rig-note">Fit special effects in the RIG: the FX slot between the top guns.</p>`,
+      '<button class="btn btn-primary" data-act="ok">COLLECT</button>');
+    soundEngine.play('coin');
+    this.modalActions.querySelector('[data-act="ok"]').addEventListener('click', () => {
+      soundEngine.playUI();
+      this.closeModal();
+      this.showMenu(saveSystem.getProfile(), saveSystem.getMeta());
+    });
   }
 
   /** Rig screen (loadout + supply pods). */
@@ -1646,10 +1766,13 @@ export class UIManager {
   showBattleHud(run, nodeType) {
     // Every fight can be left; leaving a boss or mini-boss counts as a loss
     document.getElementById('btn-retreat-battle')?.classList.remove('hidden');
-    document.getElementById('battle-floor').textContent = run.floor >= CONFIG.map.floors ? `ABYSS ${run.floor - CONFIG.map.floors + 1}` : `FLOOR ${run.floor + 1}`;
+    document.getElementById('battle-floor').textContent = nodeType === 'raid' ? 'WEEKLY RAID' : run.floor >= CONFIG.map.floors ? `ABYSS ${run.floor - CONFIG.map.floors + 1}` : `FLOOR ${run.floor + 1}`;
     document.getElementById('battle-node').textContent =
-      nodeType === 'boss' ? 'BOSS' : nodeType === 'miniboss' ? 'MINI-BOSS' : nodeType === 'elite' ? 'ELITE' : 'COMBAT';
-    document.getElementById('battle-gold').textContent = `${run.gold}G`;
+      nodeType === 'raid' ? 'RAID BOSS' : nodeType === 'boss' ? 'BOSS' : nodeType === 'miniboss' ? 'MINI-BOSS' : nodeType === 'elite' ? 'ELITE' : 'COMBAT';
+    const gold = document.getElementById('battle-gold');
+    gold.textContent = `${run.gold}G`;
+    gold.hidden = nodeType === 'raid'; // no gold in a raid (nor its separator dot)
+    if (gold.previousElementSibling) gold.previousElementSibling.hidden = nodeType === 'raid';
 
     const mapView = document.getElementById('map-view');
     const battleView = document.getElementById('battle-view');

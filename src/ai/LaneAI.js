@@ -193,7 +193,13 @@ function apply(s, a) {
     const dir = Math.sign(foe.pos - me.pos) || 1;
     if (sp.kind === 'hook') {
       foe.pos = slide(s, foe, me.pos + dir, true);
-      if (sp.drain) foe.energy = Math.max(0, foe.energy - sp.drain);
+      if (sp.drain) {
+        // Mag Tether drains like a gun (Game._reactorFx): resists cut it, past empty it comes off HP
+        const want = Math.round(sp.drain * (1 - Math.min(DEF_CAP, (foe.def || 0) + (foe.res?.energy || 0)) * DEF_PER_POINT));
+        const took = Math.min(Math.max(0, foe.energy), want);
+        foe.energy -= took;
+        foe.hp -= (want - took) * (CONFIG.gear.hpScale / CONFIG.gear.rxScale);
+      }
     } else if (sp.kind === 'charge') {
       const step = sp.away ? -dir : dir; // Retro Rockets back off
       let to = me.pos;

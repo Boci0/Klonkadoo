@@ -14,6 +14,8 @@ import { soundEngine } from '../utils/SoundEngine.js';
 import { haptics } from '../platform/haptics.js';
 import { OPERATOR, skinColors } from '../meta/Balls.js';
 import { torsoCanvas, legsCanvas } from '../rendering/mechSprite.js';
+import { drawEffect } from '../rendering/fxDraw.js';
+import { EFFECTS } from '../meta/Raid.js';
 import { partIcon, partCanvas, ico, uiIcon } from '../rendering/pixelIcons.js';
 import { CONFIG } from '../config.js';
 import {
@@ -103,6 +105,13 @@ export class RigScreen {
       </button>`;
     };
 
+    // Special effect (cosmetic) between the top guns
+    const fx = EFFECTS[m.fx[m.editing]];
+    const fxTile = `<button class="rig-slot sm ${this.slot === 'fx' ? 'sel' : ''} ${fx ? '' : 'empty'}" data-slot="fx" title="${fx ? `${fx.name}: ${fx.desc}` : 'SPECIAL EFFECT (cosmetic)'}" style="--rar:${fx ? fx.color : 'var(--p-steel)'}">
+        ${fx ? ico('star', fx.color) : `<span class="rig-plus">${ico('star')}</span>`}
+        <span class="rig-slot-name">FX</span>
+      </button>`;
+
     // Garage: up to 3 mechs; locked slots say how to earn them
     const garage = [0, 1, 2].map((i) => {
       const open = i < m.garageSlots;
@@ -118,6 +127,7 @@ export class RigScreen {
       <div class="rig-bay">
         <div class="rig-col">${LEFT.map((id) => tile(id)).join('')}</div>
         <div class="rig-stage">
+          <div class="rig-fx-slot">${fxTile}</div>
           <canvas id="rig-canvas" width="80" height="56"></canvas>
           <div class="rig-core-slots">${tile('frame')}${tile('legs')}</div>
         </div>
@@ -159,7 +169,35 @@ export class RigScreen {
     if (box) box.innerHTML = statBarHtml(t, this._preview(bySlot, this.hover || this.focus));
   }
 
+  /** FX slot: pick one of the special effects you own (raid rewards) for this mech. */
+  _renderFxSide(m) {
+    const side = document.getElementById('rig-side');
+    const cur = m.fx[m.editing];
+    const owned = Object.values(EFFECTS).filter((e) => m.effects[e.id] > 0);
+    const row = (e) => {
+      const free = saveSystem.effectFree(e.id, m.editing);
+      const on = cur === e.id;
+      return `<button class="rig-fx-item ${on ? 'sel' : ''}" data-fx="${e.id}" ${on || free > 0 ? '' : 'disabled'} style="--rar:${e.color}">
+        ${ico('star', e.color)}<span><strong>${e.name}</strong><em>${e.desc}</em></span>
+        <i title="Copies you own / not on another mech">x${m.effects[e.id]}${on ? ' · ON' : ` · ${free} FREE`}</i>
+      </button>`;
+    };
+    side.innerHTML = `
+      <div class="rig-side-head"><b>SPECIAL EFFECT</b><span></span></div>
+      <p class="rig-note">Cosmetic only: no weight, no stats. Each copy fits one mech.</p>
+      <div class="rig-fx-list">
+        ${owned.map(row).join('') || `<p class="rig-empty">${ico('star', '#566c86')} Earn special effects in the weekly RAID</p>`}
+        ${cur ? '<button class="btn btn-outline" data-fx="">REMOVE</button>' : ''}
+      </div>`;
+    side.querySelectorAll('[data-fx]').forEach((b) => b.addEventListener('click', () => {
+      const ok = saveSystem.equipFx(m.editing, b.dataset.fx || null);
+      soundEngine.play(ok ? 'select' : 'error');
+      if (ok) this._renderLoadout();
+    }));
+  }
+
   _renderSide(m, bySlot, t) {
+    if (this.slot === 'fx') return this._renderFxSide(m);
     const side = document.getElementById('rig-side');
     const slot = SLOTS.find((s) => s.id === this.slot);
     const inSlot = bySlot[this.slot];
@@ -385,6 +423,7 @@ export class RigScreen {
     const look = skinColors(ball, skin);
 
     const part = (id) => bySlot[id] && getPart(bySlot[id].id);
+    const fxId = saveSystem.getMech().fx[saveSystem.getMech().editing]; // special effect (cosmetic)
     // Side guns on the flanks (1-2 left, 3-4 right), top guns on the shoulders
     const guns = [part('side1'), part('side3'), part('side2'), part('side4')];
     const tops = [part('top1'), part('top2')];
@@ -444,6 +483,7 @@ export class RigScreen {
       const bob = Math.round(Math.sin(s * 2) * 0.6);
       g.drawImage(legsSprite, Math.round(cx - legsSprite.width / 2), legsTop);
       g.drawImage(torso, Math.round(cx - torso.width / 2), torsoTop + bob);
+      if (fxId) drawEffect(g, fxId, cx, torsoTop + bob, torso.width, torso.height, 1, now);
       const gy = torsoTop + Math.round(torso.height * 0.45) + bob;
       // Guns on the flanks (left one mirrored)
       guns.forEach((gp, i) => {

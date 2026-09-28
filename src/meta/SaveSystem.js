@@ -9,6 +9,7 @@
 
 import { CONFIG } from '../config.js';
 import { masteryLevel } from './Mastery.js';
+import { weekIndex, weekElement, effectFor, fieldTop, raidTier } from './Raid.js';
 import { INVENTORY_CAP, RARITY_ORDER, salvageValue, upgradeCost, maxLevel, tierOf, transformInfo, slotAccepts, RETIRED, RETIRED_REFUND, STARTER_PARTS, STARTER_LOADOUT, SLOTS, getPart, newUid, openCrate, CRATES, PACK_SIZE, packCost } from './Mech.js';
 
 const STORAGE_KEY = 'slingshot-save-v1';
@@ -374,6 +375,74 @@ export class SaveSystem {
     return status;
   }
 
+  // ---------- Weekly raid (meta/Raid.js) ----------
+
+  /** Raid unlocked: Risk 3 beaten on any ball. */
+  raidUnlocked() {
+    return this.bestRiskAnyBall() >= CONFIG.raid.unlockRisk;
+  }
+
+  /**
+   * This week's raid progress { week, damage, attempts }. A new week starts
+   * fresh; last week's damage (if any) waits in `raidPending` to be paid out.
+   */
+  getRaid(now = new Date()) {
+    const week = weekIndex(now);
+    const r = this.data.raid;
+    if (!r || r.week !== week) {
+      if (r && r.damage > 0 && !this.data.raidPending) this.data.raidPending = { week: r.week, damage: r.damage };
+      this.data.raid = { week, damage: 0, attempts: 0 };
+      this.save();
+    }
+    return this.data.raid;
+  }
+
+  /** Add one attempt's damage to this week's total (capped at the pool). */
+  addRaidDamage(n) {
+    const r = this.getRaid();
+    r.damage = Math.min(CONFIG.raid.pool, r.damage + Math.max(0, Math.round(n)));
+    r.attempts += 1;
+    this.save();
+    return r;
+  }
+
+  /** Pay out last week's raid: { week, damage, top, tier, keys, scrap, effects, effect } or null. */
+  claimRaid() {
+    this.getRaid(); // rolls the week over first
+    const p = this.data.raidPending;
+    if (!p) return null;
+    const top = fieldTop(p.damage);
+    const t = raidTier(top);
+    const effect = effectFor(weekElement(p.week));
+    const m = this.data.mech;
+    m.tokens += t.keys;
+    m.scrap += t.scrap;
+    m.effects[effect.id] = (m.effects[effect.id] || 0) + t.effects;
+    delete this.data.raidPending;
+    this.save();
+    return { ...p, top, ...t, effect };
+  }
+
+  /** Special effects owned: { [id]: copies }. */
+  getEffects() {
+    return this.data.mech.effects;
+  }
+
+  /** Copies of an effect not fitted on another garage mech. */
+  effectFree(id, except = -1) {
+    const m = this.data.mech;
+    return (m.effects[id] || 0) - m.fx.filter((f, i) => f === id && i !== except).length;
+  }
+
+  /** Fit (or with null, remove) a special effect on garage mech `i`. */
+  equipFx(i, id) {
+    const m = this.data.mech;
+    if (i < 0 || i > 2 || (id && !(this.effectFree(id, i) > 0))) return false;
+    m.fx[i] = id || null;
+    this.save();
+    return true;
+  }
+
   // ---------- Per-ball Risk ladder ----------
   // Each ball climbs Risk 0-10 on its own; the menu and ball select show
   // the selected ball's ladder. The secret Risk XI is unlocked once for the
@@ -614,6 +683,9 @@ export class SaveSystem {
     m.garageSlots = Math.max(1, Math.min(3, m.garageSlots || 1));
     while (m.loadouts.length < m.garageSlots) m.loadouts.push(Object.fromEntries(SLOTS.map((s) => [s.id, null])));
     m.editing = Math.max(0, Math.min(m.garageSlots - 1, m.editing || 0));
+    // Special effects (raid rewards): copies owned, and one slot per garage mech
+    m.effects = m.effects || {};
+    m.fx = [0, 1, 2].map((i) => m.fx?.[i] || null);
     Object.defineProperty(m, 'loadout', { get: () => m.loadouts[m.editing], enumerable: false, configurable: true });
   }
 
@@ -657,6 +729,15 @@ export class SaveSystem {
     return m.loadouts.slice(0, m.garageSlots)
       .map((lo) => SLOTS.map((s) => this.getOwnedPart(lo[s.id])))
       .filter((parts, i) => i === 0 || parts.some((o) => o && getPart(o.id)?.type === 'frame'));
+  }
+
+  /** Special effects of the team, in getTeamLoadouts order. */
+  getTeamFx() {
+    const m = this.data.mech;
+    return m.loadouts.slice(0, m.garageSlots)
+      .map((lo, i) => ({ i, framed: i === 0 || SLOTS.some((s) => getPart(this.getOwnedPart(lo[s.id])?.id)?.type === 'frame') }))
+      .filter((x) => x.framed)
+      .map((x) => m.fx[x.i] || null);
   }
 
   getMech() {
