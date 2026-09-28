@@ -16,8 +16,8 @@ export function supplyValue(s, run) {
   if (!s) return -Infinity;
   const missing = run.maxHp - run.hp;
   switch (s.kind) {
-    case 'repair': return Math.min(repairAmount(s, run), missing) * (hpPct(run) < 0.6 ? 1.2 : 0.4);
-    case 'maxhp': return s.amount * 1.2;
+    case 'repair': return (Math.min(repairAmount(s, run), missing) / CONFIG.gear.hpScale) * (hpPct(run) < 0.6 ? 1.2 : 0.4);
+    case 'maxhp': return (s.amount / CONFIG.gear.hpScale) * 1.2;
     case 'keys': return s.amount * 9; // pods: the point of farming
     case 'scrap': return s.amount * 0.6;
     case 'boon': return run.boons?.includes(s.boonId) ? -Infinity : 22;

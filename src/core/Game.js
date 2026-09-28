@@ -243,8 +243,8 @@ export class Game {
     b.parts = e.parts || null;
     this._initRig(b, e.rig || G.enemyRig[['elite', 'miniboss', 'boss'].includes(this.battleConfig.nodeType) ? this.battleConfig.nodeType : 'combat']);
     // Operation conditions hit every mech
-    if (this.battleConfig.condition === 'overcharged') b.regen += 5;
-    if (this.battleConfig.condition === 'heatwave') b.cool = Math.max(1, b.cool - 5);
+    if (this.battleConfig.condition === 'overcharged') b.regen += 5 * G.rxScale;
+    if (this.battleConfig.condition === 'heatwave') b.cool = Math.max(G.rxScale, b.cool - 5 * G.rxScale);
     return b;
   }
 
@@ -258,8 +258,8 @@ export class Game {
     const legs = { ...laneLegs(mech.legs) };
     if (!legs.anchored && cfg.walkBonus) legs.walk = (legs.walk || 0) + cfg.walkBonus; // Swift Loader
     const rig = { ...(mech.rig || G.baseRig) };
-    if (cfg.condition === 'overcharged') rig.regen += 5;
-    if (cfg.condition === 'heatwave') rig.cool = Math.max(1, rig.cool - 5);
+    if (cfg.condition === 'overcharged') rig.regen += 5 * G.rxScale;
+    if (cfg.condition === 'heatwave') rig.cool = Math.max(G.rxScale, rig.cool - 5 * G.rxScale);
     const reachUp = cfg.reachBonus || 0; // Long Barrel
     return {
       index,
@@ -590,6 +590,7 @@ export class Game {
     this.turnId += 1;
     this.turnSystem.startPlayerTurn();
     const p = this.player;
+    p.idleTurns = (p.idleTurns || 0) + 1; // reset when it lands a hit (anti-stall, LaneAI.score)
     for (const x of this.enemies) x.jammed = false; // a jam lasts one turn
     // Napalm fires burn out after their turns
     for (const h of this.hazards) if (h.type === 'fire') h.turns -= 1;
@@ -613,6 +614,7 @@ export class Game {
     if (!this.activeEnemy && this.enemyReserve.length) this._dropIn();
     const e = this.activeEnemy;
     if (!e) return this._startPlayerTurn();
+    e.idleTurns = (e.idleTurns || 0) + 1;
     this.turnSystem.startEnemyTurn(this.enemies.indexOf(e));
     this.moveMap = new Map();
     if (!this._tickBurn(e)) return this._afterAction(e, 1.1); // burned out: your turn (the next one drops in on theirs)
@@ -884,7 +886,7 @@ export class Game {
       // Capacitor Dump: everything left goes into this shot
       const spent = Math.max(0, Math.floor(shooter.energy));
       shooter.energy = 0;
-      w._dumpBonus = Math.round((spent / 2) * G.dmgScale);
+      w._dumpBonus = Math.round((spent / 2) * (G.dmgScale / G.rxScale));
     }
   }
 
@@ -941,7 +943,7 @@ export class Game {
       });
     }
     soundEngine.playShot(kind, dtypeOf(w));
-    if (shooter === this.player) haptics.impact(kind === 'lob' || w.dmg > 60 ? 'medium' : 'light');
+    if (shooter === this.player) haptics.impact(kind === 'lob' || w.dmg > 60 * G.hpScale ? 'medium' : 'light');
   }
 
   _updateProjectiles(dt) {
@@ -1088,7 +1090,7 @@ export class Game {
     }
     if (w.fx?.meltdown && target.heat > target.heatCap) {
       const excess = target.heat - target.heatCap;
-      dmg += excess * 2 * G.hpScale;
+      dmg += excess * 2 * (G.hpScale / G.rxScale); // heat over the cap, in damage
       target.heat = target.heatCap;
       this._callout(target, 'MELTDOWN', '#ff5d73');
       this.renderer.addScreenShake(12);
@@ -1113,7 +1115,7 @@ export class Game {
 
   /** Standing or landing on a burning plate: +8 heat (resists soften it). */
   _burnPlate(u) {
-    const add = Math.max(1, Math.round(8 * this._reactorKeep(u, 'heat')));
+    const add = Math.max(1, Math.round(8 * G.rxScale * this._reactorKeep(u, 'heat')));
     u.heat += add;
     this._callout(u, `ON FIRE +${add} HEAT`, DTYPES.heat.color);
   }
@@ -1209,7 +1211,7 @@ export class Game {
       const want = Math.round((w.fx?.drain ?? dmg * G.dtypeLoad) * this._reactorKeep(target, 'energy'));
       const took = Math.min(target.energy, want);
       target.energy -= took;
-      extra = (want - took) * G.hpScale; // energy it could not drain comes off HP
+      extra = (want - took) * (G.hpScale / G.rxScale); // energy it could not drain comes off HP
       if (took) this._callout(target, `-${took} EN`, DTYPES.energy.color);
       if (extra) this._callout(target, 'ENERGY BREAK', '#ff5d73');
       // Leech Coil: what it drains, you get
@@ -1220,7 +1222,7 @@ export class Game {
     }
     // Reactor damage lasts the rest of the fight
     if (w.fx?.coolDmg) {
-      const cut = Math.min(w.fx.coolDmg, Math.max(0, target.cool - 2));
+      const cut = Math.min(w.fx.coolDmg, Math.max(0, target.cool - 2 * G.rxScale));
       if (cut) {
         target.cool -= cut;
         target.coolLost = (target.coolLost || 0) + cut;
@@ -1228,7 +1230,7 @@ export class Game {
       }
     }
     if (w.fx?.regenDmg) {
-      const cut = Math.min(w.fx.regenDmg, Math.max(0, target.regen - 3));
+      const cut = Math.min(w.fx.regenDmg, Math.max(0, target.regen - 3 * G.rxScale));
       if (cut) {
         target.regen -= cut;
         target.regenLost = (target.regenLost || 0) + cut;
@@ -1374,7 +1376,7 @@ export class Game {
         coolDmg: w.fx?.coolDmg || 0,
         regenDmg: w.fx?.regenDmg || 0,
         dump: !!w.fx?.dump,
-        dumpScale: G.dmgScale,
+        dumpScale: G.dmgScale / G.rxScale,
         backfire: Math.round(w.backfire || 0),
         resDrain: { ...(w.fx?.resDrain || {}), ...(w.fx?.corrode ? { phys: w.fx.corrode } : {}) },
       })),
@@ -1399,7 +1401,7 @@ export class Game {
         mines: this.hazards.filter((h) => h.type === 'mine').map((h) => ({ pos: h.pos, owner: h.owner, dmg: h.dmg })),
         stompHeat: G.stompHeat,
       },
-      { difficulty: Math.min(0.95, e.aiDifficulty ?? 0.5), aggression: this.aggression },
+      { difficulty: Math.min(0.95, e.aiDifficulty ?? 0.5), aggression: this.aggression, stall: e.idleTurns || 0 },
     );
     const a = plan[0] || { type: 'end' };
     if (a.type === 'fire') {
@@ -1452,7 +1454,7 @@ export class Game {
         mines: this.hazards.filter((h) => h.type === 'mine').map((h) => ({ pos: h.pos, owner: h.owner, dmg: h.dmg })),
         stompHeat: G.stompHeat,
       },
-      { difficulty: 1, aggression: this.aggression },
+      { difficulty: 1, aggression: this.aggression, stall: p.idleTurns || 0 },
     );
     const a = plan[0] || { type: 'end' };
     let ok = false;
@@ -1526,15 +1528,16 @@ export class Game {
 
   _bindEvents() {
     this.events.on('damage', ({ attacker, victim, damage, killed, crit }) => {
+      if (attacker && attacker !== victim && damage > 0) attacker.idleTurns = 0;
       this._spawnHitParticles(victim.x, victim.y);
       if (attacker?.team === 'player' && victim.team === 'enemy') this._trackPlayerHit(victim, damage, killed, { crit });
-      soundEngine.playImpact(Math.min(2.0, damage / 20));
+      soundEngine.playImpact(Math.min(2.0, damage / (20 * G.hpScale)));
       if (victim.team === 'player') {
         soundEngine.play('hurt');
         haptics.impact('heavy');
-      } else haptics.impact(damage >= 15 ? 'heavy' : 'medium');
-      if (damage >= 15) {
-        this.renderer.addScreenShake(Math.min(16, damage * 0.5));
+      } else haptics.impact(damage >= 15 * G.hpScale ? 'heavy' : 'medium');
+      if (damage >= 15 * G.hpScale) {
+        this.renderer.addScreenShake(Math.min(16, (damage / G.hpScale) * 0.5));
         this.addHitStop(0.05);
       }
       if (killed) {

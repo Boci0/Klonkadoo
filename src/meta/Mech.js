@@ -103,7 +103,7 @@ export const PARTS = [
   { id: 'lg_coil', type: 'legs', name: 'COIL SPRINGS', rarity: 'epic', weight: 115, hp: 8, walk: 2, jump: [1, 2], stomp: 10, stompType: 'energy', stompEn: 6, stompHeat: 2, desc: 'Walk or hop. The stomp shocks (Electric).' },
   { id: 'lg_anchor', type: 'legs', name: 'ANCHOR CLAMPS', rarity: 'epic', weight: 200, hp: 30, def: 4, atkPct: 0.2, anchored: true, desc: "Bolted down: you can't move or stomp. +4 DEF, +20% gun damage." },
   { id: 'lg_bulwark', type: 'legs', name: 'BULWARK LEGS', rarity: 'legendary', weight: 185, hp: 26, walk: 1, jump: [2, 2], stomp: 14, stompHeat: 8, desc: 'Slow and heavy: lots of HP and a hard stomp.' },
-  { id: 'lg_thrusters', type: 'legs', name: 'THRUSTERS', rarity: 'legendary', weight: 130, hp: 10, walk: 3, jump: [1, 3], stomp: 10, stompType: 'heat', stompHeat: 6, moveEn: 6, desc: 'Go anywhere, but each move costs 6 energy. The stomp scorches.' },
+  { id: 'lg_thrusters', type: 'legs', name: 'THRUSTERS', rarity: 'legendary', weight: 130, hp: 10, walk: 3, jump: [1, 3], stomp: 10, stompType: 'heat', stompHeat: 6, moveEn: 6, desc: 'Go anywhere, but each move costs energy. The stomp scorches.' },
   { id: 'lg_phase', type: 'legs', name: 'PHASE STRIDERS', rarity: 'mythic', weight: 120, hp: 14, walk: 2, jump: [1, 3], stomp: 12, stompType: 'energy', stompEn: 6, stompHeat: 2, freeMove: true, color: '#ff5d73', desc: 'Your first move each turn uses no action. The stomp shocks.' },
 
   // SIDE guns
@@ -133,12 +133,12 @@ export const PARTS = [
   // Explosive specialists: cook the target until it locks up, then cash the heat in
   { id: 'wp_blowtorch', type: 'weapon', name: 'BLOWTORCH', rarity: 'common', dtype: 'heat', weight: 45, reach: [1, 2], dmg: 5, en: 4, heat: 16, fx: { heat: 18 }, color: '#ef7d57', desc: 'Weak hit, but pumps a lot of heat into the target.' },
   { id: 'wp_dragon', type: 'weapon', name: 'DRAGON SHOTGUN', rarity: 'rare', dtype: 'heat', weight: 70, reach: [1, 2], dmg: 6, en: 5, heat: 16, fx: { burst: 2, burn: 2 }, color: '#ef7d57', icon: 'wp_scatter', desc: 'The target burns for 2 turns.' },
-  { id: 'wp_rupturer', type: 'weapon', name: 'COOLANT RUPTURER', rarity: 'epic', dtype: 'heat', weight: 70, reach: [2, 4], dmg: 10, en: 4, heat: 19, fx: { coolDmg: 3 }, color: '#ffcd75', desc: 'Cracks their coolant: -3 cooling for the rest of the fight (stacks, never below 2).' },
+  { id: 'wp_rupturer', type: 'weapon', name: 'COOLANT RUPTURER', rarity: 'epic', dtype: 'heat', weight: 70, reach: [2, 4], dmg: 10, en: 4, heat: 19, fx: { coolDmg: 3 }, color: '#ffcd75', desc: 'Cracks their coolant: -30 cooling for the rest of the fight (stacks, never below 20).' },
   { id: 'wp_thermal', type: 'weapon', name: 'THERMAL LANCE', rarity: 'epic', dtype: 'heat', weight: 90, reach: [2, 6], dmg: 14, en: 5, heat: 21, fx: { line: true, hotBonus: true }, color: '#ef7d57', desc: 'Double damage against a target above 75% of its heat cap.' },
   // Electric specialists: starve the target so it can't shoot
   { id: 'wp_spark', type: 'weapon', name: 'SPARK PISTOL', rarity: 'common', dtype: 'energy', weight: 35, reach: [1, 3], dmg: 5, en: 14, heat: 3, fx: { drain: 14 }, color: '#73eff7', desc: 'Weak hit, but drains a lot of energy.' },
   { id: 'wp_leech', type: 'weapon', name: 'LEECH COIL', rarity: 'rare', dtype: 'energy', weight: 65, reach: [1, 3], dmg: 7, en: 20, heat: 4, fx: { drain: 12, steal: true }, color: '#a7f070', desc: 'The energy it drains goes to you (energy only, never HP).' },
-  { id: 'wp_gridbreaker', type: 'weapon', name: 'GRID BREAKER', rarity: 'epic', dtype: 'energy', weight: 80, reach: [2, 5], dmg: 10, en: 19, heat: 4, fx: { regenDmg: 4 }, color: '#41a6f6', desc: 'Breaks their generator: -4 regen for the rest of the fight (stacks, never below 3).' },
+  { id: 'wp_gridbreaker', type: 'weapon', name: 'GRID BREAKER', rarity: 'epic', dtype: 'energy', weight: 80, reach: [2, 5], dmg: 10, en: 19, heat: 4, fx: { regenDmg: 4 }, color: '#41a6f6', desc: 'Breaks their generator: -40 regen for the rest of the fight (stacks, never below 30).' },
   { id: 'wp_capdump', type: 'weapon', name: 'CAPACITOR DUMP', rarity: 'epic', dtype: 'energy', weight: 70, reach: [1, 4], dmg: 8, en: 13, heat: 3, fx: { dump: true }, color: '#c46fd6', desc: 'Spends ALL your remaining energy: +1 damage for every 2 energy spent.' },
   // Close-range heavies: big hits right next to the enemy
   { id: 'wp_magma', type: 'weapon', name: 'MAGMA FIST', rarity: 'epic', dtype: 'heat', weight: 95, reach: [1, 2], dmg: 17, en: 5, heat: 22, fx: { heat: 14 }, color: '#ef7d57', desc: 'A molten punch: a big hit up close that pumps heat into the target.' },
@@ -155,7 +155,7 @@ export const PARTS = [
   { id: 'wp_minelauncher', type: 'weapon', mount: 'top', name: 'MINE LAUNCHER', rarity: 'rare', dtype: 'phys', weight: 70, reach: [2, 6], dmg: 17, en: 6, heat: 9, ammo: 3, arc: true, fx: { mine: true }, color: '#ef7d57', desc: 'Plants a mine next to the target: it blasts whoever steps there.' },
   { id: 'wp_rocket', type: 'weapon', mount: 'top', name: 'ROCKET LAUNCHER', rarity: 'rare', dtype: 'phys', weight: 90, reach: [3, 7], dmg: 19, en: 8, heat: 13, ammo: 2, arc: true, fx: { splash: 1 }, color: '#ffcd75' },
   { id: 'wp_concussion', type: 'weapon', mount: 'top', name: 'CONCUSSION MORTAR', rarity: 'rare', dtype: 'phys', weight: 90, reach: [4, 8], dmg: 9, en: 8, heat: 12, arc: true, fx: { push: 2 }, color: '#94b0c2', desc: 'Into the edge: the target slams for extra damage.' },
-  { id: 'wp_napalm', type: 'weapon', mount: 'top', name: 'NAPALM LAUNCHER', rarity: 'rare', dtype: 'heat', weight: 80, reach: [3, 6], dmg: 8, en: 5, heat: 22, arc: true, fx: { heat: 12, napalm: 2 }, color: '#ff5d73', desc: "Sets the target's plate on fire for 2 turns: +8 heat to whoever stands or lands there." },
+  { id: 'wp_napalm', type: 'weapon', mount: 'top', name: 'NAPALM LAUNCHER', rarity: 'rare', dtype: 'heat', weight: 80, reach: [3, 6], dmg: 8, en: 5, heat: 22, arc: true, fx: { heat: 12, napalm: 2 }, color: '#ff5d73', desc: "Sets the target's plate on fire for 2 turns: +80 heat to whoever stands or lands there." },
   { id: 'wp_harpoon', type: 'weapon', mount: 'top', name: 'HARPOON CANNON', rarity: 'rare', dtype: 'phys', weight: 85, reach: [4, 8], dmg: 13, en: 8, heat: 12, fx: { pull: 3 }, color: '#94b0c2', icon: 'wp_grapple', desc: 'Sets up stomps, rams, short guns and mines in its way.' },
   { id: 'wp_arcmortar', type: 'weapon', mount: 'top', name: 'ARC MORTAR', rarity: 'epic', dtype: 'energy', weight: 95, reach: [3, 7], dmg: 11, en: 20, heat: 6, arc: true, fx: { drain: 10 }, color: '#73eff7', icon: 'wp_mortar' },
   { id: 'wp_missiles', type: 'weapon', mount: 'top', name: 'MISSILE POD', rarity: 'epic', dtype: 'phys', weight: 110, reach: [3, 6], dmg: 16, en: 6, heat: 9, ammo: 3, arc: true, color: '#ff5d73' },
@@ -180,7 +180,7 @@ export const PARTS = [
   { id: 'sp_teleport', type: 'special', name: 'TELEPORTER', rarity: 'epic', weight: 40, special: 'teleport', uses: 1, en: 14, heat: 4, color: '#c46fd6', desc: 'Blink to any free position.' },
   { id: 'sp_blink', type: 'special', name: 'BLINK DRIVE', rarity: 'legendary', weight: 48, special: 'teleport', uses: 2, en: 16, heat: 4, color: '#73eff7', icon: 'sp_teleport', desc: 'Blink to any free position.' },
   { id: 'sp_hook', type: 'special', name: 'GRAPPLING HOOK', rarity: 'rare', weight: 32, special: 'hook', range: 6, uses: 2, en: 8, heat: 6, color: '#94b0c2', desc: 'Yanks the enemy right next to you from up to 6 away (a mine in the way stops it there, and goes off). No damage.' },
-  { id: 'sp_tether', type: 'special', name: 'MAG TETHER', rarity: 'epic', weight: 40, special: 'hook', range: 7, drain: 12, uses: 2, en: 12, heat: 6, color: '#73eff7', icon: 'sp_hook', desc: 'Yanks the enemy right next to you from up to 7 away and drains 12 of its energy (a mine in the way stops it there, and goes off).' },
+  { id: 'sp_tether', type: 'special', name: 'MAG TETHER', rarity: 'epic', weight: 40, special: 'hook', range: 7, drain: 12, uses: 2, en: 12, heat: 6, color: '#73eff7', icon: 'sp_hook', desc: 'Yanks the enemy right next to you from up to 7 away and drains its energy (a mine in the way stops it there, and goes off).' },
   { id: 'sp_winch', type: 'special', name: 'HARPOON WINCH', rarity: 'epic', weight: 40, special: 'hook', range: 8, uses: 2, en: 10, heat: 8, color: '#ffcd75', icon: 'sp_hook', desc: 'Yanks the enemy right next to you from up to 8 away (a mine in the way stops it there, and goes off). No damage.' },
 
   // Drones: act every turn, any range, once deployed
@@ -189,7 +189,7 @@ export const PARTS = [
   { id: 'dr_hornet', type: 'drone', name: 'HORNET DRONE', rarity: 'rare', dtype: 'phys', weight: 45, upkeep: { en: 4, heat: 2 }, dmg: 5, color: '#ffcd75' },
   { id: 'dr_medic', type: 'drone', name: 'MEDIC DRONE', rarity: 'rare', weight: 40, upkeep: { en: 6, heat: 0 }, heal: 6, color: '#a7f070', desc: 'Repairs you every turn it is deployed, up to 30% of your max HP per battle (grows with level; the Risk heal penalty applies). It never attacks.' },
   { id: 'dr_static', type: 'drone', name: 'STATIC DRONE', rarity: 'rare', dtype: 'energy', weight: 40, upkeep: { en: 3, heat: 2 }, dmg: 4, fx: { drain: 6 }, color: '#73eff7', icon: 'dr_hornet', desc: 'Electric zaps that drain energy every turn.' },
-  { id: 'dr_coolant', type: 'drone', name: 'COOLANT DRONE', rarity: 'rare', weight: 40, upkeep: { en: 5, heat: 0 }, chill: 8, color: '#73eff7', icon: 'dr_medic', desc: 'Pulls 8 heat out of you every turn it is deployed (grows with level). It never attacks.' },
+  { id: 'dr_coolant', type: 'drone', name: 'COOLANT DRONE', rarity: 'rare', weight: 40, upkeep: { en: 5, heat: 0 }, chill: 8, color: '#73eff7', icon: 'dr_medic', desc: 'Pulls heat out of you every turn it is deployed (grows with level). It never attacks.' },
   { id: 'dr_guardian', type: 'drone', name: 'GUARDIAN DRONE', rarity: 'epic', weight: 50, upkeep: { en: 7, heat: 0 }, forcefieldEvery: 3, color: '#a7f070', desc: 'Forcefield every 3rd turn.' },
   { id: 'dr_reaper', type: 'drone', name: 'REAPER DRONE', rarity: 'legendary', dtype: 'energy', weight: 60, upkeep: { en: 6, heat: 2 }, dmg: 7, fx: { crit: 0.2 }, color: '#ffcd75', desc: '20% crit chance.' },
   { id: 'dr_seraph', type: 'drone', name: 'SERAPH DRONE', rarity: 'mythic', dtype: 'energy', weight: 65, upkeep: { en: 7, heat: 2 }, dmg: 8, fx: { crit: 0.25 }, color: '#ff5d73', desc: '25% crit chance.' },
@@ -228,6 +228,18 @@ export const PARTS = [
   { id: 'md_voidcore', type: 'module', name: 'VOID CORE', rarity: 'mythic', weight: 30, hp: 24, res: { phys: 2, heat: 2, energy: 2 }, startForcefield: true, unique: true, color: '#ff5d73', desc: 'Start each battle with a Forcefield.' },
   { id: 'md_singularity', type: 'module', name: 'SINGULARITY CHIP', rarity: 'mythic', weight: 32, atkPct: 0.12, weaponDmgPct: 0.15, crit: 0.03, unique: true, color: '#ff5d73' },
 ];
+
+// Heat and energy run x10 like HP and damage (CONFIG.gear.rxScale): the catalog above is
+// written small, so scale every reactor number once here (player and enemy parts alike)
+{
+  const R = CONFIG.gear.rxScale || 1;
+  const REACTOR_FIELDS = ['en', 'heat', 'energy', 'regen', 'heatCap', 'cool', 'moveEn', 'stompEn', 'stompHeat', 'chill', 'drain'];
+  for (const p of PARTS) {
+    for (const f of REACTOR_FIELDS) if (typeof p[f] === 'number') p[f] *= R;
+    if (p.upkeep) p.upkeep = Object.fromEntries(Object.entries(p.upkeep).map(([k, v]) => [k, v * R]));
+    if (p.fx) for (const f of ['heat', 'drain', 'coolDmg', 'regenDmg']) if (typeof p.fx[f] === 'number') p.fx[f] *= R;
+  }
+}
 for (const p of PARTS) if (p.type === 'weapon' && !p.mount) p.mount = 'side';
 
 /** Retired parts (older saves): armor became modules, shields left the special slots. */
@@ -256,7 +268,7 @@ export function slotAccepts(slot, part) {
 }
 
 /** Movement with no legs fitted. */
-export const DEFAULT_LEGS = { id: 'lg_strider', name: 'NO LEGS', walk: 2, jump: null, stomp: 6, stompType: 'phys', stompEn: 0, stompHeat: 4, anchored: false, moveEn: 0, freeMove: false };
+export const DEFAULT_LEGS = { id: 'lg_strider', name: 'NO LEGS', walk: 2, jump: null, stomp: 6, stompType: 'phys', stompEn: 0, stompHeat: 40, anchored: false, moveEn: 0, freeMove: false };
 
 /** The movement and stomp rules a battle needs from a legs part (level-scaled stomp included). */
 export function legsRules(p) {
@@ -786,7 +798,7 @@ export function enemyRig(nodeType, { cdCut = 0, element = null } = {}) {
   const r = { ...CONFIG.gear.enemyRig[tier] };
   if (element === 'heat') Object.assign(r, { heatCap: Math.round(r.heatCap * 1.35), cool: Math.round(r.cool * 1.35), energy: Math.round(r.energy * 0.9) });
   if (element === 'energy') Object.assign(r, { energy: Math.round(r.energy * 1.35), regen: Math.round(r.regen * 1.35), heatCap: Math.round(r.heatCap * 0.9) });
-  return { ...r, cool: r.cool + cdCut * 4 };
+  return { ...r, cool: r.cool + cdCut * 40 };
 }
 
 /**

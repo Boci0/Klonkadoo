@@ -74,19 +74,20 @@ export const CONFIG = {
   gear: {
     dmgScale: 13, // gun/drone damage vs the part numbers (x10 since 2.3: HP and damage are big numbers so upgrades show)
     hpScale: 10, // HP on parts, repairs and every fixed HP / damage number (spikes, burn, mines, events) x this
+    rxScale: 10, // heat and energy too: every reactor number on parts (costs, pools, regen, cooling, heat in, drain) is x this (Mech.PARTS)
     enemyDmgScale: 0.5, // enemy guns hit this much of a same-level player gun
     droneHealCap: 0.2, // repair drones fix at most this share of max HP per battle
     enemyHpScale: 7.5, // every enemy's HP: elites ~10-12 turns, bosses ~20 (tools/balance-sim.mjs)
     exposedMult: 1.25, // rammed targets take +25% gun damage until their next turn
     // Damage types (Mech.DTYPES): Explosive hits add heat and Electric hits drain energy,
     // dtypeLoad x the hit; whatever the reactor can't absorb spills into HP at dtypeSpill x
-    dtypeLoad: 0.05, // heat / drain per point of battle damage
+    dtypeLoad: 0.5, // heat / drain per point of battle damage
     dtypeSpill: 0.5,
     ramSpeed: 380, // impact speed (px/s) that counts as a ram
     shotGap: 0.45, // seconds between an enemy's actions, so you can follow them
     actions: 2, // actions per turn: WALK / JUMP, FIRE a gun (each gun once per turn), DEPLOY a drone; VENT takes the rest of the turn
     vent: { coolMult: 2, energyPct: 0 }, // VENT (cooldown): cools 2x your cooling; energy only comes from regen
-    stompHeat: 4, // STOMP heat for legs that don't set their own (stompHeat on the legs part)
+    stompHeat: 40, // STOMP heat for legs that don't set their own (stompHeat on the legs part)
     // Build: one load cap for every mech; up to overweightMax kg over costs HP per kg, past that you can't deploy
     loadCap: 1000,
     overweightMax: 10,
@@ -97,13 +98,13 @@ export const CONFIG = {
     tierStep: 1.25, // +25% per tier, and a tier's levels add up to one more step (a transformed common lands near a native legendary)
     transform: { parts: [2, 3, 4, 5], scrap: [20, 60, 150, 400] }, // from common, rare, epic, legendary
     // Energy pool / refill per turn, heat cap / cooling per turn when no frame sets them
-    baseRig: { energy: 30, regen: 14, heatCap: 30, cool: 12 },
+    baseRig: { energy: 300, regen: 140, heatCap: 300, cool: 120 },
     // Enemy reactors by tier: bigger threats sustain more fire
     enemyRig: {
-      combat: { energy: 28, regen: 13, heatCap: 32, cool: 11 },
-      elite: { energy: 36, regen: 16, heatCap: 40, cool: 13 },
-      miniboss: { energy: 42, regen: 18, heatCap: 46, cool: 15 },
-      boss: { energy: 50, regen: 20, heatCap: 54, cool: 17 },
+      combat: { energy: 280, regen: 130, heatCap: 320, cool: 110 },
+      elite: { energy: 360, regen: 160, heatCap: 400, cool: 130 },
+      miniboss: { energy: 420, regen: 180, heatCap: 460, cool: 150 },
+      boss: { energy: 500, regen: 200, heatCap: 540, cool: 170 },
     },
   },
 
@@ -303,8 +304,8 @@ export const CONFIG = {
   // --- Operation conditions: one random twist per run ---
   runConditions: [
     { id: 'gold_rush', name: 'GOLD RUSH', desc: '+30% gold, but enemies +10% HP.' },
-    { id: 'overcharged', name: 'OVERCHARGED GRID', desc: 'Every mech refills +5 energy per turn.' },
-    { id: 'heatwave', name: 'HEATWAVE', desc: 'Every mech cools 5 less heat per turn.' },
+    { id: 'overcharged', name: 'OVERCHARGED GRID', desc: 'Every mech refills +50 energy per turn.' },
+    { id: 'heatwave', name: 'HEATWAVE', desc: 'Every mech cools 50 less heat per turn.' },
     { id: 'supplied', name: 'WELL SUPPLIED', desc: 'Start with a random boon.' },
     { id: 'glass_war', name: 'GLASS WAR', desc: 'Everyone deals +30% damage.' },
     { id: 'scouted', name: 'SCOUTED', desc: '+1 move on every floor.' },

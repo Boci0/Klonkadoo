@@ -268,7 +268,8 @@ function bindAbilityButtons() {
       held = false; // the hold already locked it
       return;
     }
-    if (state !== State.BATTLE || battlePaused || autoRun) return;
+    if (state !== State.BATTLE || battlePaused) return;
+    if (autoRun) return takeBackFromAutoRun();
     setAutoBattle(!autoBattle);
     soundEngine.playUI();
   });
@@ -280,7 +281,8 @@ function bindAbilityButtons() {
     clearTimeout(keyTimer);
     keyTimer = null;
     showAutoHold(false);
-    if (keyHeld || state !== State.BATTLE || battlePaused || autoRun) return;
+    if (keyHeld || state !== State.BATTLE || battlePaused) return;
+    if (autoRun) return takeBackFromAutoRun();
     setAutoBattle(!autoBattle);
   });
 
@@ -290,7 +292,11 @@ function bindAbilityButtons() {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
     const digit = /^Digit([1-6])$/.exec(e.code);
     if (e.code === 'KeyA') {
-      if (!autoRun && !e.repeat && !keyTimer) {
+      if (autoRun && !e.repeat) {
+        takeBackFromAutoRun();
+        return;
+      }
+      if (!e.repeat && !keyTimer) {
         keyHeld = false;
         showAutoHold(true);
         keyTimer = setTimeout(() => {
@@ -444,6 +450,13 @@ function startAutoRun() {
   clearTimeout(autoRunTimer);
   autoRunTimer = setTimeout(autoRunTick, 400);
   return true;
+}
+
+/** [A] or the AUTO button mid-fight during AUTO RUN: stop it and hand you this battle. */
+function takeBackFromAutoRun() {
+  stopAutoRun('YOU TOOK OVER');
+  setAutoBattle(false); // also unlocks a locked AUTO
+  soundEngine.playUI();
 }
 
 function stopAutoRun(reason = '') {
@@ -687,6 +700,7 @@ function startNewRun(skin = 'default') {
   run = new RunState(perm, ballType);
   run.v2 = true; // 2.0 rules (see resumeSavedRun)
   run.v23 = true; // 2.3 numbers: x10 HP, new level growth, smaller boons
+  run.v231 = true; // 2.3.1: heat and energy x10 too
   // Garage mechs 2 and 3 join the team, each with its own HP for the run
   run.team = rest.map((parts) => ({ perm: withMastery(withMech({}, parts), mastery), hp: 0 }));
   run.team.forEach((m, i) => (m.hp = run.member(i + 1).maxHp));
@@ -759,6 +773,7 @@ function resumeSavedRun() {
     run.v2 = true;
   }
   if (!run.v23) migrateRunTo23(run);
+  if (!run.v231) refreshRunRigs(run); // 2.3.1: heat and energy went x10: the saved rigs carry the old reactor numbers
   map = s.map;
   runSeed = s.runSeed;
   currentFloorView = s.currentFloorView;
@@ -1347,6 +1362,26 @@ function migrateRunTo23(r) {
   r.team = rest.slice(0, (r.team || []).length).map((parts) => ({ perm: withMastery(withMech({}, parts), mastery), hp: 0 }));
   r.team.forEach((m, i) => (m.hp = teamPct[i] > 0 ? Math.max(1, Math.round(r.member(i + 1).maxHp * teamPct[i])) : 0));
   r.v23 = true;
+}
+
+/** Rebuild every team mech's stats from the garage, keeping each one's share of its HP. */
+function refreshRunRigs(r) {
+  const mastery = masteryLevel(saveSystem.getMasteryXp(r.ballType)).level;
+  const [lead, ...rest] = saveSystem.getTeamLoadouts();
+  const leadPct = r.maxHp > 0 ? r.hp / r.maxHp : 1;
+  const teamPct = (r.team || []).map((m, i) => { const mx = r.member(i + 1)?.maxHp || 1; return mx > 0 ? m.hp / mx : 1; });
+  const boost = r.hpBoost;
+  const oldPerm = r.permanent || {};
+  const perm = withMastery(withMech({}, lead), mastery);
+  r.atkMult += (perm.atkBonus || 0) - (oldPerm.atkBonus || 0);
+  r.def += (perm.defBonus || 0) - (oldPerm.defBonus || 0);
+  r.permanent = perm;
+  r.baseMaxHp = CONFIG.run.maxHpBase + (perm.hpBonus || 0) + (r.ball?.hpBonus || 0);
+  r.maxHp = r.baseMaxHp + boost;
+  r.hp = Math.max(1, Math.round(r.maxHp * leadPct));
+  r.team = rest.slice(0, (r.team || []).length).map((parts) => ({ perm: withMastery(withMech({}, parts), mastery), hp: 0 }));
+  r.team.forEach((m, i) => (m.hp = teamPct[i] > 0 ? Math.max(1, Math.round(r.member(i + 1).maxHp * teamPct[i])) : 0));
+  r.v231 = true;
 }
 
 function pickArchetype(nodeType, floor, index, element = 'phys', risk = 0) {

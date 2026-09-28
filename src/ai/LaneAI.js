@@ -135,7 +135,7 @@ function apply(s, a) {
     if (g.lowEnBonus && foe.energy < (foe.energyMax || 0) * 0.25) shot = { ...shot, dmg: shot.dmg * 2 }; // Arc Turret
     if (g.execute && foe.hp < (foe.maxHp || foe.hp) * g.execute) shot = { ...shot, dmg: shot.dmg * 1.8 };
     if (g.meltdown && foe.heat > foe.heatCap) {
-      shot = { ...shot, dmg: shot.dmg + (foe.heat - foe.heatCap) * 2 * CONFIG.gear.hpScale };
+      shot = { ...shot, dmg: shot.dmg + (foe.heat - foe.heatCap) * 2 * (CONFIG.gear.hpScale / CONFIG.gear.rxScale) };
       foe.heat = foe.heatCap;
     }
     if (g.dump) {
@@ -148,11 +148,11 @@ function apply(s, a) {
       const want = g.drain ?? Math.round(g.dmg * CONFIG.gear.dtypeLoad);
       const took = Math.min(foe.energy, want);
       foe.energy -= took;
-      dmg += (want - took) * CONFIG.gear.hpScale; // energy break
+      dmg += (want - took) * (CONFIG.gear.hpScale / CONFIG.gear.rxScale); // energy break
       if (g.steal) me.energy = Math.min(me.energyMax, me.energy + took);
     }
-    if (g.coolDmg) foe.cool = Math.max(2, foe.cool - g.coolDmg);
-    if (g.regenDmg) foe.regen = Math.max(3, foe.regen - g.regenDmg);
+    if (g.coolDmg) foe.cool = Math.max(2 * CONFIG.gear.rxScale, foe.cool - g.coolDmg);
+    if (g.regenDmg) foe.regen = Math.max(3 * CONFIG.gear.rxScale, foe.regen - g.regenDmg);
     if (g.jam && foe.energy <= 0) foe.jamNext = true;
     if (foe.shield) {
       foe.shield = false; // forcefield eats the hit
@@ -296,32 +296,45 @@ function threat(u, target, size) {
   return best;
 }
 
-function score(start, end, aggression) {
+/**
+ * `stall`: turns this mech has gone without dealing damage. The longer it
+ * lasts, the more it commits (fears the reply less, closes in harder, spends
+ * specials like the hook), so two careful mechs can't dance forever.
+ */
+function score(start, end, aggression, stall = 0) {
+  const commit = Math.min(1, stall / 6);
   const me = end.me;
   const foe = end.foe;
   if (foe.hp <= 0) return 10000 + end.dealt;
   if (me.hp <= 0) return -10000;
+  const U = CONFIG.gear.hpScale; // the fixed weights below are in damage units
   // Pressure first: damage now is worth more than the damage it might dodge
   let s = end.dealt * 1.2;
   // Their answer next turn (none if they're over their heat cap: overheat)
   const foeLocked = foe.heat > foe.heatCap || foe.jamNext;
   const reply = Math.max(0, (foeLocked ? 0 : threat(foe, me, end.size)) - (me.bubble || 0)); // a SHIELD soaks their answer
-  s -= reply * (0.5 - 0.3 * aggression);
-  if (foeLocked) s += 12;
+  s -= reply * (0.5 - 0.3 * aggression) * (1 - 0.8 * commit);
+  if (foeLocked) s += 12 * U;
   // Our own next turn
   const mine = threat(me, foe, end.size);
-  if (me.heat > me.heatCap) s -= 15 + 0.8 * threat({ ...me, heat: 0 }, foe, end.size);
+  if (me.heat > me.heatCap) s -= 15 * U + 0.8 * threat({ ...me, heat: 0 }, foe, end.size);
   else s += 0.35 * mine;
   // Nothing to shoot next turn (out of reach): close in
-  if (!mine) s -= Math.abs(me.pos - foe.pos) * 1.2;
+  if (!mine) s -= Math.abs(me.pos - foe.pos) * 1.2 * U * (1 + 4 * commit);
+  // Stuck: end as close as it can (knockback eats the margin), and backing away
+  // (or leapfrogging to the far side) only drags the fight out
+  if (commit > 0) {
+    s -= Math.abs(me.pos - foe.pos) * 1.2 * U * commit;
+    s -= Math.max(0, Math.abs(me.pos - foe.pos) - Math.abs(start.me.pos - start.foe.pos)) * 3 * U * commit;
+  }
   // Mines near where the foe stands are worth something later
-  s += (end.minesLaid || 0) * 6;
+  s += (end.minesLaid || 0) * 6 * U;
   // Taking a mine hit is bad (already in HP, weigh it a bit more)
   s -= Math.max(0, start.me.hp - me.hp) * 0.5;
   // Energy for next turn matters a little; wasted steps cost a little
-  s += Math.min(me.energy, me.energyMax) * 0.02;
-  s -= (end.moves || 0) * 1.5;
-  s -= (end.specialsUsed || 0) * 4; // uses are limited: spend them when they matter
+  s += Math.min(me.energy, me.energyMax) * 0.02 * (U / CONFIG.gear.rxScale);
+  s -= (end.moves || 0) * 1.5 * U;
+  s -= (end.specialsUsed || 0) * 4 * U * (1 - commit); // uses are limited: spend them when they matter (or when stuck)
   return s;
 }
 
@@ -332,15 +345,15 @@ function score(start, end, aggression) {
  * [{ dmg, burst, en, heat, reach, ammo, ammoLeft, used, dtype, pierce,
  * heatFx, drain, push, pull, freeze, mine }] }. Returns the action list.
  */
-export function planTurn(state, { difficulty = 0.5, aggression = 0, rnd = Math.random } = {}) {
+export function planTurn(state, { difficulty = 0.5, aggression = 0, rnd = Math.random, stall = 0 } = {}) {
   const start = { ...cloneState(state), dealt: 0 };
-  const lines = sequences(start).map((l) => ({ ...l, score: score(start, l.state, aggression) }));
+  const lines = sequences(start).map((l) => ({ ...l, score: score(start, l.state, aggression, stall) }));
   if (!lines.length) return [{ type: 'end' }];
   lines.sort((a, b) => b.score - a.score);
   // A sure kill is always taken; otherwise weaker enemies sometimes settle for
   // a close second (never a wasted turn: it has to be nearly as good)
   if (lines[0].score >= 10000 || rnd() < 0.55 + 0.45 * difficulty) return lines[0].seq;
-  const pool = lines.slice(1, 4).filter((l) => l.score > lines[0].score - 8 && l.state.dealt >= lines[0].state.dealt * 0.6);
+  const pool = lines.slice(1, 4).filter((l) => l.score > lines[0].score - 8 * CONFIG.gear.hpScale && l.state.dealt >= lines[0].state.dealt * 0.6);
   return (pool.length ? pool[Math.floor(rnd() * pool.length)] : lines[0]).seq;
 }
 

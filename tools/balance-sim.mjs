@@ -92,7 +92,7 @@ function gunOf(w, dmg) {
     dtype: w.dtype || 'phys', pierce: !!w.fx?.pierce, heatFx: w.fx?.heat, drain: w.fx?.drain, push: w.fx?.push || 0, pull: w.fx?.pull || 0,
     drag: w.fx?.drag || 0, freeze: !!w.fx?.freeze, mine: !!w.fx?.mine, hotBonus: !!w.fx?.hotBonus, lowEnBonus: !!w.fx?.lowEnBonus, execute: w.fx?.execute || 0,
     meltdown: !!w.fx?.meltdown, steal: !!w.fx?.steal, jam: !!w.fx?.jam, coolDmg: w.fx?.coolDmg || 0, regenDmg: w.fx?.regenDmg || 0,
-    dump: !!w.fx?.dump, dumpScale: G.dmgScale, backfire: Math.round((w.backfire || 0) * G.dmgScale),
+    dump: !!w.fx?.dump, dumpScale: G.dmgScale / G.rxScale, backfire: Math.round((w.backfire || 0) * G.dmgScale),
     resDrain: { ...(w.fx?.resDrain || {}), ...(w.fx?.corrode ? { phys: w.fx.corrode } : {}) },
   };
 }
@@ -203,14 +203,18 @@ function drones(me, foe, turn, heal) {
 
 /** Plays one side's turn with the planner, one action at a time (it re-plans after each, like Game). */
 function playTurn(me, foe, mines, difficulty, rnd) {
+  const hp0 = foe.hp;
+  me.idle = (me.idle || 0) + 1;
   for (let guard = 0; guard < 8 && me.actions > 0 && me.hp > 0 && foe.hp > 0; guard++) {
     const s = { size: SIZE, me, foe, mines, stompHeat: G.stompHeat };
-    const plan = planTurn(s, { difficulty, rnd });
+    const plan = planTurn(s, { difficulty, rnd, stall: me.idle || 0 });
     const a = plan[0] || { type: 'end' };
     const st = { size: SIZE, me, foe, mines, stompHeat: G.stompHeat, dealt: 0 };
     if (!applyAction(st, a)) break;
+    if (args.trace) (me.trace ||= []).push(a.type === 'fire' ? `fire${a.gun}` : a.type === 'move' ? `move${a.pos}` : a.type);
     if (a.type === 'end') break;
   }
+  if (foe.hp < hp0) me.idle = 0;
 }
 
 /** A player hit through Game.calculatePlayerDamage: flat DEF instead of the planner's %. */
@@ -248,6 +252,9 @@ function battle(team, type, floor, rnd, rules) {
       drones(p, e, pt, heal);
       if (e.hp <= 0) break;
       if (upkeep(e)) playTurn(e, p, mines, e.difficulty, rnd);
+      // --trace: what both sides did, for fights that drag on (loops)
+      if (args.trace && turns > 40 && turns <= 46) console.log(`T${turns} you@${p.pos} hp${Math.round(p.hp)} heat${Math.round(p.heat)}/${p.heatCap} en${Math.round(p.energy)} [${(p.trace || []).join(' ')}] | foe@${e.pos} hp${Math.round(e.hp)} heat${Math.round(e.heat)}/${e.heatCap} en${Math.round(e.energy)} [${(e.trace || []).join(' ')}] guns ${e.guns.map((g) => g.reach.join('-')).join(',')}`);
+      p.trace = []; e.trace = [];
       et += 1;
       drones(e, p, et, 1);
       if (p.hp <= 0) {
