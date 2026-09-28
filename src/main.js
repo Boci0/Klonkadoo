@@ -25,7 +25,7 @@ import { DevTools } from './dev/DevTools.js';
 import { checkMedals } from './meta/Medals.js';
 import './platform/native.js';
 import './platform/desktop.js';
-import { withMech, tokenReward, riskEase, CRATES, enemyMech, enemyRig, CLEAN_WIN_KEYS, DTYPES, dtypeOf, droneUpkeep } from './meta/Mech.js';
+import { withMech, tokenReward, riskEase, CRATES, enemyMech, enemyRig, pickEnemyElement, elementLean, roleElements, CLEAN_WIN_KEYS, DTYPES, dtypeOf, droneUpkeep } from './meta/Mech.js';
 import { partIcon, ico } from './rendering/pixelIcons.js';
 import { pickNode, pickChoice, pickBuys, supplyValue } from './rogue/AutoRun.js';
 import { withMastery, masteryLevel, runXp } from './meta/Mastery.js';
@@ -1199,11 +1199,13 @@ function startCombat(node) {
   const devDef = devTools?.overrides?.enemyDefOffset ?? 0;
 
   for (let i = 0; i < count; i++) {
-    const archetype = pickArchetype(node.type, floorKey, i);
+    // Its damage type first (leaning toward what you resist least), then a role that comes in it
+    const element = pickEnemyElement(run.res, elementLean(node.type, floorKey, abyssDepth));
+    const archetype = pickArchetype(node.type, floorKey, i, element);
     const arch = CONFIG.enemyArchetypes[archetype];
     const isBoss = node.type === 'boss' && i === 0;
     const isFinal = isBoss && abyssDepth === ABYSS_FINAL_DEPTH; // the true final boss
-    const mech = enemyMech(node.type, archetype, run.floor + 1, Math.random, { atkMult: atkMult * waveAtkScale, boss: isBoss, final: isFinal });
+    const mech = enemyMech(node.type, archetype, run.floor + 1, Math.random, { atkMult: atkMult * waveAtkScale, boss: isBoss, final: isFinal, element });
 
     const finalHp = Math.round(tier.hp * CONFIG.gear.enemyHpScale * arch.hpMult * hpMult * floorHp * devHp * waveHpScale * (isFinal ? 1.5 : 1) * (node.type === 'boss' && i > 0 ? 0.55 : 1)); // boss escorts are lighter
     const finalAtk = Math.round((tier.atk * arch.atkMult * atkMult * floorAtk * devAtk * waveAtkScale) * 100) / 100;
@@ -1224,7 +1226,8 @@ function startCombat(node) {
       // Risk: RANGEFINDERS
       weapons: mech.weapons.map((w) => (riskData.enemyReach ? { ...w, reach: [w.reach[0], Math.min(CONFIG.lane.size - 1, w.reach[1] + riskData.enemyReach)] } : w)),
       droneOut: !!riskData.droneOut, // Risk: NIGHTMARE
-      rig: enemyRig(node.type, { cdCut: riskData.gunCdCut || 0 }),
+      rig: enemyRig(node.type, { cdCut: riskData.gunCdCut || 0, element: mech.element }),
+      element: mech.element,
       legs: mech.legs,
       res: mech.res,
       parts: mech.parts,
@@ -1301,7 +1304,7 @@ function startCombat(node) {
       name: boss.displayName,
       desc: boss.weapons.map((w) => w.name).join(' + ') + (node.type !== 'boss' ? `. ${arch?.desc || ''}`
         : run.floor - CONFIG.map.floors + 1 === ABYSS_FINAL_DEPTH ? '. Phase legs, reaches everywhere, and a blade for anyone who comes close.'
-          : '. Bolted down with long guns: they can\'t hit you up close.'),
+          : `. ${DTYPES[boss.element]?.name || 'PHYSICAL'} guns for every range, on heavy legs.`),
       color: arch?.color,
     }, () => {
       battlePaused = false;
@@ -1311,8 +1314,11 @@ function startCombat(node) {
 }
 
 /** Pick an enemy archetype based on floor weights. */
-function pickArchetype(nodeType, floor, index) {
-  const weights = CONFIG.archetypeWeights[['elite', 'miniboss', 'boss'].includes(nodeType) ? nodeType : floor] || CONFIG.archetypeWeights[1];
+function pickArchetype(nodeType, floor, index, element = 'phys') {
+  const all = CONFIG.archetypeWeights[['elite', 'miniboss', 'boss'].includes(nodeType) ? nodeType : floor] || CONFIG.archetypeWeights[1];
+  // Only roles that come in this damage type (Blaze is Explosive only, Surge Electric, Mine Layer Physical)
+  const fit = Object.fromEntries(Object.entries(all).filter(([k]) => roleElements(k).includes(element)));
+  const weights = Object.keys(fit).length ? fit : all;
   // Waves roll each enemy from the same weights; escorts in a boss / elite
   // wave skip the heavy hitters so fights stay readable
   if (index > 0 && (nodeType === 'boss' || nodeType === 'miniboss')) return Math.random() < 0.5 ? 'standard' : 'striker';

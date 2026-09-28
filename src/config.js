@@ -106,27 +106,27 @@ export const CONFIG = {
     },
   },
 
-  // --- Enemy archetypes: a paint job and a loadout (Mech.ENEMY_LOADOUTS) ---
+  // --- Enemy archetypes (roles): a paint job and a loadout per damage type (Mech.ENEMY_LOADOUTS) ---
   // No special abilities: everything an enemy does comes from its parts.
   // defBonus is DEF against every damage type, on top of its armor's resists.
   enemyArchetypes: {
     standard: {
-      name: 'HOSTILE UNIT', desc: 'Light gun, light armor.',
+      name: 'HOSTILE UNIT', desc: 'A close gun and a long one, light armor.',
       hpMult: 1, atkMult: 1, defBonus: 0, aiShift: 0,
       color: '#e0655c', darkColor: '#a83b35',
     },
     tank: {
-      name: 'WALL UNIT', desc: 'Titanium hull on treads. Scattergun up close, Repulsor and Impact Cannon to shove you into the edge: keep your distance.',
+      name: 'WALL UNIT', desc: 'Thick hull on treads, a charge, and guns that shove you around: keep your distance.',
       hpMult: 1.25, atkMult: 0.9, defBonus: 1, aiShift: -0.025,
       color: '#4a6572', darkColor: '#263238',
     },
     striker: {
-      name: 'SNIPER UNIT', desc: 'Long Rifle (Sniper Cannon on elites). Get close.',
+      name: 'SNIPER UNIT', desc: 'A long gun with a close one for backup (the big gun on elites).',
       hpMult: 1.05, atkMult: 1.2, defBonus: 0, aiShift: 0.075,
       color: '#f57c00', darkColor: '#e65100',
     },
     vampire: {
-      name: 'REAPER UNIT', desc: 'Plasma Scythe: huge damage, right next to you.',
+      name: 'REAPER UNIT', desc: 'Hooks you in, hits hard up close, and a Medic Drone keeps it going.',
       hpMult: 1.2, atkMult: 1.05, defBonus: 0, aiShift: 0.025,
       color: '#d32f2f', darkColor: '#8b0000',
     },
@@ -141,12 +141,12 @@ export const CONFIG = {
       color: '#7b1fa2', darkColor: '#4a148c',
     },
     tactician: {
-      name: 'COMMAND UNIT', desc: 'Tesla Coil up close, Missile Pod from mid range.',
+      name: 'COMMAND UNIT', desc: 'A hook, a close gun and guns for mid and long range.',
       hpMult: 1.3, atkMult: 1.05, defBonus: 1, aiShift: 0.06,
       color: '#ffb300', darkColor: '#ff8f00',
     },
     corroder: {
-      name: 'ACID UNIT', desc: 'Acid strips your Physical resist, EMP drains your energy.',
+      name: 'ACID UNIT', desc: 'Strips your resist to its own damage type, then keeps hitting.',
       hpMult: 1.15, atkMult: 1.0, defBonus: 0, aiShift: 0.04,
       color: '#aeea00', darkColor: '#33691e',
     },

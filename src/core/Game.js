@@ -229,6 +229,7 @@ export class Game {
     });
     b.pos = pos;
     b.rank = e.rank || null;
+    b.element = e.element || null; // its damage type (Mech.ENEMY_LOADOUTS)
     b.weapons = (e.weapons || []).map((w) => ({ ...laneGun(w), ammoLeft: w.ammo || 0 }));
     b.specials = (e.specials || []).map((sp) => ({ ...sp, usesLeft: sp.uses }));
     // Enemy drones launch on their first turn (it costs them an action, like yours)
@@ -1070,12 +1071,16 @@ export class Game {
     return { ok: true };
   }
 
-  /** This round's damage before resists: Thermal Lance, Meltdown Cannon and Capacitor Dump change it. */
+  /** This round's damage before resists: Thermal Lance, Arc Turret, Meltdown Cannon and Capacitor Dump change it. */
   _shotDamage(w, target) {
     let dmg = w.dmg;
     if (w.fx?.hotBonus && target.heat > target.heatCap * 0.75) {
       dmg *= 2;
       this._callout(target, 'SEARED x2', DTYPES.heat.color);
+    }
+    if (w.fx?.lowEnBonus && target.energy < (target.energyMax || 0) * 0.25) {
+      dmg *= 2;
+      this._callout(target, 'SHORTED x2', DTYPES.energy.color);
     }
     if (w.fx?.meltdown && target.heat > target.heatCap) {
       const excess = target.heat - target.heatCap;
@@ -1362,6 +1367,7 @@ export class Game {
         freeze: !!w.fx?.freeze,
         mine: !!w.fx?.mine,
         hotBonus: !!w.fx?.hotBonus,
+        lowEnBonus: !!w.fx?.lowEnBonus,
         execute: w.fx?.execute || 0,
         meltdown: !!w.fx?.meltdown,
         steal: !!w.fx?.steal,

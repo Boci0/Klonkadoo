@@ -14,7 +14,7 @@
 
 import { CONFIG } from '../src/config.js';
 import { planTurn, applyAction } from '../src/ai/LaneAI.js';
-import { enemyMech, enemyRig, withMech, getPart, legsRules, riskEase, tierRange, maxLevel, RARITY_ORDER } from '../src/meta/Mech.js';
+import { enemyMech, enemyRig, pickEnemyElement, elementLean, roleElements, withMech, getPart, legsRules, riskEase, tierRange, maxLevel, RARITY_ORDER } from '../src/meta/Mech.js';
 import { withMastery } from '../src/meta/Mastery.js';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => (a.startsWith('--') ? a.slice(2).split('=') : ['runs', a])));
@@ -90,7 +90,7 @@ function gunOf(w, dmg) {
   return {
     dmg, burst: w.fx?.burst || 1, en: w.en || 0, heat: w.heat || 0, reach: w.reach, ammo: w.ammo || 0, ammoLeft: w.ammo || 0, used: false,
     dtype: w.dtype || 'phys', pierce: !!w.fx?.pierce, heatFx: w.fx?.heat, drain: w.fx?.drain, push: w.fx?.push || 0, pull: w.fx?.pull || 0,
-    drag: w.fx?.drag || 0, freeze: !!w.fx?.freeze, mine: !!w.fx?.mine, hotBonus: !!w.fx?.hotBonus, execute: w.fx?.execute || 0,
+    drag: w.fx?.drag || 0, freeze: !!w.fx?.freeze, mine: !!w.fx?.mine, hotBonus: !!w.fx?.hotBonus, lowEnBonus: !!w.fx?.lowEnBonus, execute: w.fx?.execute || 0,
     meltdown: !!w.fx?.meltdown, steal: !!w.fx?.steal, jam: !!w.fx?.jam, coolDmg: w.fx?.coolDmg || 0, regenDmg: w.fx?.regenDmg || 0,
     dump: !!w.fx?.dump, dumpScale: G.dmgScale, backfire: Math.round((w.backfire || 0) * G.dmgScale), lifesteal: w.fx?.lifesteal || 0,
     resDrain: { ...(w.fx?.resDrain || {}), ...(w.fx?.corrode ? { phys: w.fx.corrode } : {}) },
@@ -98,15 +98,16 @@ function gunOf(w, dmg) {
 }
 
 const ARCH_KEYS = (floor) => Object.entries(CONFIG.archetypeWeights[Math.min(5, floor)] || CONFIG.archetypeWeights[1]);
-function pickArch(floor, rnd) {
+function pickArch(floor, rnd, element) {
   if (args.arch) return args.arch; // --arch=tank: every enemy is this archetype
-  const list = ARCH_KEYS(floor);
+  // Only roles that come in the enemy's damage type (main.js pickArchetype)
+  const list = ARCH_KEYS(floor).filter(([k]) => roleElements(k).includes(element));
   let r = rnd() * list.reduce((s, [, w]) => s + w, 0);
   for (const [k, w] of list) if ((r -= w) <= 0) return k;
   return list[0][0];
 }
 
-function enemyTeam(type, floor, rnd) {
+function enemyTeam(type, floor, rnd, playerRes = {}) {
   const count = CONFIG.enemyCounts[type]?.[floor] || 1;
   const tier = CONFIG.enemyTiers[type === 'combat' ? floor : type];
   const risk = riskData();
@@ -118,11 +119,13 @@ function enemyTeam(type, floor, rnd) {
   const waveHp = count === 3 ? 0.75 : count === 2 ? 0.85 : 1;
   const out = [];
   for (let i = 0; i < count; i++) {
-    const archetype = type === 'boss' && i === 0 ? 'standard' : pickArch(floor, rnd);
+    // --element=heat forces one damage type; otherwise it leans toward your weakest resist
+    const element = args.element || pickEnemyElement(playerRes, elementLean(type, floor) * Number(args.lean ?? 1), rnd); // --lean=0: even odds
+    const archetype = type === 'boss' && i === 0 ? 'standard' : pickArch(floor, rnd, element);
     const arch = CONFIG.enemyArchetypes[archetype];
     const boss = type === 'boss' && i === 0;
-    const mech = enemyMech(type, archetype, floor, rnd, { atkMult, boss });
-    const rig = enemyRig(type, { cdCut: risk.gunCdCut || 0 });
+    const mech = enemyMech(type, archetype, floor, rnd, { atkMult, boss, element });
+    const rig = enemyRig(type, { cdCut: risk.gunCdCut || 0, element: mech.element });
     const maxHp = Math.round(tier.hp * G.enemyHpScale * arch.hpMult * hpMult * floorHp * waveHp * (type === 'boss' && i > 0 ? 0.55 : 1));
     out.push({
       team: 'enemy', pos: 9, hp: maxHp, maxHp, heat: 0, heatCap: rig.heatCap, cool: rig.cool, energy: rig.energy, energyMax: rig.energy, regen: rig.regen,
@@ -227,7 +230,7 @@ function fixPlayerHit(p, before) {
  */
 function battle(team, type, floor, rnd, rules) {
   const heal = rules.healMult;
-  const foes = enemyTeam(type, floor, rnd);
+  const foes = enemyTeam(type, floor, rnd, team[0].perm.res);
   let idx = team.findIndex((m) => m.hp > 0);
   if (idx < 0) return { won: false, turns: 0 };
   let p = playerUnit(team[idx].perm, team[idx].hp, team[idx].maxHp);

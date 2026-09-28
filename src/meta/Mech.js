@@ -101,7 +101,7 @@ export const PARTS = [
   { id: 'lg_jumpjets', type: 'legs', name: 'JUMP JETS', rarity: 'rare', weight: 110, hp: 6, walk: 1, jump: [1, 4], stomp: 10, stompType: 'heat', stompHeat: 6, desc: 'Long hops over mechs, spikes and mines. The stomp scorches (Explosive).' },
   { id: 'lg_coil', type: 'legs', name: 'COIL SPRINGS', rarity: 'epic', weight: 115, hp: 8, walk: 2, jump: [1, 2], stomp: 10, stompType: 'energy', stompEn: 6, stompHeat: 2, desc: 'Walk or hop. The stomp shocks (Electric).' },
   { id: 'lg_anchor', type: 'legs', name: 'ANCHOR CLAMPS', rarity: 'epic', weight: 200, hp: 30, def: 4, atkPct: 0.2, anchored: true, desc: "Bolted down: you can't move or stomp. +4 DEF, +20% gun damage." },
-  { id: 'lg_bulwark', type: 'legs', name: 'BULWARK LEGS', rarity: 'legendary', weight: 185, hp: 26, res: { phys: 1.5, heat: 1.5, energy: 1.5 }, walk: 1, jump: [2, 2], stomp: 18, stompHeat: 8, desc: 'Slow, armored against every type, and a crushing stomp.' },
+  { id: 'lg_bulwark', type: 'legs', name: 'BULWARK LEGS', rarity: 'legendary', weight: 185, hp: 26, walk: 1, jump: [2, 2], stomp: 14, stompHeat: 8, desc: 'Slow and heavy: lots of HP and a hard stomp.' },
   { id: 'lg_thrusters', type: 'legs', name: 'THRUSTERS', rarity: 'legendary', weight: 130, hp: 10, walk: 3, jump: [1, 3], stomp: 10, stompType: 'heat', stompHeat: 6, moveEn: 6, desc: 'Go anywhere, but each move costs 6 energy. The stomp scorches.' },
   { id: 'lg_phase', type: 'legs', name: 'PHASE STRIDERS', rarity: 'mythic', weight: 120, hp: 14, walk: 2, jump: [1, 3], stomp: 12, stompType: 'energy', stompEn: 6, stompHeat: 2, freeMove: true, color: '#ff5d73', desc: 'Your first move each turn uses no action. The stomp shocks.' },
 
@@ -139,6 +139,15 @@ export const PARTS = [
   { id: 'wp_leech', type: 'weapon', name: 'LEECH COIL', rarity: 'rare', dtype: 'energy', weight: 65, reach: [1, 3], dmg: 7, en: 20, heat: 4, fx: { drain: 12, steal: true }, color: '#a7f070', desc: 'Drains 12 energy and gives it to you (energy only, never HP).' },
   { id: 'wp_gridbreaker', type: 'weapon', name: 'GRID BREAKER', rarity: 'epic', dtype: 'energy', weight: 80, reach: [2, 5], dmg: 10, en: 19, heat: 4, fx: { regenDmg: 4 }, color: '#41a6f6', desc: 'Breaks their generator: -4 regen for the rest of the fight (stacks, never below 3).' },
   { id: 'wp_capdump', type: 'weapon', name: 'CAPACITOR DUMP', rarity: 'epic', dtype: 'energy', weight: 70, reach: [1, 4], dmg: 8, en: 13, heat: 3, fx: { dump: true }, color: '#c46fd6', desc: 'Spends ALL your remaining energy: +1 damage for every 2 energy spent.' },
+  // Close-range heavies: big hits right next to the enemy
+  { id: 'wp_magma', type: 'weapon', name: 'MAGMA FIST', rarity: 'epic', dtype: 'heat', weight: 95, reach: [1, 2], dmg: 17, en: 5, heat: 22, fx: { heat: 14 }, color: '#ef7d57', desc: 'A molten punch: a big hit up close that pumps 14 heat into the target.' },
+  { id: 'wp_breaker', type: 'weapon', name: 'BREAKER RAM', rarity: 'legendary', dtype: 'phys', weight: 120, reach: [1, 2], dmg: 22, en: 12, heat: 16, backfire: 3, fx: { push: 2 }, color: '#f4f4f4', desc: 'A hydraulic ram: a heavy hit that knocks the target back 2 (into the edge: it slams).' },
+  { id: 'wp_phoenix', type: 'weapon', name: 'PHOENIX CLAW', rarity: 'mythic', dtype: 'heat', weight: 110, reach: [1, 2], dmg: 12, en: 6, heat: 26, fx: { burst: 2, heat: 10, hotBonus: true }, color: '#ff5d73', desc: '2 molten slashes that pump heat into the target. Double damage against a target above 75% of its heat cap.' },
+  // Self-powered / sealed guns: no energy cost (they run hot) or no heat (they drink energy), but heavy
+  { id: 'wp_recoil', type: 'weapon', name: 'RECOIL CANNON', rarity: 'rare', dtype: 'phys', weight: 100, reach: [1, 4], dmg: 12, en: 0, heat: 15, color: '#94b0c2', icon: 'wp_blaster', desc: 'Spring-loaded: costs no energy, but it runs hot. Heavy.' },
+  { id: 'wp_gauss', type: 'weapon', name: 'GAUSS RIFLE', rarity: 'epic', dtype: 'phys', weight: 140, reach: [3, 7], dmg: 15, en: 15, heat: 0, color: '#41a6f6', icon: 'wp_rifle', desc: 'Magnetic rails: makes no heat, but it drinks energy. Heavy.' },
+  { id: 'wp_chem', type: 'weapon', name: 'CHEM THROWER', rarity: 'rare', dtype: 'heat', weight: 120, reach: [1, 3], dmg: 10, en: 0, heat: 20, fx: { heat: 10 }, color: '#ef7d57', icon: 'wp_flamer', desc: 'Pressure-fed: costs no energy and pumps 10 heat into the target, but it runs hot. Heavy.' },
+  { id: 'wp_dynamo', type: 'weapon', name: 'DYNAMO GUN', rarity: 'rare', dtype: 'energy', weight: 90, reach: [1, 4], dmg: 9, en: 0, heat: 14, fx: { drain: 6 }, color: '#73eff7', icon: 'wp_spark', desc: 'Runs on its own dynamo: costs no energy and drains 6, but it runs hot. Heavy.' },
 
   // TOP guns: the heavy and lobbed ones
   { id: 'wp_mortar', type: 'weapon', mount: 'top', name: 'MORTAR', rarity: 'rare', dtype: 'phys', weight: 100, reach: [4, 9], dmg: 14, en: 11, heat: 16, arc: true, fx: { splash: 1 }, color: '#ef7d57', desc: 'A lobbed shell that splashes.' },
@@ -156,6 +165,12 @@ export const PARTS = [
   { id: 'wp_blackout', type: 'weapon', mount: 'top', name: 'BLACKOUT CANNON', rarity: 'legendary', dtype: 'energy', weight: 115, reach: [3, 7], dmg: 12, en: 28, heat: 7, fx: { drain: 20, jam: true }, color: '#29366f', desc: "Drains 20. If that leaves them at 0 energy, their guns jam next turn (they can still move, stomp and vent)." },
   { id: 'wp_cluster', type: 'weapon', mount: 'top', name: 'CLUSTER BOMB', rarity: 'legendary', dtype: 'heat', weight: 120, reach: [4, 8], dmg: 8, en: 6, heat: 20, ammo: 3, arc: true, fx: { burst: 3 }, color: '#ef7d57', icon: 'wp_rocket', desc: 'Lobbed: 3 bomblets per shell, each one heats the target. 3 shells.' },
   { id: 'wp_nova', type: 'weapon', mount: 'top', name: 'NOVA LANCE', rarity: 'mythic', dtype: 'energy', weight: 135, reach: [3, 5], dmg: 24, en: 24, heat: 5, ammo: 2, backfire: 5, fx: { pierce: true }, color: '#ff5d73', desc: 'A mid-range lance that ignores resists. 2 shots.' },
+  // Close-range top guns: a big gun that works right next to the enemy
+  { id: 'wp_flak', type: 'weapon', mount: 'top', name: 'FLAK TURRET', rarity: 'rare', dtype: 'phys', weight: 85, reach: [1, 3], dmg: 8, en: 7, heat: 12, fx: { burst: 2 }, color: '#94b0c2', desc: 'A top-mounted flak gun for close work: 2 rounds per shot.' },
+  { id: 'wp_arcturret', type: 'weapon', mount: 'top', name: 'ARC TURRET', rarity: 'epic', dtype: 'energy', weight: 100, reach: [1, 2], dmg: 14, en: 18, heat: 5, fx: { drain: 10, lowEnBonus: true }, color: '#73eff7', desc: 'Drains 10 energy. Double damage against a target under 25% of its max energy.' },
+  { id: 'wp_inferno', type: 'weapon', mount: 'top', name: 'INFERNO CANNON', rarity: 'legendary', dtype: 'heat', weight: 130, reach: [1, 3], dmg: 14, en: 6, heat: 24, fx: { heat: 10, burn: 3 }, color: '#ff5d73', desc: 'Floods the space in front of you: +10 heat, and the target burns for 3 turns.' },
+  { id: 'wp_thermite', type: 'weapon', mount: 'top', name: 'THERMITE LAUNCHER', rarity: 'epic', dtype: 'heat', weight: 150, reach: [3, 7], dmg: 12, en: 12, heat: 0, arc: true, fx: { heat: 12 }, color: '#ffcd75', icon: 'wp_napalm', desc: 'Sealed charges: makes no heat for you, +12 heat on the target, but it drinks energy. Heavy.' },
+  { id: 'wp_supercon', type: 'weapon', mount: 'top', name: 'SUPERCONDUCTOR', rarity: 'epic', dtype: 'energy', weight: 145, reach: [2, 6], dmg: 15, en: 20, heat: 0, fx: { line: true }, color: '#c46fd6', icon: 'wp_beam', desc: 'Supercooled coil: makes no heat at all, but it drinks energy. Heavy.' },
 
   // Specials: one slot each (CHARGE / TELEPORT / HOOK), an action each, a few uses per battle
   { id: 'sp_charge', type: 'special', name: 'CHARGE BOOSTER', rarity: 'common', weight: 32, special: 'charge', dist: 4, ram: 10, uses: 2, en: 6, heat: 10, color: '#ffcd75', desc: 'Dash up to 4 toward the enemy. End next to it and you ram it: Physical damage and a knockback.' },
@@ -197,6 +212,10 @@ export const PARTS = [
   { id: 'md_capacitor', type: 'module', name: 'CAPACITOR BANK', rarity: 'rare', weight: 22, energy: 8, regen: 4, desc: 'Energy and regen (grows with level).' },
   { id: 'md_heatsink', type: 'module', name: 'HEAT SINK', rarity: 'rare', weight: 20, heatCap: 14, desc: 'A higher heat cap (grows with level).' },
   { id: 'md_generator', type: 'module', name: 'POWER CORE', rarity: 'rare', weight: 24, regen: 6, desc: 'Refills more energy per turn (grows with level).' },
+  // Heat + energy combos: both halves of the reactor in one slot, but heavier than two single modules
+  { id: 'md_fluxcell', type: 'module', name: 'FLUX CELL', rarity: 'rare', weight: 46, energy: 10, heatCap: 10, color: '#73eff7', desc: 'A bigger battery and a higher heat cap in one heavy block (grows with level).' },
+  { id: 'md_twinloop', type: 'module', name: 'TWIN LOOP', rarity: 'epic', weight: 50, regen: 5, cool: 5, color: '#ef7d57', desc: 'Refills more energy and cools more heat every turn. Heavy (grows with level).' },
+  { id: 'md_fusion', type: 'module', name: 'FUSION CORE', rarity: 'legendary', weight: 60, energy: 12, regen: 5, heatCap: 12, cool: 5, color: '#ffcd75', desc: 'Battery, regen, heat cap and cooling all at once. Very heavy (grows with level).' },
   { id: 'md_amp', type: 'module', name: 'DAMAGE AMP', rarity: 'rare', weight: 24, atkPct: 0.08, unique: true },
   { id: 'md_repair', type: 'module', name: 'NANO REPAIR', rarity: 'rare', weight: 24, healAfterWin: 0.05, unique: true, desc: 'Heal after every won battle.' },
   { id: 'md_aegis', type: 'module', name: 'AEGIS EMITTER', rarity: 'epic', weight: 24, res: { phys: 1, energy: 2 }, startForcefield: true, unique: true, desc: 'Start each battle with a Forcefield.' },
@@ -611,29 +630,108 @@ export function riskEase(level = 0) {
 
 /**
  * Every enemy is a mech built from catalog parts: no special abilities,
- * just what its gear does. `guns` is a list of slots, each a pick-one list:
- * normal fights fit the first 2, elites 3, minibosses and bosses all of them.
- * `heavy` swaps slot 1 for elites / bosses (a sniper brings the big gun).
- * `mods` give the resists; `drone` flies from elites up.
+ * just what its gear does. Each one fights with ONE damage type (its
+ * element: Physical, Explosive or Electric) and comes in the set for that
+ * type: ENEMY_LOADOUTS[role][element]. Explosive sets pile heat on you until
+ * you overheat, Electric sets drain your energy, Physical sets hit hard and
+ * shove. `guns` is a list of slots, each a pick-one list: normal fights fit
+ * the first 2, elites 3, minibosses and bosses all of them. Slots 1 + 2
+ * always cover close AND far (no blindspot), and every set walks.
+ * `heavy` swaps the last fitted slot for elites / bosses (the big gun).
+ * `mods` give the resists (normal fights fit the first: its own type);
+ * `drone` flies from elites up. Some roles only come in one type.
  */
 export const ENEMY_LOADOUTS = {
-  standard: { legs: ['lg_strider', 'lg_hopper'], mods: ['md_plating', 'md_physres'], drone: 'dr_gnat', guns: [['wp_blaster', 'wp_scatter', 'wp_smg'], ['wp_rifle', 'wp_acid'], ['wp_mortar', 'wp_rocket']] },
-  tank: { specials: ['sp_charge'], legs: ['lg_treads'], mods: ['md_composite', 'md_heavyplate'], drone: 'dr_guardian', guns: [['wp_scatter'], ['wp_repulsor'], ['wp_impact'], ['wp_concussion']] }, // shoves you around; resist stripping is the Acid Unit's job
-  striker: { specials: ['sp_teleport'], legs: ['lg_catapult', 'lg_strider'], mods: ['md_physres'], drone: 'dr_hornet', guns: [['wp_rifle'], ['wp_blaster'], ['wp_rocket']], heavy: 'wp_sniper' },
-  vampire: { specials: ['sp_hook', 'sp_charge'], legs: ['lg_coil', 'lg_strider'], mods: ['md_aegis'], drone: 'dr_medic', guns: [['wp_scythe'], ['wp_smg'], ['wp_grapple']] },
-  pyromancer: { legs: ['lg_treads', 'lg_jumpjets'], mods: ['md_composite', 'md_heatres'], drone: 'dr_hornet', guns: [['wp_blowtorch', 'wp_flamer'], ['wp_thermal', 'wp_rupturer', 'wp_scorcher'], ['wp_napalm']], heavy: 'wp_meltdown' },
-  disruptor: { legs: ['lg_jumpjets', 'lg_coil'], mods: ['md_aegis', 'md_elecres'], drone: 'dr_reaper', guns: [['wp_spark', 'wp_leech'], ['wp_gridbreaker', 'wp_ionizer'], ['wp_grapple']], heavy: 'wp_blackout' },
-  tactician: { specials: ['sp_hook'], legs: ['lg_strider', 'lg_coil'], mods: ['md_composite'], drone: 'dr_guardian', guns: [['wp_tesla'], ['wp_missiles'], ['wp_beam']] },
-  corroder: { legs: ['lg_hopper', 'lg_coil'], mods: ['md_physres'], drone: 'dr_gnat', guns: [['wp_acid'], ['wp_emp'], ['wp_shredder']] },
-  minelayer: { legs: ['lg_treads', 'lg_hopper'], mods: ['md_composite'], drone: 'dr_hornet', guns: [['wp_minelauncher'], ['wp_blaster', 'wp_scatter'], ['wp_mortar']] },
-  // The Sector Commander: bolted down with long guns (get in close: they can't hit you there)
-  boss: { specials: ['sp_hook'], frame: 'fr_leviathan', legs: ['lg_anchor'], mods: ['md_voidcore', 'md_titanplate'], drone: 'dr_guardian', guns: [['wp_howitzer'], ['wp_rail'], ['wp_rifle'], ['wp_impact']] },
-  // Abyss 5's true final boss: fast, reaches everywhere, and hits hard up close
-  final: { specials: ['sp_ram', 'sp_teleport'], frame: 'fr_leviathan', legs: ['lg_phase'], mods: ['md_voidcore', 'md_titanplate'], drone: 'dr_seraph', guns: [['wp_nova'], ['wp_scythe'], ['wp_ionizer'], ['wp_missiles']] },
+  standard: {
+    phys: { legs: ['lg_strider', 'lg_hopper'], mods: ['md_physres', 'md_plating'], drone: 'dr_gnat', guns: [['wp_blaster', 'wp_shredder', 'wp_flak'], ['wp_rifle', 'wp_concussion'], ['wp_mortar', 'wp_rocket']] },
+    heat: { legs: ['lg_strider', 'lg_jumpjets'], mods: ['md_heatres', 'md_plating'], drone: 'dr_firefly', guns: [['wp_acid'], ['wp_napalm'], ['wp_heatray', 'wp_rupturer']] },
+    energy: { legs: ['lg_strider', 'lg_coil'], mods: ['md_elecres', 'md_plating'], drone: 'dr_static', guns: [['wp_spark', 'wp_emp'], ['wp_arcmortar'], ['wp_beam', 'wp_ionizer']] },
+  },
+  // Shoves you around from a thick hull
+  tank: {
+    phys: { specials: ['sp_charge'], legs: ['lg_treads'], mods: ['md_composite', 'md_heavyplate'], drone: 'dr_guardian', guns: [['wp_scatter', 'wp_breaker'], ['wp_impact'], ['wp_repulsor', 'wp_flak'], ['wp_concussion']] },
+    heat: { specials: ['sp_charge'], legs: ['lg_treads'], mods: ['md_composite', 'md_heavyplate'], drone: 'dr_guardian', guns: [['wp_flamer', 'wp_blowtorch', 'wp_magma'], ['wp_napalm'], ['wp_cryo', 'wp_inferno'], ['wp_meltdown']] },
+    energy: { specials: ['sp_charge'], legs: ['lg_treads'], mods: ['md_insulated', 'md_heavyplate'], drone: 'dr_guardian', guns: [['wp_tesla', 'wp_arcturret'], ['wp_arcmortar'], ['wp_capdump'], ['wp_blackout']] },
+  },
+  // A long gun with a close one for backup
+  striker: {
+    phys: { specials: ['sp_teleport'], legs: ['lg_catapult', 'lg_strider'], mods: ['md_physres'], drone: 'dr_hornet', guns: [['wp_blaster'], ['wp_rifle'], ['wp_rocket']], heavy: 'wp_sniper' },
+    heat: { specials: ['sp_teleport'], legs: ['lg_jumpjets', 'lg_catapult'], mods: ['md_heatres'], drone: 'dr_firefly', guns: [['wp_acid'], ['wp_cluster'], ['wp_thermal']], heavy: 'wp_meltdown' },
+    energy: { specials: ['sp_teleport'], legs: ['lg_coil', 'lg_catapult'], mods: ['md_elecres'], drone: 'dr_static', guns: [['wp_emp'], ['wp_arcmortar'], ['wp_beam']], heavy: 'wp_rail' },
+  },
+  // Hooks you in and heals off the fight
+  vampire: {
+    phys: { specials: ['sp_hook', 'sp_charge'], legs: ['lg_strider', 'lg_skids'], mods: ['md_aegis'], drone: 'dr_medic', guns: [['wp_breacher', 'wp_shredder'], ['wp_grapple'], ['wp_smg']] },
+    heat: { specials: ['sp_hook', 'sp_charge'], legs: ['lg_jumpjets', 'lg_strider'], mods: ['md_composite'], drone: 'dr_medic', guns: [['wp_dragon', 'wp_flamer', 'wp_magma'], ['wp_napalm'], ['wp_acid']] },
+    energy: { specials: ['sp_hook', 'sp_charge'], legs: ['lg_coil', 'lg_strider'], mods: ['md_aegis'], drone: 'dr_medic', guns: [['wp_siphon', 'wp_leech'], ['wp_arcmortar'], ['wp_scythe']] },
+  },
+  // Explosive only: heats you until you lock up, then cashes it in
+  pyromancer: {
+    heat: { legs: ['lg_treads', 'lg_jumpjets'], mods: ['md_heatres', 'md_composite'], drone: 'dr_firefly', guns: [['wp_blowtorch', 'wp_flamer', 'wp_magma'], ['wp_napalm'], ['wp_thermal', 'wp_rupturer', 'wp_scorcher', 'wp_inferno']], heavy: 'wp_meltdown' },
+  },
+  // Electric only: drains you until your guns jam
+  disruptor: {
+    energy: { legs: ['lg_jumpjets', 'lg_coil'], mods: ['md_elecres', 'md_aegis'], drone: 'dr_reaper', guns: [['wp_spark', 'wp_leech', 'wp_arcturret'], ['wp_arcmortar'], ['wp_gridbreaker', 'wp_ionizer']], heavy: 'wp_blackout' },
+  },
+  tactician: {
+    phys: { specials: ['sp_hook'], legs: ['lg_strider', 'lg_coil'], mods: ['md_composite'], drone: 'dr_guardian', guns: [['wp_blaster'], ['wp_missiles'], ['wp_mortar']] },
+    heat: { specials: ['sp_hook'], legs: ['lg_strider', 'lg_jumpjets'], mods: ['md_composite'], drone: 'dr_guardian', guns: [['wp_acid'], ['wp_thermal'], ['wp_cluster']] },
+    energy: { specials: ['sp_hook'], legs: ['lg_coil', 'lg_strider'], mods: ['md_insulated'], drone: 'dr_guardian', guns: [['wp_tesla'], ['wp_beam'], ['wp_arcmortar']] },
+  },
+  // Strips your resist to its own type
+  corroder: {
+    phys: { legs: ['lg_hopper', 'lg_strider'], mods: ['md_physres'], drone: 'dr_gnat', guns: [['wp_shredder'], ['wp_rifle'], ['wp_needler']] },
+    heat: { legs: ['lg_hopper', 'lg_jumpjets'], mods: ['md_heatres'], drone: 'dr_firefly', guns: [['wp_acid'], ['wp_scorcher'], ['wp_napalm']] },
+    energy: { legs: ['lg_hopper', 'lg_coil'], mods: ['md_elecres'], drone: 'dr_static', guns: [['wp_emp'], ['wp_ionizer'], ['wp_arcmortar']] },
+  },
+  // Physical only: mines are its thing
+  minelayer: {
+    phys: { legs: ['lg_treads', 'lg_hopper'], mods: ['md_composite'], drone: 'dr_hornet', guns: [['wp_blaster', 'wp_scatter'], ['wp_minelauncher'], ['wp_mortar']] },
+  },
+  // The Sector Commander: a heavy walker with a gun for every range
+  boss: {
+    phys: { specials: ['sp_hook'], frame: 'fr_leviathan', legs: ['lg_bulwark', 'lg_treads'], mods: ['md_voidcore', 'md_titanplate'], drone: 'dr_guardian', guns: [['wp_breaker', 'wp_scatter'], ['wp_howitzer'], ['wp_rifle'], ['wp_missiles', 'wp_flak']] },
+    heat: { specials: ['sp_hook'], frame: 'fr_leviathan', legs: ['lg_bulwark', 'lg_treads'], mods: ['md_voidcore', 'md_titanplate'], drone: 'dr_guardian', guns: [['wp_magma', 'wp_flamer'], ['wp_cluster'], ['wp_meltdown', 'wp_inferno'], ['wp_thermal']] },
+    energy: { specials: ['sp_hook'], frame: 'fr_leviathan', legs: ['lg_bulwark', 'lg_treads'], mods: ['md_voidcore', 'md_titanplate'], drone: 'dr_guardian', guns: [['wp_tesla', 'wp_arcturret'], ['wp_rail'], ['wp_blackout'], ['wp_beam']] },
+  },
+  // Abyss 5's true final boss: every type at once, fast, reaches everywhere, and hits hard up close
+  final: {
+    any: { specials: ['sp_ram', 'sp_teleport'], frame: 'fr_leviathan', legs: ['lg_phase'], mods: ['md_voidcore', 'md_titanplate'], drone: 'dr_seraph', guns: [['wp_nova'], ['wp_scythe'], ['wp_ionizer'], ['wp_missiles']] },
+  },
 };
 
-/** Frame (for its look and reactor tier) by fight tier. */
+/** The damage types a role comes in. */
+export const roleElements = (role) => Object.keys(ENEMY_LOADOUTS[role] || ENEMY_LOADOUTS.standard).filter((k) => k !== 'any');
+
+/**
+ * Roll an enemy's damage type, leaning toward what you resist least. `lean`
+ * 0 = even odds; 1 = your weakest type comes up about 2 fights in 3.
+ */
+export function pickEnemyElement(playerRes = {}, lean = 0, rnd = Math.random) {
+  const res = DTYPE_KEYS.map((t) => playerRes[t] || 0);
+  const top = Math.max(...res);
+  const gapMax = Math.max(...res.map((v) => top - v));
+  const w = res.map((v) => 1 + (gapMax > 0 ? lean * 3 * ((top - v) / gapMax) : 0));
+  let r = rnd() * w.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < w.length; i++) if ((r -= w[i]) <= 0) return DTYPE_KEYS[i];
+  return DTYPE_KEYS[0];
+}
+
+/** How hard enemies lean toward your weak type: more on later floors, elites and bosses, and in the Abyss. */
+export function elementLean(nodeType, floor, abyssDepth = 0) {
+  const base = { elite: 0.55, miniboss: 0.65, boss: 0.75 }[nodeType] ?? 0.12 * (Math.max(1, Math.min(5, floor)) - 1);
+  return Math.min(1, base + 0.1 * abyssDepth);
+}
+
+/** Frame (for its look and reactor tier) by fight tier; normal fights and elites wear their type. */
 const ENEMY_FRAME = { combat: 'fr_scout', elite: 'fr_brawler', miniboss: 'fr_titan', boss: 'fr_colossus' };
+const ELEMENT_FRAME = { heat: 'fr_furnace', energy: 'fr_conduit' };
+/**
+ * Damage by type: Explosive and Electric guns also overheat / drain you, so
+ * they hit softer to keep the three types about as dangerous against a mech
+ * with no resists (tools/balance-sim.mjs --element=...). Your resists decide the rest.
+ */
+export const ELEMENT_DMG = { phys: 1, heat: 0.75, energy: 0.7 };
 /** Gun slots fitted by fight tier (the rest of the list is left empty). */
 const ENEMY_GUNS = { combat: 2, elite: 3, miniboss: 4, boss: 4 };
 
@@ -641,32 +739,41 @@ function legsInfo(id) {
   return legsRules(getPart(id));
 }
 
-/** Reactor for one enemy: by fight tier; Risk XI (gunCdCut) makes them cool faster. */
-export function enemyRig(nodeType, { cdCut = 0 } = {}) {
+/**
+ * Reactor for one enemy: by fight tier, shaped by its type (Explosive runs
+ * hot and cools fast, Electric carries a big battery); Risk XI (gunCdCut)
+ * makes them cool faster.
+ */
+export function enemyRig(nodeType, { cdCut = 0, element = null } = {}) {
   const tier = ['elite', 'miniboss', 'boss'].includes(nodeType) ? nodeType : 'combat';
-  const r = CONFIG.gear.enemyRig[tier];
+  const r = { ...CONFIG.gear.enemyRig[tier] };
+  if (element === 'heat') Object.assign(r, { heatCap: Math.round(r.heatCap * 1.35), cool: Math.round(r.cool * 1.35), energy: Math.round(r.energy * 0.9) });
+  if (element === 'energy') Object.assign(r, { energy: Math.round(r.energy * 1.35), regen: Math.round(r.regen * 1.35), heatCap: Math.round(r.heatCap * 0.9) });
   return { ...r, cool: r.cool + cdCut * 4 };
 }
 
 /**
  * One enemy mech: its parts, legs, guns, drone and resists. Enemy guns hit
  * softer than yours (enemyDmgScale); `atkMult` is the same Risk / condition
- * / wave multiplier the enemy's ATK gets.
+ * / wave multiplier the enemy's ATK gets. `element` picks the set (a role
+ * that doesn't come in it uses its first); it comes back as `element`.
  */
-export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMult = 1, boss = false, final = false } = {}) {
+export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMult = 1, boss = false, final = false, element = 'phys' } = {}) {
   const f = Math.max(1, Math.min(5, floor));
   const tier = ['elite', 'miniboss', 'boss'].includes(nodeType) ? nodeType : 'combat';
-  const L = final ? ENEMY_LOADOUTS.final : boss ? ENEMY_LOADOUTS.boss : ENEMY_LOADOUTS[archetype] || ENEMY_LOADOUTS.standard;
+  const role = final ? ENEMY_LOADOUTS.final : boss ? ENEMY_LOADOUTS.boss : ENEMY_LOADOUTS[archetype] || ENEMY_LOADOUTS.standard;
+  const el = final ? null : role[element] ? element : Object.keys(role)[0];
+  const L = final ? role.any : role[el];
   const pick = (list) => list[Math.floor(rnd() * list.length)];
 
   const slots = L.guns.slice(0, boss || final ? L.guns.length : ENEMY_GUNS[tier]);
   const gunIds = slots.map(pick);
-  if (L.heavy && tier !== 'combat') gunIds[0] = L.heavy;
+  if (L.heavy && tier !== 'combat') gunIds[gunIds.length - 1] = L.heavy;
   const G = CONFIG.gear;
   // More guns than in 2.0 (and a drone): each hits a little softer, so the
   // total stays close while the enemy covers more ranges
   const spread = final || boss ? 0.5 : { combat: 0.5, elite: 0.48, miniboss: 0.52, boss: 0.5 }[tier];
-  const scale = G.dmgScale * G.enemyDmgScale * spread * (1 + 0.1 * (f - 1));
+  const scale = G.dmgScale * G.enemyDmgScale * spread * (1 + 0.1 * (f - 1)) * (ELEMENT_DMG[el] ?? 1);
   const frac = (v) => Math.round(v * 100) / 100; // enemy numbers stay fractional: Risk and floor % always count
   const weapons = gunIds.map((id) => {
     const base = getPart(id);
@@ -674,7 +781,7 @@ export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMu
   }).sort((a, b) => (a.mount === 'top') - (b.mount === 'top'));
 
   const legsId = pick(L.legs);
-  const frameId = L.frame || ENEMY_FRAME[tier];
+  const frameId = L.frame || ((tier === 'combat' || tier === 'elite') && ELEMENT_FRAME[el]) || ENEMY_FRAME[tier];
   // Resists from the modules (normal fights fit the first one) and legs, growing a little with the floor
   const mods = (tier === 'combat' ? (L.mods || []).slice(0, 1) : L.mods || []).map(getPart).filter(Boolean);
   const k = 1 + 0.1 * (f - 1);
@@ -686,6 +793,7 @@ export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMu
   const dr = tier !== 'combat' && (tier !== 'elite' || f >= 3) && L.drone ? getPart(L.drone) : null;
   const drones = dr ? [{ ...dr, level: 1, dmg: dr.dmg ? frac(dr.dmg * scale * atkMult) : 0, heal: dr.heal ? Math.round(dr.heal * k) : 0 }] : [];
   return {
+    element: el,
     weapons,
     drones,
     legs: legsInfo(legsId),

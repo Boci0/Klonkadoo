@@ -130,6 +130,7 @@ function apply(s, a) {
     // Specialist payoffs: hot targets (Thermal Lance, Meltdown), all your energy (Capacitor Dump)
     let shot = g;
     if (g.hotBonus && foe.heat > foe.heatCap * 0.75) shot = { ...shot, dmg: shot.dmg * 2 };
+    if (g.lowEnBonus && foe.energy < (foe.energyMax || 0) * 0.25) shot = { ...shot, dmg: shot.dmg * 2 }; // Arc Turret
     if (g.execute && foe.hp < (foe.maxHp || foe.hp) * g.execute) shot = { ...shot, dmg: shot.dmg * 1.8 };
     if (g.meltdown && foe.heat > foe.heatCap) {
       shot = { ...shot, dmg: shot.dmg + (foe.heat - foe.heatCap) * 2 };

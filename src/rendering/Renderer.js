@@ -1012,6 +1012,13 @@ export class Renderer {
     const res = DTYPE_KEYS.map((t) => [t, Math.round(resistOf(ball, t) * 10) / 10]).filter(([, v]) => v);
     ctx.font = `700 16px ${FONT}`;
     let sx = x + 16;
+    // An enemy's damage type leads the line, in its color
+    const el = !isPlayer && DTYPES[ball.element];
+    if (el) {
+      ctx.fillStyle = el.color;
+      ctx.fillText(el.name, sx, y + 62);
+      sx += ctx.measureText(el.name).width + 24;
+    }
     ctx.fillStyle = '#94b0c2';
     if (small.length) {
       ctx.fillText(small.join(''), sx, y + 62);
@@ -1450,7 +1457,8 @@ export class Renderer {
       const arch = CONFIG.enemyArchetypes[enemy.archetype];
       ctx.font = `700 15px ${FONT}`;
       ctx.textAlign = 'left';
-      ctx.fillStyle = arch?.color || '#ff5d73';
+      // Name in its damage type's color: white Physical, orange Explosive, cyan Electric
+      ctx.fillStyle = DTYPES[enemy.element]?.color || arch?.color || '#ff5d73';
       ctx.fillText(fitText(ctx, enemy.displayName || 'HOSTILE', panelW - 100), x + 8, y + 16);
       ctx.textAlign = 'right';
       ctx.fillStyle = '#f4f4f4';
