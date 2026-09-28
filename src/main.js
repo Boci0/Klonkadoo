@@ -44,6 +44,7 @@ const minigame = new Minigame(canvas);
 let mapRenderer = null;
 // Dev panel only exists on the Vite dev server, never in release builds
 const devTools = import.meta.env.DEV ? new DevTools(() => game, () => run, saveSystem) : null;
+if (import.meta.env.DEV) window.__game = () => game; // console / scripted checks on the dev server
 
 // ---------- Run state ----------
 

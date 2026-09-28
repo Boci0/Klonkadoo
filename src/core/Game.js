@@ -594,12 +594,16 @@ export class Game {
     // Napalm fires burn out after their turns
     for (const h of this.hazards) if (h.type === 'fire') h.turns -= 1;
     this.hazards = this.hazards.filter((h) => h.type !== 'fire' || h.turns > 0);
-    if (!this._tickBurn(p)) return;
-    const canAct = this._upkeep(p);
-    this.moveMap = this.reachable(p);
+    // Their mech burned out on its own turn: the next one drops in now, so you have a target
+    if (!this.activeEnemy && this.enemyReserve.length) this._dropIn();
+    // Burned out: either the battle is over, or a teammate dropped in and takes this turn
+    if (!this._tickBurn(p) && (!this.running || this.turnSystem.phase === TurnPhase.GAME_OVER)) return;
+    const me = this.player;
+    const canAct = this._upkeep(me);
+    this.moveMap = this.reachable(me);
     this.events.emit('player-turn-start');
     if (canAct) soundEngine.playTurn(true);
-    else this._afterAction(p, 1.1);
+    else this._afterAction(me, 1.1);
   }
 
   _startEnemyTurn() {
@@ -611,7 +615,7 @@ export class Game {
     if (!e) return this._startPlayerTurn();
     this.turnSystem.startEnemyTurn(this.enemies.indexOf(e));
     this.moveMap = new Map();
-    if (!this._tickBurn(e)) return;
+    if (!this._tickBurn(e)) return this._afterAction(e, 1.1); // burned out: your turn (the next one drops in on theirs)
     if (!this._upkeep(e)) return this._afterAction(e, 1.1);
     this.player.jammed = false; // a jam lasts one turn
     for (const d of e.drones || []) {
@@ -1384,7 +1388,13 @@ export class Game {
 
   /** Plan the rest of the enemy's turn and take its first action (it re-plans after each). */
   _enemyAct(e) {
-    if (!this.running || !e || e.hp <= 0) return;
+    if (!this.running) return;
+    if (!e || e.hp <= 0) {
+      // Nobody left to act (knocked out mid-turn): hand the turn back instead of waiting forever
+      this.waitTimer = L.settle;
+      this.waitThen = () => this._startPlayerTurn();
+      return;
+    }
     const p = this.player;
     const plan = planTurn(
       {
