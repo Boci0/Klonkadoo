@@ -232,7 +232,7 @@ export const CONFIG = {
     },
   },
   // --- Abyss (Risk 10 and XI only): wardens and Klonkadoo Prime may drop Abyss Shards,
-  // which lift a max-level Mythic weapon to ASCENDED. Abyss floors drive enemies insane.
+  // which lift any max-level Mythic part to ASCENDED. Abyss floors drive enemies insane.
   abyss: {
     shardMinRisk: 10,
     // chance per kill and how many drop: Risk 10 a little lower than Risk XI
@@ -240,7 +240,7 @@ export const CONFIG = {
       warden: { 10: 0.25, 11: 0.35, amount: [1, 1] },
       prime: { 10: 0.6, 11: 0.75, amount: [1, 3] },
     },
-    ascend: { shards: 5, scrap: 800 }, // one Mythic LV 25 weapon -> ASCENDED LV 1
+    ascend: { shards: 5, scrap: 800 }, // one Mythic LV 25 part (any type) -> ASCENDED LV 1
     insanity: { dmgPerTurn: 0.01, hpPerTurn: 0.01 }, // every turn (yours and theirs): enemies +1% damage, the one on the lane -1% max HP
   },
 

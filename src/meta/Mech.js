@@ -840,7 +840,7 @@ export function enemyRig(nodeType, { cdCut = 0, element = null } = {}) {
  * / wave multiplier the enemy's ATK gets. `element` picks the set (a role
  * that doesn't come in it uses its first); it comes back as `element`.
  */
-export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMult = 1, boss = false, final = false, element = 'phys', shredChance = 0 } = {}) {
+export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMult = 1, boss = false, final = false, element = 'phys', shredChance = 0, rxOut = null } = {}) {
   const f = Math.max(1, Math.min(5, floor));
   const tier = ['elite', 'miniboss', 'boss'].includes(nodeType) ? nodeType : 'combat';
   const role = final ? ENEMY_LOADOUTS.final : boss ? ENEMY_LOADOUTS.boss : ENEMY_LOADOUTS[archetype] || ENEMY_LOADOUTS.standard;
@@ -859,11 +859,11 @@ export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMu
   const spread = final || boss ? 0.5 : { combat: 0.5, elite: 0.5, miniboss: 0.52, boss: 0.5 }[tier];
   const scale = G.dmgScale * G.enemyDmgScale * spread * (1 + 0.1 * (f - 1)) * (ELEMENT_DMG[el] ?? 1);
   const frac = (v) => Math.round(v * 100) / 100; // enemy numbers stay fractional: Risk and floor % always count
-  // Heat pumped in and energy drained grow with the floor, like their damage but slower
+  // Heat pumped in and energy drained grow +5% per floor; in the Abyss `rxOut` (main.js) replaces it
   const fxOf = (base) => {
     if (!base.fx || !(base.fx.heat || base.fx.drain)) return base.fx;
     const fx = { ...base.fx };
-    const grow = 1 + 0.05 * (f - 1); // +5% per floor (half their damage's): Risk already hits harder, and overheat / jams cost whole turns
+    const grow = rxOut ?? 1 + 0.05 * (f - 1);
     for (const t of ['heat', 'drain']) if (typeof fx[t] === 'number') fx[t] = Math.round(fx[t] * grow);
     return fx;
   };

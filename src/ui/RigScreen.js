@@ -83,7 +83,7 @@ export class RigScreen {
 
   _renderWallet() {
     const m = saveSystem.getMech();
-    this.wallet.innerHTML = `<span title="Keys">${ico('key')}<b>${m.tokens}</b></span><span title="Scrap">${ico('scrap')}<b>${m.scrap}</b></span>${m.shards ? `<span title="Abyss Shards: ascend a Mythic max-level weapon">${ico('shard', '#c46fd6')}<b>${m.shards}</b></span>` : ''}`;
+    this.wallet.innerHTML = `<span title="Keys">${ico('key')}<b>${m.tokens}</b></span><span title="Scrap">${ico('scrap')}<b>${m.scrap}</b></span>${m.shards ? `<span title="Abyss Shards: ascend a Mythic max-level part">${ico('shard', '#c46fd6')}<b>${m.shards}</b></span>` : ''}`;
   }
 
   // ---------- Loadout ----------
@@ -308,7 +308,7 @@ export class RigScreen {
     const fodder = maxed && tf ? saveSystem.transformFodder(owned.uid) : [];
     const canTf = maxed && tf && fodder.length >= tf.parts && m.scrap >= tf.scrap;
 
-    // A Mythic weapon at max level ASCENDS with Abyss Shards (CONFIG.abyss.ascend)
+    // A Mythic part at max level ASCENDS with Abyss Shards (CONFIG.abyss.ascend)
     const asc = saveSystem.ascendInfo(owned);
     // At max level the level button becomes TRANSFORM (it needs spare parts of the same tier)
     const lvBtn = asc.ok
@@ -586,7 +586,7 @@ export class RigScreen {
       <div class="rig-pods">${pods}</div>
       <div class="rig-foot-row">
         <p class="rig-foot">${ico('key')} Win fights to earn keys · ${saveSystem.getMech().owned.length > INVENTORY_CAP ? `<b class="warn" title="Over the limit: your salvage settings found nothing to take. Salvage spares or pick more tiers.">${saveSystem.getMech().owned.length}/${INVENTORY_CAP} PARTS: FULL</b>` : `${saveSystem.getMech().owned.length}/${INVENTORY_CAP} parts`} · ${PARTS.length} to find</p>
-        <button class="btn btn-outline rig-salvage-btn" data-act="bulk-salvage" title="Turn spare parts into scrap, by tier">${ico('scrap')}SALVAGE SPARES${saveSystem.getSalvagePrefs().auto ? ' <em>AUTO</em>' : ''}</button>
+        <button class="btn btn-outline rig-salvage-btn" data-act="bulk-salvage" title="Turn spare parts into scrap, by tier">${ico('scrap')}SALVAGE SPARES${saveSystem.getSalvagePrefs().smart ? ' <em>SMART</em>' : saveSystem.getSalvagePrefs().auto ? ' <em>AUTO</em>' : ''}</button>
       </div>
       <div class="rig-reveal hidden" id="rig-reveal"></div>`;
     this.body.querySelector('[data-act="bulk-salvage"]')?.addEventListener('click', () => {
@@ -640,7 +640,8 @@ export class RigScreen {
           <div class="salv-opts">
             ${opt('keepBest', 'ALSO SALVAGE MY BEST COPY', 'Your best copy of each part can go too', 'Your best copy of each part is always kept', true)}
             ${opt('keepLeveled', 'ALSO SALVAGE UPGRADED PARTS', 'Parts above LV 1 can go too', 'Parts above LV 1 are always kept', true)}
-            ${opt('auto', 'AUTO-SALVAGE POD DUPLICATES', 'New drops you already own as good or better become scrap', 'New drops always stay in your inventory')}
+            ${opt('smart', 'SMART: KEEP WHAT 3 MECHS CAN USE', 'Copies past what 3 mechs could fit become scrap, after every pod too (6 of a top gun, 12 of a side gun, 3 frames). Your best copies stay', 'No limit per part')}
+            ${opt('auto', 'AUTO-SALVAGE POD DUPLICATES', 'New drops in the lit tiers you already own as good or better become scrap', 'New drops always stay in your inventory')}
           </div>
           <div class="salv-list">${icons || '<p class="dim-text">Nothing to salvage with these settings.</p>'}${list.length > SHOW ? `<span class="salv-more">+${list.length - SHOW}</span>` : ''}</div>
           <div class="rig-actions">

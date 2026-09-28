@@ -799,6 +799,14 @@ export class SaveSystem {
         if (better) part.autoSalvaged = this.salvagePart(part.uid, false);
       }
     }
+    // SMART: copies past what 3 mechs could fit go straight to scrap (your best ones stay)
+    if (prefs.smart) {
+      const fresh = new Set(got.map((p) => p.uid));
+      for (const o of this.smartExtras()) {
+        const value = this.salvagePart(o.uid, false);
+        if (fresh.has(o.uid)) o.autoSalvaged = value;
+      }
+    }
     // Past the cap, spare parts go by your salvage settings (cheapest first): only the
     // tiers you chose, and your best copies / upgraded parts stay unless you said so.
     // Nothing left to take: the inventory runs over the cap and the Rig warns you.
@@ -847,7 +855,7 @@ export class SaveSystem {
 
   /** Bulk-salvage settings (saved): which tiers, the safety keeps, and auto-salvage for new pod drops. */
   getSalvagePrefs() {
-    return { tiers: ['common'], keepBest: true, keepLeveled: true, auto: false, ...(this.data.mech.salvagePrefs || {}) };
+    return { tiers: ['common'], keepBest: true, keepLeveled: true, auto: false, smart: false, ...(this.data.mech.salvagePrefs || {}) };
   }
 
   setSalvagePrefs(patch) {
@@ -860,6 +868,34 @@ export class SaveSystem {
    * any mech is wearing; `keepBest` keeps your best copy of every part (highest
    * tier, then level), `keepLeveled` keeps anything upgraded past LV 1.
    */
+  /**
+   * SMART keep limit: how many copies of a part 3 mechs could fit at once (its
+   * slots per mech x 3, or 3 for a one-per-mech module). E.g. 6 top guns,
+   * 12 side guns, 3 frames, 24 modules.
+   */
+  keepLimit(id) {
+    const p = getPart(id);
+    if (!p) return Infinity;
+    const perMech = p.unique ? 1 : SLOTS.filter((s) => slotAccepts(s, p)).length;
+    return Math.max(1, perMech) * 3;
+  }
+
+  /** Parts past their keep limit: the worst copies of each (equipped ones always stay). */
+  smartExtras() {
+    const worn = this.getWornUids();
+    const byId = new Map();
+    for (const o of this.data.mech.owned) byId.set(o.id, [...(byId.get(o.id) || []), o]);
+    const out = [];
+    for (const [id, list] of byId) {
+      const limit = this.keepLimit(id);
+      if (list.length <= limit) continue;
+      // Equipped first, then best tier / level: the tail past the limit goes
+      list.sort((a, b) => worn.has(b.uid) - worn.has(a.uid) || partRank(b) - partRank(a));
+      out.push(...list.slice(limit).filter((o) => !worn.has(o.uid)));
+    }
+    return out;
+  }
+
   salvageCandidates(prefs = this.getSalvagePrefs()) {
     const owned = this.data.mech.owned;
     const tiers = new Set(prefs.tiers);
@@ -869,8 +905,9 @@ export class SaveSystem {
       for (const o of owned) if (!best.has(o.id) || partRank(o) > partRank(best.get(o.id))) best.set(o.id, o);
       for (const o of best.values()) keep.add(o.uid);
     }
+    const smart = new Set(prefs.smart ? this.smartExtras().map((o) => o.uid) : []);
     return owned
-      .filter((o) => !keep.has(o.uid) && tiers.has(tierOf(o)) && !(prefs.keepLeveled && (o.level || 1) > 1))
+      .filter((o) => smart.has(o.uid) || (!keep.has(o.uid) && tiers.has(tierOf(o)) && !(prefs.keepLeveled && (o.level || 1) > 1)))
       .sort((a, b) => salvageValue(a) - salvageValue(b));
   }
 
@@ -916,15 +953,15 @@ export class SaveSystem {
     this.save();
   }
 
-  /** Can this part ASCEND? A weapon at Mythic max level. { ok, shards, scrap } */
+  /** Can this part ASCEND? Any part at Mythic max level. { ok, shards, scrap } */
   ascendInfo(owned) {
     const A = CONFIG.abyss.ascend;
     const p = owned && getPart(owned.id);
-    const ok = !!p && p.type === 'weapon' && tierOf(owned) === 'mythic' && owned.level >= maxLevel(owned);
+    const ok = !!p && tierOf(owned) === 'mythic' && owned.level >= maxLevel(owned);
     return { ok, shards: A.shards, scrap: A.scrap, afford: ok && this.getShards() >= A.shards && this.data.mech.scrap >= A.scrap };
   }
 
-  /** Spend Abyss Shards + scrap: a Mythic max-level weapon becomes ASCENDED LV 1. */
+  /** Spend Abyss Shards + scrap: a Mythic max-level part becomes ASCENDED LV 1. */
   ascendPart(uid) {
     const owned = this.getOwnedPart(uid);
     const info = this.ascendInfo(owned);

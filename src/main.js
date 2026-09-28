@@ -1236,7 +1236,7 @@ function startCombat(node) {
   const cond = run.condition;
   const condHp = cond === 'gold_rush' ? 1.1 : 1;
   const condAtk = (cond === 'glass_war' ? 1.3 : 1) * (cond === 'blood_moon' ? 1.15 : 1);
-  // Abyss: +8% HP and +5% ATK per depth, on top of the normal per-floor scaling
+  // Abyss: +8% HP and +8% ATK per depth, on top of the normal per-floor scaling
   // Low Risk softens every enemy; the Abyss is always full strength
   const ease = abyssDepth ? { ...gearComp(riskLevel), ai: 0 } : riskEase(riskLevel);
   const hpMult = (1 + (riskData.hpPct + (isEliteTier ? riskData.eliteHpPct : 0)) / 100) * condHp * (1 + ABYSS_HP_PER_DEPTH * abyssDepth) * ease.hp;
@@ -1246,6 +1246,10 @@ function startCombat(node) {
   const floorsAbove = Math.min(run.floor, CONFIG.map.floors - 1); // capped at floor 5: the Abyss scales by depth instead
   const floorHp = 1 + CONFIG.floorScaling.hpPerFloor * floorsAbove;
   const floorAtk = 1 + CONFIG.floorScaling.atkPerFloor * floorsAbove;
+  // In the Abyss their reactors ramp with the depth buff too: heat cap / cooling / battery /
+  // regen like HP, the heat and drain their guns push into you like ATK (floors 1-5 unchanged)
+  const rxCap = 1 + ABYSS_HP_PER_DEPTH * abyssDepth;
+  const rxOut = abyssDepth ? (1 + 0.05 * (CONFIG.map.floors - 1)) * (1 + ABYSS_ATK_PER_DEPTH * abyssDepth) : null; // (floor 5's +20%, then x depth)
 
   const count = (CONFIG.enemyCounts[node.type] || {})[floorKey] || 1;
   // One mech fights at a time, so a team only trims each mech's HP a little
@@ -1263,7 +1267,7 @@ function startCombat(node) {
     const arch = CONFIG.enemyArchetypes[archetype];
     const isBoss = node.type === 'boss' && i === 0;
     const isFinal = isBoss && abyssDepth === ABYSS_FINAL_DEPTH; // the true final boss
-    const mech = enemyMech(node.type, archetype, run.floor + 1, Math.random, { atkMult: atkMult * waveAtkScale, boss: isBoss, final: isFinal, element, shredChance: riskShred(riskLevel).gun });
+    const mech = enemyMech(node.type, archetype, run.floor + 1, Math.random, { atkMult: atkMult * waveAtkScale, boss: isBoss, final: isFinal, element, shredChance: riskShred(riskLevel).gun, rxOut });
 
     const finalHp = Math.round(tier.hp * CONFIG.gear.enemyHpScale * arch.hpMult * hpMult * floorHp * devHp * waveHpScale * (isFinal ? 1.5 : 1) * (node.type === 'boss' && i > 0 ? 0.55 : 1)); // boss escorts are lighter
     const finalAtk = Math.round((tier.atk * arch.atkMult * atkMult * floorAtk * devAtk * waveAtkScale) * 100) / 100;
@@ -1284,7 +1288,7 @@ function startCombat(node) {
       // Risk: RANGEFINDERS
       weapons: mech.weapons.map((w) => (riskData.enemyReach ? { ...w, reach: [w.reach[0], Math.min(CONFIG.lane.size - 1, w.reach[1] + riskData.enemyReach)] } : w)),
       droneOut: !!riskData.droneOut, // Risk: NIGHTMARE
-      rig: enemyRig(node.type, { cdCut: riskData.gunCdCut || 0, element: mech.element }),
+      rig: scaleRig(enemyRig(node.type, { cdCut: riskData.gunCdCut || 0, element: mech.element }), rxCap),
       element: mech.element,
       legs: mech.legs,
       res: mech.res,
@@ -1458,6 +1462,11 @@ function endRaidAttempt(won) {
     ui.clearBattleHud();
     ui.showRaid();
   });
+}
+
+/** An enemy reactor grown by the floor / Abyss buff (heat cap, cooling, battery, regen). */
+function scaleRig(rig, k) {
+  return { ...rig, heatCap: Math.round(rig.heatCap * k), cool: Math.round(rig.cool * k), energy: Math.round(rig.energy * k), regen: Math.round(rig.regen * k) };
 }
 
 /** Pick an enemy archetype based on floor weights. */
