@@ -317,6 +317,16 @@ export function partStats(owned) {
   for (const f of SCALING) if (typeof base[f] === 'number') out[f] = base[f] * (FULL.has(f) ? k : 1 + (k - 1) * 0.5);
   if (base.type === 'module') for (const f of REACTOR) if (typeof base[f] === 'number') out[f] = Math.round(base[f] * k);
   if (base.res) out.res = Object.fromEntries(Object.entries(base.res).map(([t, v]) => [t, v * (1 + (k - 1) * 0.5)]));
+  // Heat pumped into the target and energy drained grow like damage (guns and drones)
+  if (base.fx && (base.fx.heat || base.fx.drain)) {
+    out.fx = { ...base.fx };
+    for (const f of ['heat', 'drain']) {
+      if (typeof base.fx[f] !== 'number') continue;
+      out.fx[f] = Math.round(base.fx[f] * k);
+      // The text quotes the number ("pumps 18 heat"): show the upgraded one
+      if (out.desc && out.fx[f] !== base.fx[f]) out.desc = out.desc.replace(new RegExp(`\\b${base.fx[f]}\\b`), String(out.fx[f]));
+    }
+  }
   return out;
 }
 
@@ -775,9 +785,17 @@ export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMu
   const spread = final || boss ? 0.5 : { combat: 0.5, elite: 0.48, miniboss: 0.52, boss: 0.5 }[tier];
   const scale = G.dmgScale * G.enemyDmgScale * spread * (1 + 0.1 * (f - 1)) * (ELEMENT_DMG[el] ?? 1);
   const frac = (v) => Math.round(v * 100) / 100; // enemy numbers stay fractional: Risk and floor % always count
+  // Heat pumped in and energy drained grow with the floor, like their damage but slower
+  const fxOf = (base) => {
+    if (!base.fx || !(base.fx.heat || base.fx.drain)) return base.fx;
+    const fx = { ...base.fx };
+    const grow = 1 + 0.05 * (f - 1); // +5% per floor (half their damage's): Risk already hits harder, and overheat / jams cost whole turns
+    for (const t of ['heat', 'drain']) if (typeof fx[t] === 'number') fx[t] = Math.round(fx[t] * grow);
+    return fx;
+  };
   const weapons = gunIds.map((id) => {
     const base = getPart(id);
-    return { ...base, dmg: frac(base.dmg * scale * atkMult), backfire: base.backfire ? frac(base.backfire * scale) : 0, level: 1 };
+    return { ...base, dmg: frac(base.dmg * scale * atkMult), backfire: base.backfire ? frac(base.backfire * scale) : 0, fx: fxOf(base), level: 1 };
   }).sort((a, b) => (a.mount === 'top') - (b.mount === 'top'));
 
   const legsId = pick(L.legs);
@@ -791,7 +809,7 @@ export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMu
   }));
   // Drone: elites from floor 3, mini-bosses and bosses; it hits like their guns
   const dr = tier !== 'combat' && (tier !== 'elite' || f >= 3) && L.drone ? getPart(L.drone) : null;
-  const drones = dr ? [{ ...dr, level: 1, dmg: dr.dmg ? frac(dr.dmg * scale * atkMult) : 0, heal: dr.heal ? Math.round(dr.heal * k) : 0 }] : [];
+  const drones = dr ? [{ ...dr, level: 1, fx: fxOf(dr), dmg: dr.dmg ? frac(dr.dmg * scale * atkMult) : 0, heal: dr.heal ? Math.round(dr.heal * k) : 0 }] : [];
   return {
     element: el,
     weapons,
