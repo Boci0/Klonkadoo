@@ -136,7 +136,10 @@ function enemyTeam(type, floor, rnd, playerRes = {}) {
     const arch = CONFIG.enemyArchetypes[archetype];
     const boss = type === 'boss' && i === 0;
     const mech = enemyMech(type, archetype, floor, rnd, { atkMult, boss, element, shredChance: riskShred(RISK).gun });
-    const rig = enemyRig(type, { cdCut: risk.gunCdCut || 0, element: mech.element });
+    const rig = { ...enemyRig(type, { cdCut: risk.gunCdCut || 0, element: mech.element }) };
+    // --rxCap=1.24 --rxRate=1.24: try Abyss-style reactor growth (capacity: heat cap + battery; rate: cooling + regen)
+    if (args.rxCap) for (const k of ['heatCap', 'energy']) rig[k] = Math.round(rig[k] * Number(args.rxCap));
+    if (args.rxRate) for (const k of ['cool', 'regen']) rig[k] = Math.round(rig[k] * Number(args.rxRate));
     const maxHp = Math.round(tier.hp * G.enemyHpScale * arch.hpMult * hpMult * floorHp * waveHp * (type === 'boss' && i > 0 ? 0.55 : 1));
     out.push({
       team: 'enemy', pos: 9, hp: maxHp, maxHp, heat: 0, heatCap: rig.heatCap, cool: rig.cool, energy: rig.energy, energyMax: rig.energy, regen: rig.regen,

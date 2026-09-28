@@ -240,6 +240,7 @@ export const CONFIG = {
       warden: { 10: 0.25, 11: 0.35, amount: [1, 1] },
       prime: { 10: 0.6, 11: 0.75, amount: [1, 3] },
     },
+    reactorPerDepth: 0.04, // enemy heat cap + battery per Abyss depth (their cooling and regen stay)
     ascend: { shards: 5, scrap: 800 }, // one Mythic LV 25 part (any type) -> ASCENDED LV 1
     insanity: { dmgPerTurn: 0.01, hpPerTurn: 0.01 }, // every turn (yours and theirs): enemies +1% damage, the one on the lane -1% max HP
   },

@@ -1246,9 +1246,11 @@ function startCombat(node) {
   const floorsAbove = Math.min(run.floor, CONFIG.map.floors - 1); // capped at floor 5: the Abyss scales by depth instead
   const floorHp = 1 + CONFIG.floorScaling.hpPerFloor * floorsAbove;
   const floorAtk = 1 + CONFIG.floorScaling.atkPerFloor * floorsAbove;
-  // In the Abyss their reactors ramp with the depth buff too: heat cap / cooling / battery /
-  // regen like HP, the heat and drain their guns push into you like ATK (floors 1-5 unchanged)
-  const rxCap = 1 + ABYSS_HP_PER_DEPTH * abyssDepth;
+  // In the Abyss their reactors ramp with depth too: heat cap and battery a little, the heat and
+  // drain their guns push into you like ATK (floors 1-5 unchanged)
+  // (capacity only, at half the HP rate: bigger tanks delay a lock; faster cooling / regen
+  // would make locking impossible past some depth, a cliff for heat builds)
+  const rxCap = 1 + CONFIG.abyss.reactorPerDepth * abyssDepth;
   const rxOut = abyssDepth ? (1 + 0.05 * (CONFIG.map.floors - 1)) * (1 + ABYSS_ATK_PER_DEPTH * abyssDepth) : null; // (floor 5's +20%, then x depth)
 
   const count = (CONFIG.enemyCounts[node.type] || {})[floorKey] || 1;
@@ -1464,9 +1466,9 @@ function endRaidAttempt(won) {
   });
 }
 
-/** An enemy reactor grown by the floor / Abyss buff (heat cap, cooling, battery, regen). */
+/** An enemy reactor grown in the Abyss: its heat cap and battery (not cooling or regen). */
 function scaleRig(rig, k) {
-  return { ...rig, heatCap: Math.round(rig.heatCap * k), cool: Math.round(rig.cool * k), energy: Math.round(rig.energy * k), regen: Math.round(rig.regen * k) };
+  return { ...rig, heatCap: Math.round(rig.heatCap * k), energy: Math.round(rig.energy * k) };
 }
 
 /** Pick an enemy archetype based on floor weights. */

@@ -26,6 +26,13 @@ import {
 import { partCardHtml, statBarHtml, bindHoverTips, hideTip, iconKeyHtml } from './partCard.js';
 
 const RANK = { common: 0, rare: 1, epic: 2, legendary: 3, mythic: 4, ascended: 5 };
+// Tile background by damage type (guns and drones that deal one), so a part reads at a glance
+const DT_BG = { phys: '#94b0c2', heat: '#ef7d57', energy: '#41a6f6' };
+const dtBg = (p) => (p && (p.type === 'weapon' || (p.type === 'drone' && p.dtype)) ? DT_BG[p.dtype || 'phys'] : 'transparent');
+/** A tile's colours: rarity border + damage-type background. */
+const tileStyle = (o, p) => `--rar:${rarityColor(tierOf(o))};--dt:${dtBg(p)}`;
+/** The level badge: MAX once it can't level further. */
+const lvText = (o) => ((o.level || 1) >= maxLevel(o) ? 'MAX' : o.level || 1);
 // Where each slot tile sits around the bay
 const LEFT = ['top1', 'side1', 'side2'];
 const RIGHT = ['top2', 'side3', 'side4'];
@@ -83,7 +90,7 @@ export class RigScreen {
 
   _renderWallet() {
     const m = saveSystem.getMech();
-    this.wallet.innerHTML = `<span title="Keys">${ico('key')}<b>${m.tokens}</b></span><span title="Scrap">${ico('scrap')}<b>${m.scrap}</b></span>${m.shards ? `<span title="Abyss Shards: ascend a Mythic max-level part">${ico('shard', '#c46fd6')}<b>${m.shards}</b></span>` : ''}`;
+    this.wallet.innerHTML = `<span title="Keys">${ico('key')}<b>${m.tokens}</b></span><span title="Scrap">${ico('scrap')}<b>${m.scrap}</b></span>${m.shards || saveSystem.bestRiskAnyBall() >= CONFIG.abyss.shardMinRisk ? `<span title="Abyss Shards: ascend a Mythic max-level part. They can drop from Abyss wardens and Klonkadoo Prime on Risk 10 and XI">${ico('shard', '#c46fd6')}<b>${m.shards || 0}</b></span>` : ''}`;
   }
 
   // ---------- Loadout ----------
@@ -99,8 +106,8 @@ export class RigScreen {
       const owned = bySlot[slotId];
       const p = owned && getPart(owned.id);
       const empty = EMPTY_ICON[slot.mount || slot.kind || slot.id] || EMPTY_ICON[slot.type] || 'star';
-      return `<button class="rig-slot ${cls} ${slotId === this.slot ? 'sel' : ''} ${p ? '' : 'empty'}" data-slot="${slotId}" ${p ? `data-tip-uid="${owned.uid}"` : `title="${slot.name}"`} style="--rar:${p ? rarityColor(tierOf(owned)) : 'var(--p-steel)'}">
-        ${p ? `<img src="${partIcon(p.id)}" alt=""><i class="rig-lv">${owned.level}</i>` : `<span class="rig-plus">${ico(empty)}</span>`}
+      return `<button class="rig-slot ${cls} ${slotId === this.slot ? 'sel' : ''} ${p ? '' : 'empty'}" data-slot="${slotId}" ${p ? `data-tip-uid="${owned.uid}"` : `title="${slot.name}"`} style="${p ? tileStyle(owned, p) : '--rar:var(--p-steel)'}">
+        ${p ? `<img src="${partIcon(p.id)}" alt=""><i class="rig-lv">${lvText(owned)}</i>` : `<span class="rig-plus">${ico(empty)}</span>`}
         <span class="rig-slot-name">${slot.name}</span>
       </button>`;
     };
@@ -215,8 +222,8 @@ export class RigScreen {
         : where === 'mine' ? '<i class="rig-badge mine" title="Equipped in another slot">&#10003;</i>'
           : where === 'other' ? `<i class="rig-badge other" title="On mech ${on + 1}">M${on + 1}</i>` : '';
       const ready = o.level >= maxLevel(o) && transformInfo(o) ? '<i class="rig-mark up" title="Ready to transform">&#9650;</i>' : '';
-      return `<button class="rig-item ${o.uid === this.focus ? 'sel' : ''} ${where ? `worn ${where}` : ''}" data-uid="${o.uid}" data-tip-uid="${o.uid}" style="--rar:${rarityColor(tierOf(o))}">
-        <img src="${partIcon(p.id)}" alt=""><i class="rig-lv">${o.level}</i>${mark}${ready}
+      return `<button class="rig-item ${o.uid === this.focus ? 'sel' : ''} ${where ? `worn ${where}` : ''}" data-uid="${o.uid}" data-tip-uid="${o.uid}" style="${tileStyle(o, p)}">
+        <img src="${partIcon(p.id)}" alt=""><i class="rig-lv">${lvText(o)}</i>${mark}${ready}
       </button>`;
     };
     const what = slot.kind ? slot.name.toLowerCase() : TYPE_LABEL[slot.type].toLowerCase();
@@ -229,8 +236,8 @@ export class RigScreen {
 
     // No scrolling: as many tiles as fit the space left, arrows for the rest
     const inv = document.getElementById('rig-inv');
-    const cols = Math.max(1, Math.floor((inv.clientWidth + 5) / 57));
-    const rows = Math.max(1, Math.floor((inv.clientHeight + 5) / 57));
+    const cols = Math.max(1, Math.floor((inv.clientWidth + 5) / 65)); // 60px tiles + 5px gap (styles .rig-inv)
+    const rows = Math.max(1, Math.floor((inv.clientHeight + 5) / 65));
     const per = cols * rows;
     const pages = Math.max(1, Math.ceil(fits.length / per));
     if (this.invSlot !== this.slot) {
@@ -720,13 +727,22 @@ export class RigScreen {
    * flips over to show the part. Single pods are one card, packs five.
    */
   _openPod(podId, { free = false, pack = false, credit = false } = {}) {
+    // Your best copy of each part before the pod: NEW (first one ever) / UPGRADE (better than it)
+    const rankOf = (o) => RANK[tierOf(o)] * 100 + (o.level || 1);
+    const best = new Map();
+    for (const o of saveSystem.getMech().owned) best.set(o.id, Math.max(best.get(o.id) ?? -1, rankOf(o)));
     const got = saveSystem.buyCrate(podId, { free, pack, credit });
     if (!got) return soundEngine.play('error');
+    const tags = got.map((o) => {
+      const had = best.get(o.id);
+      best.set(o.id, Math.max(had ?? -1, rankOf(o)));
+      return o.autoSalvaged ? 'scrap' : had === undefined ? 'new' : rankOf(o) > had ? 'up' : '';
+    });
     this._renderWallet();
     const crate = CRATES.find((c) => c.id === podId);
     const box = document.getElementById('rig-reveal');
     if (!box) return;
-    const back = uiIcon('pod', crate.color);
+    const back = uiIcon('pod', '#f4f4f4');
     box.style.setProperty('--rar', crate.color);
     box.classList.remove('mythic');
     box.innerHTML = `
@@ -735,14 +751,18 @@ export class RigScreen {
         ${got.map((o, i) => {
           const tier = tierOf(o);
           const p = getPart(o.id);
-          return `<button class="pcard3d" data-i="${i}" style="--pod:${crate.color};--rar:${rarityColor(tier)};--deal:${i * 0.12}s">
-            <span class="pcard-face back"><img src="${back}" alt=""><em>?</em></span>
+          // The back already shows the rarity (colour + a light beam, like Super Mechs); the flip tells you which part
+          const tag = { new: '<i class="pcard-tag new">NEW</i>', up: '<i class="pcard-tag up">&#9650; UPGRADE</i>' }[tags[i]] || '';
+          return `<button class="pcard3d r${RANK[tier]} ${tags[i] === 'scrap' ? 'scrapped' : ''}" data-i="${i}" style="--pod:${rarityColor(tier)};--rar:${rarityColor(tier)};--dt:${dtBg(p)};--deal:${i * 0.12}s">
+            <span class="pcard-beam"></span>
+            <span class="pcard-face back"><img src="${back}" alt=""><em>${rarityName(tier)}</em></span>
             <span class="pcard-face front">
+              ${tag}
               <img src="${partIcon(p.id)}" alt="">
               <b>${rarityName(tier)}</b>
               <strong>${p.name}</strong>
               <i class="pcard-type">${TYPE_LABEL[p.type]}</i>
-              ${o.autoSalvaged ? `<i class="pcard-scrap" title="Auto-salvaged: you already own one as good or better">${ico('scrap')}+${o.autoSalvaged} SCRAP</i>` : ''}
+              ${o.autoSalvaged ? `<i class="pcard-scrap" title="Salvaged by your salvage settings">&#8594; ${ico('scrap')}+${o.autoSalvaged} SCRAP</i>` : ''}
             </span>
           </button>`;
         }).join('')}
@@ -767,7 +787,7 @@ export class RigScreen {
       box.querySelector('[data-act="fit"]').classList.remove('hidden');
       const best = Math.max(...got.map((o) => RANK[tierOf(o)]));
       box.style.setProperty('--rar', rarityColor(Object.keys(RANK)[best]));
-      box.classList.toggle('mythic', best === 4);
+      box.classList.toggle('mythic', best >= 4);
     };
     const flip = (i) => {
       const el = cards[i];
@@ -782,7 +802,8 @@ export class RigScreen {
     cards.forEach((el, i) => el.addEventListener('click', () => flip(i)));
     box.querySelector('[data-act="all"]')?.addEventListener('click', () => {
       soundEngine.playUI();
-      cards.forEach((_, i) => flip(i));
+      // Worst first, the best card last (the drama)
+      [...cards.keys()].sort((a, b) => RANK[tierOf(got[a])] - RANK[tierOf(got[b])]).forEach((i) => flip(i));
     });
     box.querySelector('[data-act="ok"]').addEventListener('click', () => {
       soundEngine.playUI();
@@ -809,11 +830,10 @@ export class RigScreen {
     const charge = 450 + rank * 180;
     return new Promise((resolve) => {
       el.classList.add('charge');
-      el.style.setProperty('--glow', 'var(--pod)');
+      el.style.setProperty('--glow', 'var(--rar)');
       el.style.setProperty('--charge', `${charge}ms`);
       const ticks = 3 + rank * 2;
       for (let i = 0; i < ticks; i++) setTimeout(() => soundEngine.playUI(300 + i * 60, 0.03), (charge / ticks) * i);
-      if (rank >= 1) setTimeout(() => el.style.setProperty('--glow', 'var(--rar)'), charge * 0.55);
       setTimeout(() => {
         el.classList.remove('charge');
         el.classList.add('flipped', `r${rank}`);

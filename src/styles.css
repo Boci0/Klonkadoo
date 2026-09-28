@@ -2787,8 +2787,8 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
   min-height: 56px;
   overflow: hidden; /* paged, never scrolled */
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
-  grid-auto-rows: 52px;
+  grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  grid-auto-rows: 60px;
   gap: 5px;
   align-content: start;
 }
@@ -2804,7 +2804,13 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
   cursor: pointer;
 }
 
-.rig-item img { width: 36px; height: auto; image-rendering: pixelated; }
+.rig-item img { width: 44px; height: auto; image-rendering: pixelated; }
+/* SuperMechs-style tiles: the damage type tints the background, the rarity is a thick border */
+.rig-item, .rig-slot:not(.empty) {
+  background: linear-gradient(to top, color-mix(in srgb, var(--dt, transparent) 65%, var(--bg-card)), color-mix(in srgb, var(--dt, transparent) 22%, var(--bg-card)) 85%);
+  border: 3px solid var(--rar);
+}
+.rig-lv { font-weight: bold; }
 .rig-item.sel { border-color: var(--p-yellow); border-bottom-color: var(--rar); background: #30375a; }
 
 .rig-mark {
@@ -4568,7 +4574,60 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
   border-color: var(--pod);
 }
 .pcard-face.back img { width: 56%; image-rendering: pixelated; }
-.pcard-face.back em { font-style: normal; font-family: var(--font-display); font-size: 18px; color: var(--pod); }
+.pcard-face.back em { font-style: normal; font-family: var(--font-display); font-size: 9px; letter-spacing: 1px; color: var(--pod); }
+/* Rarity from the start (Super Mechs): a thick rarity frame on the back and a light beam behind the card */
+.pcard-face.back {
+  background:
+    linear-gradient(to top, color-mix(in srgb, var(--pod) 30%, transparent), transparent 60%),
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.05) 0 6px, transparent 6px 12px),
+    var(--bg-card);
+  border: 4px solid var(--pod);
+  box-shadow: var(--bevel), 0 0 12px 1px color-mix(in srgb, var(--pod) 60%, transparent);
+}
+.pcard-beam {
+  position: absolute;
+  left: 50%;
+  top: -40%;
+  width: 70%;
+  height: 180%;
+  transform: translateX(-50%) translateZ(-1px);
+  background: radial-gradient(ellipse at center, color-mix(in srgb, var(--rar) 70%, transparent) 0%, transparent 70%);
+  opacity: 0;
+  pointer-events: none;
+  animation: beam-pulse 1.8s ease-in-out infinite;
+}
+.pcard3d.r1 .pcard-beam { opacity: 0.35; }
+.pcard3d.r2 .pcard-beam { opacity: 0.55; }
+.pcard3d.r3 .pcard-beam { opacity: 0.8; }
+.pcard3d.r4 .pcard-beam, .pcard3d.r5 .pcard-beam { opacity: 1; width: 90%; }
+@keyframes beam-pulse { 50% { filter: brightness(1.35); } }
+/* The face: damage-type background like the Rig tiles, then badges */
+.pcard-face.front {
+  background:
+    radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--rar) 30%, transparent), transparent 70%),
+    linear-gradient(to top, color-mix(in srgb, var(--dt, transparent) 45%, transparent), transparent 70%),
+    var(--bg-panel);
+  border: 4px solid var(--rar);
+}
+.pcard-face.front strong { font-size: 10px; }
+.pcard-tag {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 6px;
+  font-style: normal;
+  font-family: var(--font-display);
+  font-size: 9px;
+  white-space: nowrap;
+  color: var(--p-ink);
+  box-shadow: 0 0 0 2px var(--p-ink);
+}
+.pcard-tag.new { background: var(--p-lime); animation: tag-pop 0.9s ease-in-out infinite alternate; }
+.pcard-tag.up { background: var(--p-yellow); }
+@keyframes tag-pop { to { transform: translateX(-50%) scale(1.12); } }
+.pcard3d.scrapped.flipped .pcard-face.front { filter: grayscale(0.85) brightness(0.7); }
+.pcard3d.scrapped.flipped .pcard-scrap { filter: none; color: var(--p-yellow); }
 
 .pcard-face.front {
   transform: rotateY(180deg);
