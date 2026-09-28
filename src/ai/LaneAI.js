@@ -142,7 +142,7 @@ function apply(s, a) {
       shot = { ...shot, dmg: shot.dmg + (Math.max(0, me.energy) / 2) * g.dumpScale };
       me.energy = 0;
     }
-    let dmg = hitDamage(shot, foe);
+    let dmg = hitDamage(shot, foe) * (me.enrage || 1); // raid boss enrage (Game._weaponHit)
     // Resists cut heat and drain too (Game._reactorKeep)
     const keep = (type) => 1 - Math.min(DEF_CAP, (foe.def || 0) + (foe.res?.[type] || 0)) * DEF_PER_POINT;
     if ((g.dtype === 'heat' || g.heatFx) && !g.meltdown) foe.heat += Math.round((g.heatFx ?? g.dmg * CONFIG.gear.dtypeLoad) * keep('heat'));
@@ -226,7 +226,9 @@ function apply(s, a) {
     me.actions -= 1;
     me.heat += me.legs.stompHeat ?? (s.stompHeat || 4);
     me.energy -= me.legs.stompEn || 0;
-    const dmg = soak(foe, hitDamage({ dmg: me.stompDmg, burst: 1, dtype: me.legs.stompType || 'phys' }, foe));
+    // A forcefield blocks a stomp too (Game._weaponHit); the raid boss's enrage counts
+    const dmg = foe.shield ? 0 : soak(foe, hitDamage({ dmg: me.stompDmg, burst: 1, dtype: me.legs.stompType || 'phys' }, foe) * (me.enrage || 1));
+    foe.shield = false;
     foe.hp -= dmg;
     s.dealt += dmg;
     const next = foe.pos + (Math.sign(foe.pos - me.pos) || 1);

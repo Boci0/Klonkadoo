@@ -311,8 +311,7 @@ function raidUnit(b) {
 }
 
 /**
- * One raid attempt: your team (full HP) vs the boss until the team is down or
- * the turn cap. Returns { dealt, turns, locked (boss turns lost to heat), broke (boss hit empty) }.
+ * One raid attempt: your team (full HP) vs the enraging boss until the team is down. Returns { dealt, turns, locked (boss turns lost to heat), broke (boss hit empty) }.
  */
 function raidAttempt(team, boss, rnd) {
   const e = raidUnit(boss);
@@ -327,8 +326,9 @@ function raidAttempt(team, boss, rnd) {
   let broke = 0;
   let pt = 0;
   let first = true;
-  while (e.hp > 0 && turns < CONFIG.raid.turnCap) {
+  while (e.hp > 0 && turns < 300) {
     turns += 1;
+    e.enrage = (1 + CONFIG.raid.enragePerTurn) ** (turns - 1); // Game._startEnemyTurn
     if (first || upkeep(p)) playTurn(p, e, mines, SKILL, rnd);
     first = false;
     drones(p, e, ++pt, 1);
@@ -337,6 +337,9 @@ function raidAttempt(team, boss, rnd) {
     if (upkeep(e)) playTurn(e, p, mines, e.difficulty, rnd);
     else locked += 1;
     drones(e, p, turns, 1);
+    // --trace: the raid turn by turn (every 5th)
+    if (args.trace && turns % 5 === 0) console.log(`T${turns} mech${idx + 1}@${p.pos} hp${Math.round(p.hp)} en${Math.round(p.energy)} heat${Math.round(p.heat)} [${(p.trace || []).join(' ')}] | boss@${e.pos} x${e.enrage.toFixed(1)} en${Math.round(e.energy)} heat${Math.round(e.heat)}/${e.heatCap} [${(e.trace || []).join(' ')}] guns ${e.guns.map((g) => `${g.reach.join('-')}:${Math.round(g.dmg)}/${g.en}en`).join(' ')}`);
+    p.trace = []; e.trace = [];
     if (p.hp <= 0) {
       team[idx].hp = 0;
       idx = team.findIndex((m) => m.hp > 0);
@@ -480,7 +483,7 @@ if (args.raid) {
       for (let i = 0; i < RUNS; i++) {
         const r = raidAttempt(makeTeam(LOADOUTS[g]), boss, rnd);
         dealt += r.dealt; turns += r.turns; locked += r.locked; broke += r.broke;
-        if (r.turns >= CONFIG.raid.turnCap) capped += 1;
+        if (r.turns >= 300) capped += 1;
       }
       const avg = dealt / RUNS;
       console.log(`${boss.element.padEnd(6)} ${boss.displayName.padEnd(18)} armor ${boss.strong}, bare ${boss.weak} | dmg/attempt ${Math.round(avg)} (${((avg / CONFIG.raid.pool) * 100).toFixed(2)}% of pool) | turns ${(turns / RUNS).toFixed(1)} (${Math.round((capped / RUNS) * 100)}% hit the cap) | boss turns lost to heat ${(locked / RUNS).toFixed(2)} | boss drained ${(broke / RUNS).toFixed(2)} turns`);

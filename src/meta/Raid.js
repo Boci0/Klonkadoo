@@ -93,7 +93,12 @@ export function raidBoss(week) {
 
   // One signature gun hits twice as hard
   const sig = Math.floor(rnd() * mech.weapons.length);
-  const weapons = mech.weapons.map((w, i) => (i === sig ? { ...w, dmg: w.dmg * 2, signature: true } : w));
+  // A giant reaches further: +reach on every gun, so it can't be kited forever
+  const weapons = mech.weapons.map((w, i) => ({
+    ...w,
+    reach: [w.reach[0], Math.min(CONFIG.lane.size - 1, w.reach[1] + R.reach)],
+    ...(i === sig ? { dmg: w.dmg * 2, signature: true } : {}),
+  }));
 
   return {
     week,

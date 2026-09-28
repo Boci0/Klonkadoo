@@ -1389,7 +1389,7 @@ function startRaidBattle(boss) {
     }),
     enemies: [enemy],
     nodeType: 'raid',
-    turnCap: CONFIG.raid.turnCap,
+    enragePerTurn: CONFIG.raid.enragePerTurn,
     ballType: OPERATOR.id,
     skinColors: skinColors(OPERATOR, skin),
     rigStats: r.permanent,
@@ -1414,7 +1414,7 @@ function startRaidBattle(boss) {
   });
 }
 
-/** The attempt is over (team down, boss withdrew, pool emptied, or you left): bank the damage. */
+/** The attempt is over (team down, pool emptied, or you left): bank the damage. */
 function endRaidAttempt(won) {
   if (!raidBattle) return;
   // What the boss lost this attempt (every source: guns, drones, stomps, burns, mines)
@@ -1425,7 +1425,7 @@ function endRaidAttempt(won) {
   raidBattle = null;
   battleNode = null;
   battlePaused = true;
-  ui.showRaidAttempt({ dealt, total, top: fieldTop(total), withdrew: game.withdrew, cleared: won || total >= CONFIG.raid.pool }, () => {
+  ui.showRaidAttempt({ dealt, total, top: fieldTop(total), cleared: won || total >= CONFIG.raid.pool }, () => {
     battlePaused = false;
     setState(State.MENU);
     ui.clearBattleHud();

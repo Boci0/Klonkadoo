@@ -60,6 +60,12 @@ export const DTYPES = {
   energy: { name: 'ELECTRIC', short: 'ELEC', color: '#73eff7', icon: 'energy' },
 };
 export const DTYPE_KEYS = Object.keys(DTYPES);
+/**
+ * Your gun damage by type, by role (Super Mechs): Physical hits hardest and does
+ * nothing else; Electric drains, and past empty the drain comes off HP; Explosive
+ * hits softest but overheats the target into lost turns (enemies: ELEMENT_DMG).
+ */
+export const GUN_TYPE_DMG = { phys: 1, energy: 1.05, heat: 0.9 };
 export const dtypeOf = (w) => (DTYPES[w?.dtype] ? w.dtype : 'phys');
 /** A ball's resistance to one damage type, in DEF points. */
 export const resistOf = (ball, type) => (ball.def || 0) + (ball.res?.[type] || 0);
@@ -335,6 +341,13 @@ export function partStats(owned) {
   if (base.fx && (base.fx.heat || base.fx.drain)) {
     out.fx = { ...base.fx };
     for (const f of ['heat', 'drain']) if (typeof base.fx[f] === 'number') out.fx[f] = Math.round(base.fx[f] * k);
+  }
+  // Your guns by damage type (GUN_TYPE_DMG). An Explosive gun that heats by its hit keeps
+  // the heat of its full hit, so it hits softer but locks just as well
+  const typeMult = base.type === 'weapon' ? GUN_TYPE_DMG[base.dtype] ?? 1 : 1;
+  if (typeMult !== 1 && typeof out.dmg === 'number') {
+    if (base.dtype === 'heat' && typeof out.fx?.heat !== 'number') out.fx = { ...(out.fx || {}), heat: Math.round(out.dmg * CONFIG.gear.dmgScale * CONFIG.gear.dtypeLoad) };
+    out.dmg *= typeMult;
   }
   return out;
 }

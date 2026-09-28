@@ -234,12 +234,13 @@ export const CONFIG = {
   // --- Weekly raid (meta/Raid.js): one giant boss a week, its HP pool carries over between attempts ---
   raid: {
     unlockRisk: 4, // Risk levels unlocked (4 = Risk 3 beaten)
-    // Boss HP pool for the week: ~100 attempts by a maxed 3-mech team (tools/balance-sim.mjs --raid:
-    // ~4k-17k per attempt depending on the week's element and armor)
+    // Boss HP pool for the week: ~100 maxed mechs' worth (tools/balance-sim.mjs --raid: a maxed
+    // mythic mech ~8-9k per attempt alone, a team of 3 ~14-24k)
     pool: 900000,
-    turnCap: 30, // after this many turns the boss withdraws and the attempt ends
-    atk: 1.6, // boss damage: floor 5 boss numbers x this
-    rigMult: { heat: 1.5, energy: 1.25 }, // heat cap + cooling, energy + regen: a boss rig this many times over (a focused team locks it a turn or two per attempt)
+    enragePerTurn: 0.08, // the boss hits 8% harder every turn, compounding (x4.7 by turn 20, x10 by 30): every attempt ends with your team down
+    atk: 2.2, // boss damage: floor 5 boss numbers x this
+    reach: 2, // +max range on every boss gun (a giant can't be kited)
+    rigMult: { heat: 2, energy: 1.25 }, // heat cap + cooling, energy + regen: a boss rig this many times over (a focused team locks it a turn or two per attempt)
     // Simulated field: the share of players (top %) who reach each fraction of the pool.
     // Your weekly damage is ranked on a smooth curve through these points.
     field: [[0.5, 0.3], [2, 0.12], [8, 0.05], [25, 0.015], [60, 0.004], [100, 0]],

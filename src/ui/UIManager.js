@@ -886,7 +886,7 @@ export class UIManager {
           <div title="Your rank among all raiders this week"><span>RANK</span><strong class="accent">${raid.damage > 0 ? `TOP ${top < 1 ? top.toFixed(1) : Math.round(top)}%` : '-'}</strong></div>
           <div title="Attempts this week (no limit)"><span>ATTEMPTS</span><strong>${raid.attempts}</strong></div>
         </div>
-        <p class="rig-note">Your team fights until it falls or the boss withdraws after ${R.turnCap} turns. Rewards pay out when the week ends, by your rank.</p>
+        <p class="rig-note">Your whole team fights until it falls: the boss enrages and hits harder every turn. Rewards pay out when the week ends, by your rank.</p>
         <div class="raid-tiers">${R.tiers.map(tierRow).join('')}</div>
       </div>`;
     document.getElementById('btn-raid-attack')?.addEventListener('click', () => {
@@ -901,10 +901,10 @@ export class UIManager {
   }
 
   /** After an attempt: what it dealt and where you stand now. */
-  showRaidAttempt({ dealt, total, top, withdrew, cleared }, onDone) {
+  showRaidAttempt({ dealt, total, top, cleared }, onDone) {
     const n = (v) => Math.round(v).toLocaleString('en-US');
     const t = raidTier(top);
-    this.openModal(cleared ? 'RAID CLEARED' : withdrew ? 'THE BOSS WITHDREW' : 'TEAM DOWN',
+    this.openModal(cleared ? 'RAID CLEARED' : 'TEAM DOWN',
       `<div class="raid-me">
         <div><span>THIS ATTEMPT</span><strong class="accent">${n(dealt)}</strong></div>
         <div><span>THIS WEEK</span><strong>${n(total)}</strong></div>

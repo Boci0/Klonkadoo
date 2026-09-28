@@ -133,7 +133,6 @@ export class Game {
 
   reset(config = DEFAULT_BATTLE) {
     this.battleConfig = config;
-    this.withdrew = false; // raid: the boss left at the turn cap
     this.battleStats = this._freshBattleStats();
     this.rigStats = config.rigStats || {};
     const mech = this.rigStats.mech || {};
@@ -599,14 +598,6 @@ export class Game {
     const p = this.player;
     p.idleTurns = (p.idleTurns || 0) + 1; // reset when it lands a hit (anti-stall, LaneAI.score)
     for (const x of this.enemies) x.jammed = false; // a jam lasts one turn
-    // Raid: after the turn cap the boss withdraws and the attempt ends
-    const cap = this.battleConfig.turnCap;
-    if (cap && this.battleStats.turns >= cap) {
-      this.withdrew = true;
-      this.winner = 'enemy';
-      this.renderer.showBanner(`${this.activeEnemy?.displayName || 'THE BOSS'} WITHDRAWS`, '#ffcd75');
-      return this._endBattle();
-    }
     // Napalm fires burn out after their turns
     for (const h of this.hazards) if (h.type === 'fire') h.turns -= 1;
     this.hazards = this.hazards.filter((h) => h.type !== 'fire' || h.turns > 0);
@@ -630,6 +621,12 @@ export class Game {
     const e = this.activeEnemy;
     if (!e) return this._startPlayerTurn();
     e.idleTurns = (e.idleTurns || 0) + 1;
+    // Raid boss: enrages a little more every turn, so every attempt ends with your team down
+    const rage = this.battleConfig.enragePerTurn;
+    if (rage && e.giant) {
+      e.enrage = (1 + rage) ** this.battleStats.turns; // compounding: no tank outlasts it
+      if (this.battleStats.turns && this.battleStats.turns % 5 === 0) this._callout(e, `ENRAGED x${e.enrage.toFixed(1)}`, '#ff5d73');
+    }
     this.turnSystem.startEnemyTurn(this.enemies.indexOf(e));
     this.moveMap = new Map();
     if (!this._tickBurn(e)) return this._afterAction(e, 1.1); // burned out: your turn (the next one drops in on theirs)
@@ -1163,6 +1160,7 @@ export class Game {
   _weaponHit(from, target, w, rawDmg, owner = from) {
     const type = dtypeOf(w);
     rawDmg *= 1 + (Math.random() * 2 - 1) * G.dmgSpread; // every hit rolls
+    if (owner?.enrage) rawDmg *= owner.enrage; // raid boss: hits harder every turn
     const strip = { ...(w.fx?.resDrain || {}) };
     if (w.fx?.corrode) strip.phys = (strip.phys || 0) + w.fx.corrode;
     if (target.team === 'enemy') {
