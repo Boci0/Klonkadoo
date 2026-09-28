@@ -3884,6 +3884,12 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
   pointer-events: auto;
 }
 .team-bar.hidden { display: none; }
+/* The enemy team, mirrored on the right */
+.team-bar.enemy-team { left: auto; right: calc(8px + var(--safe-right)); pointer-events: none; }
+.enemy-team .team-chip b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.enemy-team .team-chip i em { background: #ff5d73; }
+.enemy-team .team-chip.on { border-color: #ff5d73; }
+.enemy-team .team-chip.on span { color: #ff5d73; }
 .team-chip {
   display: grid;
   grid-template-columns: auto 1fr;

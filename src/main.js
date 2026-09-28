@@ -635,7 +635,7 @@ function updateGearHud(el, endBtn, ventBtn) {
   }));
 }
 
-/** Team bar: every team mech with its HP; tap a benched one to SWAP (the whole turn). */
+/** Team bar: every team mech with its HP; tap a benched one to SWAP (one action). */
 let teamBarSig = '';
 function updateTeamBar() {
   const el = document.getElementById('team-bar');
@@ -643,7 +643,7 @@ function updateTeamBar() {
   const team = game.team || [];
   el.classList.toggle('hidden', team.length < 2);
   if (team.length < 2) return;
-  const full = game.canPlayerAct && game.player.actionsLeft >= CONFIG.gear.actions;
+  const full = game.canPlayerAct && game.player.actionsLeft >= 1; // SWAP costs one action
   const rows = team.map((m, i) => {
     const active = i === game.teamIndex;
     const hp = active ? game.player.hp : m.hp;
@@ -660,8 +660,30 @@ function updateTeamBar() {
   </button>`).join('');
 }
 
+/** Enemy team bar (right side): their mechs in drop-in order with HP, when there's more than one. */
+let enemyBarSig = '';
+function updateEnemyTeamBar() {
+  const el = document.getElementById('enemy-team-bar');
+  if (!el) return;
+  const active = game.activeEnemy;
+  const rows = [
+    ...(game.enemies || []).map((e) => ({ name: e.displayName, hp: e.hp, max: e.maxHp, state: e.hp <= 0 ? 'ko' : e === active ? 'on' : '' })),
+    ...(game.enemyReserve || []).map((d) => ({ name: d.displayName, hp: d.hp ?? d.maxHp, max: d.maxHp, state: '' })),
+  ].map((r) => ({ ...r, hp: Math.max(0, Math.round(r.hp)), pct: Math.max(0, Math.min(100, (r.hp / r.max) * 100)) }));
+  el.classList.toggle('hidden', rows.length < 2);
+  if (rows.length < 2) return;
+  const sig = JSON.stringify(rows);
+  if (sig === enemyBarSig) return;
+  enemyBarSig = sig;
+  el.innerHTML = rows.map((r) => `<div class="team-chip ${r.state}">
+    <b>${r.name}</b><span>${r.state === 'on' ? 'FIGHTING' : r.state === 'ko' ? 'DESTROYED' : 'WAITING'}</span>
+    <i><em style="width:${r.pct}%"></em></i><small>${r.hp}</small>
+  </div>`).join('');
+}
+
 function updateAbilityHud() {
   updateTeamBar();
+  updateEnemyTeamBar();
   // STOMP: lit when the enemy is right next to you
   const btnStomp = document.getElementById('btn-stomp');
   const cdStomp = document.getElementById('cd-stomp');
@@ -1304,6 +1326,8 @@ function startCombat(node) {
     walkBonus: run.walkBonus,
     reachBonus: run.reachBonus,
     condition: run.condition,
+    // Abyss floors: enemies go insane (+1% damage every turn, -1% max HP every turn)
+    insanity: run.floor >= CONFIG.map.floors ? CONFIG.abyss.insanity : null,
   };
 
   // Wire quest hooks (clear old listeners first so no stacking)
@@ -1330,6 +1354,7 @@ function startCombat(node) {
   battleConfig.arena = run.condition === 'calm' ? pickArena(0, () => 0) : pickArena(run.floor + 1);
   game.startBattle(battleConfig);
   setAutoBattle(autoBattle || autoRun); // AUTO carries over between fights
+  if (battleConfig.insanity) addFeedEntry('<span class="feed-enemy-ability">INSANITY: every turn they hit 1% harder and lose 1% of their HP</span>');
 
   // Bosses get an intro card; the fight is frozen until it is dismissed
   if (node.type === 'miniboss' || node.type === 'boss') {
@@ -1859,6 +1884,20 @@ function abyssKeeper(depth) {
   return { type: 'miniboss', name: 'ABYSS GUARDIAN' };
 }
 
+/**
+ * Abyss Shards from a warden or Klonkadoo Prime: only on Risk 10 and XI, a
+ * chance per kill (a little lower on Risk 10), never doubled. Returns how many.
+ */
+function rollShards(kind, risk) {
+  const A = CONFIG.abyss;
+  if (risk < A.shardMinRisk) return 0;
+  const s = A.shards[kind];
+  const chance = s[Math.min(11, risk)] ?? s[10];
+  if (Math.random() >= chance) return 0;
+  const [lo, hi] = s.amount;
+  return lo + Math.floor(Math.random() * (hi - lo + 1));
+}
+
 /** The pod an Abyss keeper drops: the Abyss Pod once the run's Risk allows it, else the best below. */
 function abyssPodFor(risk) {
   const open = CRATES.filter((c) => !c.minRisk || risk >= c.minRisk);
@@ -1887,7 +1926,12 @@ function sectorCleared() {
     const pods = saveSystem.getRewardMultiplier(); // Risk XI: two pods
     saveSystem.addPodCredit(pod.id, pods);
     run.podsEarned = (run.podsEarned || 0) + pods;
-    rewards = { keys, scrap, final, pod, pods };
+    const shards = rollShards(final ? 'prime' : 'warden', run.risk ?? saveSystem.getDifficultyLevel());
+    if (shards) {
+      saveSystem.addShards(shards);
+      addFeedEntry(`<span class="feed-boon">+${shards} ABYSS SHARD${shards > 1 ? 'S' : ''}</span>`);
+    }
+    rewards = { keys, scrap, final, pod, pods, shards };
     if (final) {
       saveSystem.bumpLifetime('trueFinalClears', 1, 'add');
       addFeedEntry('<span class="feed-boon">KLONKADOO PRIME IS DOWN: THE ABYSS GOES ON FOREVER</span>');

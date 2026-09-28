@@ -572,7 +572,7 @@ export class SaveSystem {
 
   getGoldMultiplier() {
     const risk = this.getRiskData();
-    return Math.max(0.2, 1 - (risk.minusGold || 0) / 100) * this.getRewardMultiplier();
+    return Math.max(0.2, 1 - (risk.minusGold || 0) / 100); // (Risk XI doubles Keys, scrap and pods, not gold)
   }
 
   getShopPriceMultiplier() {
@@ -901,6 +901,39 @@ export class SaveSystem {
     if (m.scrap < cost) return false;
     m.scrap -= cost;
     owned.level += 1;
+    this.save();
+    return true;
+  }
+
+  // ---------- Abyss Shards (CONFIG.abyss) ----------
+
+  getShards() {
+    return this.data.mech.shards || 0;
+  }
+
+  addShards(n) {
+    this.data.mech.shards = this.getShards() + Math.max(0, Math.round(n));
+    this.save();
+  }
+
+  /** Can this part ASCEND? A weapon at Mythic max level. { ok, shards, scrap } */
+  ascendInfo(owned) {
+    const A = CONFIG.abyss.ascend;
+    const p = owned && getPart(owned.id);
+    const ok = !!p && p.type === 'weapon' && tierOf(owned) === 'mythic' && owned.level >= maxLevel(owned);
+    return { ok, shards: A.shards, scrap: A.scrap, afford: ok && this.getShards() >= A.shards && this.data.mech.scrap >= A.scrap };
+  }
+
+  /** Spend Abyss Shards + scrap: a Mythic max-level weapon becomes ASCENDED LV 1. */
+  ascendPart(uid) {
+    const owned = this.getOwnedPart(uid);
+    const info = this.ascendInfo(owned);
+    if (!info.afford) return false;
+    const m = this.data.mech;
+    m.shards -= info.shards;
+    m.scrap -= info.scrap;
+    owned.tier = 'ascended';
+    owned.level = 1;
     this.save();
     return true;
   }

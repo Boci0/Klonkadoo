@@ -133,6 +133,7 @@ export class Game {
 
   reset(config = DEFAULT_BATTLE) {
     this.battleConfig = config;
+    this.insanity = 0; // Abyss: enemy damage bonus so far (_tickInsanity)
     this.battleStats = this._freshBattleStats();
     this.rigStats = config.rigStats || {};
     const mech = this.rigStats.mech || {};
@@ -155,7 +156,7 @@ export class Game {
     p.shieldHp = config.player.shieldHp || 0;
 
     // The team: mech 1 plus up to 2 more from the garage (config.team). One
-    // fights at a time; SWAP (the whole turn) or a knock-out brings in another.
+    // fights at a time; SWAP (one action) or a knock-out brings in another.
     this.team = [
       this._memberFrom({ ...config.player, rigStats: this.rigStats }, 0),
       ...(config.team || []).map((t, i) => this._memberFrom(t, i + 1)),
@@ -360,12 +361,13 @@ export class Game {
     this.renderer.addScreenShake(8);
   }
 
-  /** SWAP: another team mech takes over. It costs the whole turn. */
+  /** SWAP: another team mech takes over. It costs one action; the new mech gets what's left. */
   swapPlayer(i) {
     const m = this.team[i];
-    if (!this.canPlayerAct || this.player.actionsLeft < G.actions || !m || i === this.teamIndex || m.hp <= 0) return false;
+    if (!this.canPlayerAct || this.player.actionsLeft < 1 || !m || i === this.teamIndex || m.hp <= 0) return false;
+    const left = this.player.actionsLeft - 1;
     this._playerDropIn(i, 'SWAPS IN');
-    this.player.actionsLeft = 0;
+    this.player.actionsLeft = left;
     this._afterAction(this.player, 0.7);
     return true;
   }
@@ -577,6 +579,32 @@ export class Game {
     return false;
   }
 
+  /** An enemy's damage multiplier: the raid boss's enrage, times the Abyss's insanity. */
+  _dmgMult(u) {
+    if (!u || u.team !== 'enemy') return 1;
+    return (u.enrage || 1) * (1 + (this.insanity || 0));
+  }
+
+  /**
+   * Abyss INSANITY: at the start of every turn (yours and theirs) enemies hit
+   * +1% harder for the rest of the battle, and the one on the lane loses 1%
+   * of its max HP, which can finish it off. Returns false if the battle ended.
+   */
+  _tickInsanity() {
+    const I = this.battleConfig.insanity;
+    if (!I) return true;
+    this.insanity = (this.insanity || 0) + I.dmgPerTurn;
+    const e = this.activeEnemy;
+    if (!e) return true;
+    const loss = Math.max(1, Math.round(e.maxHp * I.hpPerTurn));
+    const killed = e.takeDamage(loss);
+    const pct = Math.round(this.insanity * 100);
+    if (killed) this._callout(e, 'CONSUMED BY INSANITY', '#c46fd6');
+    else if (pct % 10 === 0) this._callout(e, `INSANITY +${pct}%`, '#c46fd6');
+    this.events.emit('damage', { attacker: null, victim: e, damage: loss, killed });
+    return this.running && this.turnSystem.phase !== TurnPhase.GAME_OVER;
+  }
+
   /** Burn damage at the start of a turn; returns false if it killed the unit. */
   _tickBurn(u) {
     if (!(u.burnTicks > 0)) return true;
@@ -598,6 +626,7 @@ export class Game {
     const p = this.player;
     p.idleTurns = (p.idleTurns || 0) + 1; // reset when it lands a hit (anti-stall, LaneAI.score)
     for (const x of this.enemies) x.jammed = false; // a jam lasts one turn
+    if (!this._tickInsanity()) return;
     // Napalm fires burn out after their turns
     for (const h of this.hazards) if (h.type === 'fire') h.turns -= 1;
     this.hazards = this.hazards.filter((h) => h.type !== 'fire' || h.turns > 0);
@@ -618,6 +647,7 @@ export class Game {
     this.turnId += 1;
     // A knocked-out enemy's replacement drops in on the same position
     if (!this.activeEnemy && this.enemyReserve.length) this._dropIn();
+    if (!this._tickInsanity()) return;
     const e = this.activeEnemy;
     if (!e) return this._startPlayerTurn();
     e.idleTurns = (e.idleTurns || 0) + 1;
@@ -1160,7 +1190,7 @@ export class Game {
   _weaponHit(from, target, w, rawDmg, owner = from) {
     const type = dtypeOf(w);
     rawDmg *= 1 + (Math.random() * 2 - 1) * G.dmgSpread; // every hit rolls
-    if (owner?.enrage) rawDmg *= owner.enrage; // raid boss: hits harder every turn
+    rawDmg *= this._dmgMult(owner); // raid enrage, Abyss insanity
     const strip = { ...(w.fx?.resDrain || {}) };
     if (w.fx?.corrode) strip.phys = (strip.phys || 0) + w.fx.corrode;
     if (target.team === 'enemy') {
@@ -1346,6 +1376,7 @@ export class Game {
   _aiUnit(u, guns) {
     return {
       team: u.team,
+      enrage: this._dmgMult(u), // raid enrage x Abyss insanity (LaneAI multiplies its hits)
       pos: u.pos,
       hp: u.hp,
       maxHp: u.maxHp,

@@ -25,7 +25,7 @@ import {
 } from '../meta/Mech.js';
 import { partCardHtml, statBarHtml, bindHoverTips, hideTip, iconKeyHtml } from './partCard.js';
 
-const RANK = { common: 0, rare: 1, epic: 2, legendary: 3, mythic: 4 };
+const RANK = { common: 0, rare: 1, epic: 2, legendary: 3, mythic: 4, ascended: 5 };
 // Where each slot tile sits around the bay
 const LEFT = ['top1', 'side1', 'side2'];
 const RIGHT = ['top2', 'side3', 'side4'];
@@ -83,7 +83,7 @@ export class RigScreen {
 
   _renderWallet() {
     const m = saveSystem.getMech();
-    this.wallet.innerHTML = `<span title="Keys">${ico('key')}<b>${m.tokens}</b></span><span title="Scrap">${ico('scrap')}<b>${m.scrap}</b></span>`;
+    this.wallet.innerHTML = `<span title="Keys">${ico('key')}<b>${m.tokens}</b></span><span title="Scrap">${ico('scrap')}<b>${m.scrap}</b></span>${m.shards ? `<span title="Abyss Shards: ascend a Mythic max-level weapon">${ico('shard', '#c46fd6')}<b>${m.shards}</b></span>` : ''}`;
   }
 
   // ---------- Loadout ----------
@@ -308,8 +308,12 @@ export class RigScreen {
     const fodder = maxed && tf ? saveSystem.transformFodder(owned.uid) : [];
     const canTf = maxed && tf && fodder.length >= tf.parts && m.scrap >= tf.scrap;
 
+    // A Mythic weapon at max level ASCENDS with Abyss Shards (CONFIG.abyss.ascend)
+    const asc = saveSystem.ascendInfo(owned);
     // At max level the level button becomes TRANSFORM (it needs spare parts of the same tier)
-    const lvBtn = !maxed
+    const lvBtn = asc.ok
+      ? `<button class="btn ${asc.afford ? 'btn-accent' : 'btn-disabled'}" data-act="ascend" ${asc.afford ? '' : 'disabled'}>&#9650;<i class="tdot" style="--c:${rarityColor('ascended')}"></i> ${ico('shard', '#c46fd6')}${asc.shards} ${ico('scrap')}${asc.scrap}</button>`
+      : !maxed
       ? `<button class="btn ${m.scrap >= cost ? 'btn-primary' : 'btn-disabled'}" data-act="upgrade" ${m.scrap < cost ? 'disabled' : ''} title="Level up">LV+ ${ico('scrap')}${cost}</button>`
       : tf
         ? `<button class="btn ${canTf ? 'btn-accent' : 'btn-disabled'}" data-act="transform" ${canTf ? '' : 'disabled'} title="Transform to ${rarityName(tf.to)}: melts ${tf.parts} spare ${rarityName(tierOf(owned))} parts + ${tf.scrap} scrap">&#9650;<i class="tdot" style="--c:${rarityColor(tf.to)}"></i> ${tf.parts}x<i class="tdot" style="--c:${rarityColor(tierOf(owned))}"></i> ${ico('scrap')}${tf.scrap}</button>`
@@ -320,8 +324,10 @@ export class RigScreen {
       : dupe ? `<button class="btn btn-disabled" disabled title="One per mech">${ico('lock')}1x</button>`
         : `<button class="btn ${tooHeavy ? 'btn-outline' : 'btn-accent'}" data-act="equip" title="${tooHeavy ? heavyTip : 'Equip'}">${tooHeavy ? `${ico('load')}!` : 'EQUIP'}</button>`;
     const sell = `<button class="btn ${worn.has(owned.uid) ? 'btn-disabled' : 'btn-danger'}" data-act="salvage" ${worn.has(owned.uid) ? 'disabled' : ''} title="Salvage">${ico('scrap')}+${salvageValue(owned)}</button>`;
-    const tfInfo = maxed && tf && !canTf
-      ? `<p class="rig-note">&#9650; ${fodder.length < tf.parts ? `needs ${tf.parts} spare ${rarityName(tierOf(owned))} parts` : `needs ${tf.scrap} scrap`}</p>` : '';
+    const tfInfo = asc.ok
+      ? `<p class="rig-note">&#9650; ASCEND to ${rarityName('ascended')}: ${asc.shards} Abyss Shards (you have ${saveSystem.getShards()}) + ${asc.scrap} scrap. Shards can drop from Abyss wardens and Klonkadoo Prime on Risk 10 and XI.</p>`
+      : maxed && tf && !canTf
+        ? `<p class="rig-note">&#9650; ${fodder.length < tf.parts ? `needs ${tf.parts} spare ${rarityName(tierOf(owned))} parts` : `needs ${tf.scrap} scrap`}</p>` : '';
 
     box.innerHTML = partCardHtml(owned, { extra: `${tfInfo}<div class="rig-actions">${equipBtn}${lvBtn}${sell}</div>` });
 
@@ -329,6 +335,14 @@ export class RigScreen {
       const act = b.dataset.act;
       // TRANSFORM melts parts: show exactly which ones first
       if (act === 'transform') return this._confirmTransform(owned, tf);
+      if (act === 'ascend') {
+        const done = saveSystem.ascendPart(owned.uid);
+        soundEngine.play(done ? 'coin' : 'error');
+        if (!done) return;
+        haptics.impact('heavy');
+        this.render();
+        return this._flashTransform(owned);
+      }
       // Equipping an overweight part is allowed (you just can't deploy), the button warns first
       const ok = act === 'equip' ? saveSystem.equipPart(this.slot, owned.uid)
         : act === 'unequip' ? saveSystem.unequipSlot(this.slot)

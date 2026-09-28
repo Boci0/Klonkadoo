@@ -1080,6 +1080,7 @@ const UI_GRIDS = {
   heatin: ['...k....', '..kok...', '.koyok..', 'koyyyok.', '.kooook.', '.kkkkkkk', '..kRRRk.', '...kRk..'],
   ammo: ['.k...k..', 'kyk.kyk.', 'kyk.kyk.', 'kok.kok.', 'kok.kok.', 'kdk.kdk.', 'kkk.kkk.'],
   lock: ['..kkkk..', '.kllllk.', '.kk..kk.', 'kyyyyyyk', 'kyykkyok', 'kyykkyok', 'kyyyyook', 'kkkkkkkk'],
+  shard: ['...kk...', '..khak..', '.khhaak.', '.khaabk.', 'khaaabbk', '.kaabbk.', '..kabk..', '...kk...'], // Abyss Shard (tint it: ico('shard', violet))
   top: ['...kk...', '..kwwk..', '.kwwwwk.', 'kkkwwkkk', '..kwwk..', 'kkkkkkkk', 'klllllld', 'kkkkkkkk'],
   side: ['kkk.k...', 'kldkwk..', 'kldkwwk.', 'kldwwwwk', 'kldkwwk.', 'kldkwk..', 'kkk.k...'],
   stomp: ['.kkkk...', '.kllk...', '.kllk...', '.klldkk.', 'kllllllk', 'kddddddk', 'kkkkkkkk'],

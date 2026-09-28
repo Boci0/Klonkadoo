@@ -49,8 +49,11 @@ export const RARITIES = {
   epic: { name: 'EPIC', color: '#c46fd6', scrap: 20, cost: 2 },
   legendary: { name: 'LEGENDARY', color: '#ffcd75', scrap: 50, cost: 3 },
   mythic: { name: 'MYTHIC', color: '#ff5d73', scrap: 120, cost: 4 },
+  // Above Mythic: only reached with Abyss Shards (CONFIG.abyss.ascend), never dropped
+  ascended: { name: 'ASCENDED', color: '#fff1b0', scrap: 300, cost: 6 },
 };
-export const RARITY_ORDER = ['common', 'rare', 'epic', 'legendary', 'mythic'];
+export const RARITY_ORDER = ['common', 'rare', 'epic', 'legendary', 'mythic', 'ascended'];
+const TOP_DROP_TIER = RARITY_ORDER.indexOf('mythic'); // transforms stop here; ASCENDED needs shards
 const rIdx = (r) => Math.max(0, RARITY_ORDER.indexOf(r));
 
 /** Damage types. Explosive also heats the target, Electric drains it (Game._reactorFx). */
@@ -294,7 +297,7 @@ export const INVENTORY_CAP = 80;
 export function tierRange(p) {
   if (p.tiers) return p.tiers;
   const lo = rIdx(p.rarity);
-  return [p.rarity, RARITY_ORDER[Math.min(RARITY_ORDER.length - 1, lo + 3)]];
+  return [p.rarity, RARITY_ORDER[Math.min(TOP_DROP_TIER, lo + 3)]];
 }
 /** The tier an owned part is at now. */
 export const tierOf = (owned) => owned.tier || getPart(owned.id)?.rarity || 'common';

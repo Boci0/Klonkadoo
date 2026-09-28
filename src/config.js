@@ -94,7 +94,7 @@ export const CONFIG = {
     overweightHp: 20,
     dmgSpread: 0.15, // every hit rolls mean ±15%
     // Tiers: max level per tier (common..mythic); each tier up multiplies stats, levels add up to one more step
-    tierLevelCap: [5, 10, 15, 20, 25],
+    tierLevelCap: [5, 10, 15, 20, 25, 30], // ... mythic, ascended
     tierStep: 1.25, // +25% per tier, and a tier's levels add up to one more step (a transformed common lands near a native legendary)
     transform: { parts: [2, 3, 4, 5], scrap: [20, 60, 150, 400] }, // from common, rare, epic, legendary
     // Energy pool / refill per turn, heat cap / cooling per turn when no frame sets them
@@ -222,8 +222,8 @@ export const CONFIG = {
     // Hinted at in the Risk panel, the RULES list and the results screen.
     secret: {
       name: 'OBLIVION',
-      desc: 'Every rule above counts double. All hostiles are elites that pierce half your DEF and cool 40 more heat per turn. Double Keys, scrap, gold and pods.',
-      rewardMult: 2, // keys, scrap, gold and Abyss pods x this (so it's worth the pain)
+      desc: 'Every rule above counts double. All hostiles are elites that pierce half your DEF and cool 40 more heat per turn. Double Keys, scrap and pods.',
+      rewardMult: 2, // keys, scrap and Abyss pods x this (so it's worth the pain; not gold)
       hint: 'Win on Risk 10 without fighting a common hostile. Sneaking past is fine.',
       doubleRules: true, // Risk I-X count twice (HP, ATK, elite HP / ATK, reach, gold, healing, prices, damage taken)
       defPierce: 0.5,
@@ -231,6 +231,19 @@ export const CONFIG = {
       gunCdCut: 1, // enemy reactors cool +40 heat per turn (the old gun cooldown cut; Mech.enemyRig)
     },
   },
+  // --- Abyss (Risk 10 and XI only): wardens and Klonkadoo Prime may drop Abyss Shards,
+  // which lift a max-level Mythic weapon to ASCENDED. Abyss floors drive enemies insane.
+  abyss: {
+    shardMinRisk: 10,
+    // chance per kill and how many drop: Risk 10 a little lower than Risk XI
+    shards: {
+      warden: { 10: 0.25, 11: 0.35, amount: [1, 1] },
+      prime: { 10: 0.6, 11: 0.75, amount: [1, 3] },
+    },
+    ascend: { shards: 5, scrap: 800 }, // one Mythic LV 25 weapon -> ASCENDED LV 1
+    insanity: { dmgPerTurn: 0.01, hpPerTurn: 0.01 }, // every turn (yours and theirs): enemies +1% damage, the one on the lane -1% max HP
+  },
+
   // --- Weekly raid (meta/Raid.js): one giant boss a week, its HP pool carries over between attempts ---
   raid: {
     unlockRisk: 4, // Risk levels unlocked (4 = Risk 3 beaten)

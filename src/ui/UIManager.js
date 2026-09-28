@@ -295,7 +295,7 @@ export class UIManager {
       else {
         const rule = saveSystem.riskLevels(b.id)[val - 1];
         const more = val > 1 ? ` <span class="dim-text">+${val - 1}</span>` : '';
-        const x2 = val > levels ? ` · x${CONFIG.risk.secret.rewardMult} ALL` : '';
+        const x2 = val > levels ? ` · x${CONFIG.risk.secret.rewardMult} KEYS, SCRAP, PODS` : '';
         summary.innerHTML = `<span class="risk-tp-inline">+${val * CONFIG.risk.scrapPerLevel}% SCRAP · +${val * CONFIG.risk.keysPerLevel}% KEYS${x2}</span> <b class="${rule.allElite ? 'abyss-text' : ''}" title="${rule.desc}">${rule.name}</b>${more}`;
       }
       const bar = m.need ? `<i class="bm-bar" title="${m.into}/${m.need} XP"><i style="width:${Math.round((m.into / m.need) * 100)}%"></i></i>` : '<em>MAX</em>';
@@ -951,7 +951,7 @@ export class UIManager {
   showAlmanac(type = 'weapon', page = 0) {
     const owned = new Set(saveSystem.getMech().owned.map((o) => o.id));
     const TABS = [['weapon', 'GUNS'], ['legs', 'LEGS'], ['frame', 'FRAMES'], ['drone', 'DRONES'], ['module', 'MODS'], ['special', 'SPECIALS'], ['icons', '? ICONS']];
-    const RANK = { common: 0, rare: 1, epic: 2, legendary: 3, mythic: 4 };
+    const RANK = { common: 0, rare: 1, epic: 2, legendary: 3, mythic: 4, ascended: 5 };
     const list = PARTS.filter((p) => p.type === type).sort((a, b) => RANK[a.rarity] - RANK[b.rarity] || a.name.localeCompare(b.name));
     // No scrolling: as many cards as fit the screen, the rest on the next page
     const cols = window.innerWidth >= 1000 ? 3 : 2;
@@ -1645,6 +1645,7 @@ export class UIManager {
         <div class="reward-tile" style="--c:#ffcd75">${ico('key')}<strong>+${rewards.keys}</strong><span>KEYS</span></div>
         <div class="reward-tile" style="--c:#94b0c2">${ico('scrap')}<strong>+${rewards.scrap}</strong><span>SCRAP</span></div>
         ${rewards.pod ? `<div class="reward-tile" style="--c:${rewards.pod.color}" title="Open it for free on RIG > PODS">${ico('pod', rewards.pod.color)}<strong>+${rewards.pods || 1}</strong><span>${rewards.pod.name}</span></div>` : ''}
+        ${rewards.shards ? `<div class="reward-tile" style="--c:#c46fd6">${ico('shard', '#c46fd6')}<strong>+${rewards.shards}</strong><span>ABYSS SHARD${rewards.shards > 1 ? 'S' : ''}</span></div>` : ''}
       </div>` : '';
     const final = rewards?.final;
     this.openModal(first ? 'SECTOR CLEAR' : final ? 'TRUE FINAL BOSS DOWN' : `ABYSS ${depth} CLEARED`, `

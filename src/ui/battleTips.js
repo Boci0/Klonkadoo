@@ -118,11 +118,11 @@ function swapTip(game, i) {
   const active = i === game.teamIndex;
   const guns = (m.weapons || []).map((w) => w.name).join(' + ') || 'No guns';
   const hp = Math.round(active ? game.player.hp : m.hp);
-  const state = active ? 'FIGHTING' : hp <= 0 ? 'KNOCKED OUT' : 'SWAP · whole turn';
+  const state = active ? 'FIGHTING' : hp <= 0 ? 'KNOCKED OUT' : 'SWAP · 1 action';
   return `<h4>${m.name} <em>${state}</em></h4>
     ${row('HP', `${hp}/${Math.round(m.maxHp)}`, '#a7f070')}
     <p>${guns}</p>
-    <p>${active ? 'The mech on the lane.' : 'SWAP brings it in on the same position. It takes your whole turn, so do it at the start. If the fighting mech is knocked out, the next one drops in by itself.'}</p>`;
+    <p>${active ? 'The mech on the lane.' : 'SWAP brings it in on the same position. It costs one action, and the new mech uses the rest of your turn. If the fighting mech is knocked out, the next one drops in by itself.'}</p>`;
 }
 
 export class BattleTips {

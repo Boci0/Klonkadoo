@@ -20,8 +20,9 @@ export const chipHtml = (c) => `<span class="pchip"${c.tip ? ` title="${c.tip}"`
 /** Tier dots: filled up to the tier the part is at, hollow up to its highest. */
 export function tierDots(owned) {
   const p = getPart(owned.id);
-  const [lo, hi] = tierRange(p).map((r) => RARITY_ORDER.indexOf(r));
   const now = RARITY_ORDER.indexOf(tierOf(owned));
+  const [lo, top] = tierRange(p).map((r) => RARITY_ORDER.indexOf(r));
+  const hi = Math.max(top, now); // an ASCENDED weapon shows its extra dot
   let out = '';
   for (let i = lo; i <= hi; i++) out += `<i class="${i <= now ? 'on' : ''}" style="--c:${rarityColor(RARITY_ORDER[i])}" title="${rarityName(RARITY_ORDER[i])}"></i>`;
   return `<span class="tdots">${out}</span>`;
