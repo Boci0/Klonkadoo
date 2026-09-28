@@ -173,7 +173,9 @@ export const CONFIG = {
     3: { hp: 159, atk: 1.05, def: 1, aiDifficulty: 0.45 },
     4: { hp: 149, atk: 0.92, def: 2, aiDifficulty: 0.48 },
     5: { hp: 165, atk: 0.98, def: 3, aiDifficulty: 0.51 },
-    elite: { hp: 185, atk: 1.05, def: 3, aiDifficulty: 0.55 },
+    // Elites: that floor's hostile, made clearly tougher (they used to be one fixed line, weaker than a
+    // floor 5 hostile once split into a pair). Mech.enemyTier builds them.
+    elite: { hpMult: 1.2, atkMult: 1.05, def: 1, ai: 0.04 },
     miniboss: { hp: 264, atk: 1.02, def: 4, aiDifficulty: 0.62 },
     boss: { hp: 330, atk: 1.08, def: 5, aiDifficulty: 0.70 },
   },
@@ -202,7 +204,7 @@ export const CONFIG = {
     // gear players have there (max level at I-IV, one tier up at V-VI, two from VII; tools/balance-sim.mjs).
     // The Abyss uses its run's Risk level.
     gearComp: { hp: [1, 1.12, 1.12, 1.12, 1.12, 1.27, 1.27, 1.41, 1.41, 1.41, 1.41, 1.41], atk: [1, 1.04, 1.04, 1.04, 1.04, 1.2, 1.2, 1.25, 1.25, 1.25, 1.25, 1.25] },
-    ease: { hp: 0.5, atk: 0.5, ai: -0.2, fullAt: 12, curve: [0.5, 0.75, 0.87, 0.94, 1.04, 1.18, 1.22, 1.29, 1.26, 1.12, 0.97, 0.8] },
+    ease: { hp: 0.5, atk: 0.5, ai: -0.2, fullAt: 12, curve: [0.5, 0.75, 0.87, 0.94, 1.04, 1.18, 1.22, 1.29, 1.26, 1.12, 0.97, 0.7] }, // XI: 0.7 since OBLIVION doubles every earlier rule (2.3.2)
     levels: [
       { name: 'HARDENED', desc: 'Enemies +15% HP.', hpPct: 15 },
       { name: 'RANGEFINDERS', desc: 'Enemy guns reach 1 position further.', enemyReach: 1 },
@@ -220,14 +222,13 @@ export const CONFIG = {
     // Hinted at in the Risk panel, the RULES list and the results screen.
     secret: {
       name: 'OBLIVION',
-      desc: 'Every hostile is an elite. Enemies +30% HP, +25% ATK, pierce half your DEF, guns reload faster. Double Keys, scrap, gold and Abyss pods.',
+      desc: 'Every rule above counts double. All hostiles are elites that pierce half your DEF and cool 40 more heat per turn. Double Keys, scrap, gold and pods.',
       rewardMult: 2, // keys, scrap, gold and Abyss pods x this (so it's worth the pain)
       hint: 'Win on Risk 10 without fighting a common hostile. Sneaking past is fine.',
-      hpPct: 30,
-      atkPct: 25,
+      doubleRules: true, // Risk I-X count twice (HP, ATK, elite HP / ATK, reach, gold, healing, prices, damage taken)
       defPierce: 0.5,
       allElite: true,
-      gunCdCut: 1,
+      gunCdCut: 1, // enemy reactors cool +40 heat per turn (the old gun cooldown cut; Mech.enemyRig)
     },
   },
   // Multi-enemy waves per node type + floor (1 to 3 enemies per stage)

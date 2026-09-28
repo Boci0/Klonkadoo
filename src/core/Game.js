@@ -1165,7 +1165,9 @@ export class Game {
       }
       if (w.fx?.freeze) target.isFrozen = true;
       for (const [t, n] of Object.entries(strip)) {
-        target.res = { ...target.res, [t]: Math.max(-(target.def || 0), (target.res?.[t] || 0) - n) };
+        const before = target.res?.[t] || 0;
+        target.res = { ...target.res, [t]: Math.max(-(target.def || 0), before - n) };
+        target.resLost = { ...(target.resLost || {}), [t]: (target.resLost?.[t] || 0) + (before - target.res[t]) };
         this._callout(target, `-${n} ${DTYPES[t].short} RES`, DTYPES[t].color);
       }
       if (yours) this._reportHit(w, dmg);

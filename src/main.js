@@ -25,7 +25,7 @@ import { DevTools } from './dev/DevTools.js';
 import { checkMedals } from './meta/Medals.js';
 import './platform/native.js';
 import './platform/desktop.js';
-import { withMech, tokenReward, riskEase, gearComp, CRATES, enemyMech, enemyRig, pickEnemyElement, elementLean, roleElements, riskShred, CLEAN_WIN_KEYS, DTYPES, dtypeOf, droneUpkeep } from './meta/Mech.js';
+import { withMech, tokenReward, riskEase, gearComp, enemyTier, CRATES, enemyMech, enemyRig, pickEnemyElement, elementLean, roleElements, riskShred, CLEAN_WIN_KEYS, DTYPES, dtypeOf, droneUpkeep } from './meta/Mech.js';
 import { partIcon, ico } from './rendering/pixelIcons.js';
 import { pickNode, pickChoice, pickBuys, supplyValue } from './rogue/AutoRun.js';
 import { withMastery, masteryLevel, runXp } from './meta/Mastery.js';
@@ -1188,8 +1188,7 @@ function startCombat(node) {
 
   const floorKey = Math.min(CONFIG.map.floors, run.floor + 1); // Abyss floors reuse floor 5's tables
   const abyssDepth = Math.max(0, run.floor - CONFIG.map.floors + 1);
-  const tierKey = node.type === 'boss' ? 'boss' : node.type === 'miniboss' ? 'miniboss' : node.type === 'elite' ? 'elite' : String(floorKey);
-  const tier = CONFIG.enemyTiers[tierKey] || CONFIG.enemyTiers[1];
+  const tier = enemyTier(node.type, floorKey);
 
   // Risk rules (elite/boss rules only hit elites, mini-bosses and bosses)
   const isEliteTier = ['elite', 'miniboss', 'boss'].includes(node.type);

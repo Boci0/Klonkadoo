@@ -3896,6 +3896,13 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
   color: var(--p-ink) !important;
 }
 
+/* Heat reads 610/560 since 2.3: no spacing, one line */
+.ability-vent .ability-cd {
+  letter-spacing: 0;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
 /* Narrow windows: no room at the bottom, so the gun chips move to the top
    centre, under the floor banner (open sky, clear of the ground fight) */
 @media (max-width: 760px) {

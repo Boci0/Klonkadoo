@@ -1439,7 +1439,8 @@ export class Renderer {
       ctx.textAlign = 'left';
       ctx.font = `700 15px ${FONT}`;
       ctx.fillStyle = '#73eff7';
-      ctx.fillText(fitText(ctx, player.displayName || 'YOU', panelW - 110), x + 8, y + 16);
+      const pHp = `${Math.ceil(player.hp)}/${player.maxHp}${(player.shieldHp || 0) > 0 ? ` +${Math.ceil(player.shieldHp)}` : ''}`;
+      fitName(ctx, player.displayName || 'YOU', x + 8, y + 16, panelW - 24 - ctx.measureText(pHp).width);
       ctx.textAlign = 'right';
       ctx.fillStyle = '#f4f4f4';
       const shieldHp = player.shieldHp || 0;
@@ -1459,10 +1460,11 @@ export class Renderer {
       ctx.textAlign = 'left';
       // Name in its damage type's color: white Physical, orange Explosive, cyan Electric
       ctx.fillStyle = DTYPES[enemy.element]?.color || arch?.color || '#ff5d73';
-      ctx.fillText(fitText(ctx, enemy.displayName || 'HOSTILE', panelW - 100), x + 8, y + 16);
+      const eHp = `${Math.ceil(enemy.hp)}/${enemy.maxHp}`;
+      fitName(ctx, enemy.displayName || 'HOSTILE', x + 8, y + 16, panelW - 24 - ctx.measureText(eHp).width);
       ctx.textAlign = 'right';
       ctx.fillStyle = '#f4f4f4';
-      ctx.fillText(`${Math.ceil(enemy.hp)}/${enemy.maxHp}`, x + panelW - 8, y + 16);
+      ctx.fillText(eHp, x + panelW - 8, y + 16);
       this._hpBar(ctx, x + 8, y + 25, panelW - 16, 14, enemy, '#ef7d57');
       if (gear) this._reactorBars(ctx, x + 8, y + 45, panelW - 16, enemy);
       this._drawStatusTags(ctx, enemy, x, y + panelH + 4, panelW, true);
@@ -1509,17 +1511,23 @@ export class Renderer {
   _drawStatusTags(ctx, ball, panelX, tagY, panelW, alignRight) {
     const tags = [];
     if (ball.burnTicks > 0)
-      tags.push({ label: `BURN ${ball.burnTicks}`, color: '#ef7d57', desc: `Burning! Takes ${ball.burnDmg || 8} damage at the start of each turn. ${ball.burnTicks} turn(s) remaining.` });
+      tags.push({ label: `BURN ${ball.burnTicks}`, color: '#ef7d57', desc: `Burning! Takes ${Math.round(ball.burnDmg || 6 * CONFIG.gear.hpScale)} damage at the start of each turn. ${ball.burnTicks} turn(s) remaining.` });
     if (ball.isFrozen)
       tags.push({ label: 'CHILLED', color: '#73eff7', desc: 'Chilled: its next move is 1 position shorter.' });
     if (ball.exposed)
       tags.push({ label: 'EXPOSED', color: '#ffcd75', desc: 'Rammed! Takes +25% gun damage until its next turn.' });
     if (ball.heatCap && ball.heat > ball.heatCap)
-      tags.push({ label: 'OVERHEATED', color: '#ff5d73', desc: 'Over its heat cap: can\'t fire, and its next turn starts with a forced vent (both actions if one isn\'t enough).' });
-
-    if (ball.team === 'player') {
-      if (ball.forcefield) tags.push({ label: 'FORCEFIELD', color: '#a7f070', desc: 'Forcefield Barrier Active! Blocks 1 incoming attack.' });
-    }
+      tags.push({ label: 'OVERHEATED', color: '#ff5d73', desc: 'Over its heat cap: its next turn is lost while it cools (and the one after, if it is still over the cap).' });
+    if (ball.jammed || ball.jamNext)
+      tags.push({ label: 'JAMMED', color: DTYPES.energy.color, desc: `Drained to 0 energy: its guns can't fire ${ball.jammed ? 'this' : 'next'} turn (it can still move, stomp and vent).` });
+    if (ball.coolLost)
+      tags.push({ label: `COOL -${Math.round(ball.coolLost)}`, color: '#ff5d73', desc: `Coolant cracked: cools ${Math.round(ball.coolLost)} less heat per turn for the rest of the fight.` });
+    if (ball.regenLost)
+      tags.push({ label: `REGEN -${Math.round(ball.regenLost)}`, color: '#ff5d73', desc: `Generator broken: refills ${Math.round(ball.regenLost)} less energy per turn for the rest of the fight.` });
+    for (const [t, v] of Object.entries(ball.resLost || {}))
+      if (v > 0) tags.push({ label: `-${Math.round(v * 10) / 10} ${DTYPES[t].short}`, color: DTYPES[t].color, desc: `${DTYPES[t].name} resist stripped by ${Math.round(v * 10) / 10} for the rest of the fight.` });
+    if (ball.forcefield) tags.push({ label: 'FORCEFIELD', color: '#a7f070', desc: 'Forcefield: blocks the next incoming hit.' });
+    if (ball.bubble > 0) tags.push({ label: `SHIELD ${Math.round(ball.bubble)}`, color: '#a7f070', desc: `Shield: soaks the next ${Math.round(ball.bubble)} damage until its next turn.` });
     if (tags.length === 0) return;
 
     const rect = this.canvas.getBoundingClientRect();
@@ -1527,15 +1535,24 @@ export class Renderer {
     const tagH = 18;
     const gap = 3;
     const widths = tags.map((t) => Math.ceil(ctx.measureText(t.label).width) + 10);
-    const total = widths.reduce((a, b) => a + b, 0) + gap * (tags.length - 1);
-    let tx = alignRight ? panelX + panelW - Math.min(total, panelW) : panelX;
-    let ty = tagY;
+    // Rows as wide as the panel (both sides wrap; the enemy's rows hug the right edge)
+    const rows = [[]];
+    let rowW = 0;
     tags.forEach((tag, i) => {
-      const tw = widths[i];
-      if (alignRight ? false : tx + tw > panelX + panelW) {
-        tx = panelX;
-        ty += tagH + gap;
+      if (rows[rows.length - 1].length && rowW + gap + widths[i] > panelW) {
+        rows.push([]);
+        rowW = 0;
       }
+      rowW += (rows[rows.length - 1].length ? gap : 0) + widths[i];
+      rows[rows.length - 1].push(i);
+    });
+    rows.forEach((row, r) => {
+      const rw = row.reduce((a, i) => a + widths[i], 0) + gap * (row.length - 1);
+      let tx = alignRight ? panelX + panelW - rw : panelX;
+      const ty = tagY + r * (tagH + gap);
+      for (const i of row) {
+      const tag = tags[i];
+      const tw = widths[i];
       ctx.fillStyle = 'rgba(16, 17, 28, 0.9)';
       ctx.fillRect(tx, ty, tw, tagH);
       ctx.fillStyle = tag.color;
@@ -1545,6 +1562,7 @@ export class Renderer {
       ctx.fillText(tag.label, tx + 5, ty + 11);
       this._hoverZones.push({ x: rect.left + tx, y: rect.top + ty, w: tw, h: tagH, desc: tag.desc, color: tag.color });
       tx += tw + gap;
+      }
     });
   }
 
@@ -1820,6 +1838,18 @@ export class Renderer {
 }
 
 // ---------- helpers ----------
+
+/** A panel name: shrinks from 15px to 11px to fit, then cuts with "…"; restores the 15px font. */
+function fitName(ctx, text, x, y, maxW) {
+  let size = 15;
+  for (; size > 11; size--) {
+    ctx.font = `700 ${size}px ${FONT}`;
+    if (ctx.measureText(text).width <= maxW) break;
+  }
+  ctx.font = `700 ${size}px ${FONT}`;
+  ctx.fillText(fitText(ctx, text, maxW), x, y);
+  ctx.font = `700 15px ${FONT}`;
+}
 
 function fitText(ctx, text, maxW) {
   if (ctx.measureText(text).width <= maxW) return text;

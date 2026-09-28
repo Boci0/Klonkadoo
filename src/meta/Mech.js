@@ -645,6 +645,22 @@ export function tokenReward(nodeType) {
  * How soft enemies are at a Risk level: { hp, atk, ai } multipliers / AI shift,
  * easing from CONFIG.risk.ease at Risk 0 to full strength at ease.fullAt.
  */
+/**
+ * Base stats for a fight tier on a floor: normal fights, mini-bosses and
+ * bosses read CONFIG.enemyTiers; elites are that floor's hostile scaled up
+ * (enemyTiers.elite: hpMult, atkMult, +def, +ai).
+ */
+export function enemyTier(nodeType, floor) {
+  const T = CONFIG.enemyTiers;
+  const f = String(Math.max(1, Math.min(5, floor)));
+  if (nodeType === 'elite') {
+    const base = T[f] || T[1];
+    const E = T.elite;
+    return { hp: base.hp * E.hpMult, atk: base.atk * E.atkMult, def: base.def + E.def, aiDifficulty: base.aiDifficulty + E.ai };
+  }
+  return T[nodeType === 'boss' || nodeType === 'miniboss' ? nodeType : f] || T[1];
+}
+
 /** Enemy HP / ATK multiplier that keeps pace with the gear players have at a Risk level (CONFIG.risk.gearComp). */
 export function gearComp(level = 0) {
   const C = CONFIG.risk.gearComp;
@@ -823,7 +839,7 @@ export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMu
   const G = CONFIG.gear;
   // More guns than in 2.0 (and a drone): each hits a little softer, so the
   // total stays close while the enemy covers more ranges
-  const spread = final || boss ? 0.5 : { combat: 0.5, elite: 0.48, miniboss: 0.52, boss: 0.5 }[tier];
+  const spread = final || boss ? 0.5 : { combat: 0.5, elite: 0.5, miniboss: 0.52, boss: 0.5 }[tier];
   const scale = G.dmgScale * G.enemyDmgScale * spread * (1 + 0.1 * (f - 1)) * (ELEMENT_DMG[el] ?? 1);
   const frac = (v) => Math.round(v * 100) / 100; // enemy numbers stay fractional: Risk and floor % always count
   // Heat pumped in and energy drained grow with the floor, like their damage but slower

@@ -14,7 +14,7 @@
 
 import { CONFIG } from '../src/config.js';
 import { planTurn, applyAction } from '../src/ai/LaneAI.js';
-import { enemyMech, enemyRig, pickEnemyElement, elementLean, roleElements, riskShred, withMech, getPart, legsRules, riskEase, tierRange, maxLevel, RARITY_ORDER } from '../src/meta/Mech.js';
+import { enemyMech, enemyRig, enemyTier, pickEnemyElement, elementLean, roleElements, riskShred, withMech, getPart, legsRules, riskEase, tierRange, maxLevel, RARITY_ORDER } from '../src/meta/Mech.js';
 import { withMastery } from '../src/meta/Mastery.js';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => (a.startsWith('--') ? a.slice(2).split('=') : ['runs', a])));
@@ -109,7 +109,7 @@ function pickArch(floor, rnd, element) {
 
 function enemyTeam(type, floor, rnd, playerRes = {}) {
   const count = CONFIG.enemyCounts[type]?.[floor] || 1;
-  const tier = CONFIG.enemyTiers[type === 'combat' ? floor : type];
+  const tier = enemyTier(type, floor);
   const risk = riskData();
   const elite = type !== 'combat';
   const ease = riskEase(RISK);
@@ -148,6 +148,8 @@ function riskData() {
   // Risk 11 = the secret OBLIVION on top of all ten
   const rules = [...CONFIG.risk.levels.slice(0, RISK), ...(RISK > CONFIG.risk.levels.length ? [CONFIG.risk.secret] : [])];
   for (const r of rules) for (const k of Object.keys(t)) t[k] = typeof t[k] === 'boolean' ? t[k] || !!r[k] : t[k] + (r[k] || 0);
+  // OBLIVION: the numbered rules before it count double (SaveSystem.getRiskData)
+  if (rules.some((r) => r.doubleRules)) for (const k of ['hpPct', 'atkPct', 'eliteHpPct', 'eliteAtkPct', 'minusHeal', 'plusDmgTaken', 'aiBonus']) t[k] *= 2;
   return t;
 }
 

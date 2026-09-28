@@ -465,16 +465,19 @@ export class SaveSystem {
     this.bumpLifetime('bestAbyss', depth);
   }
 
-  /** Combined effect of Risk levels 1..level (rules stack). */
+  /** Combined effect of Risk levels 1..level (rules stack; OBLIVION doubles them). */
   getRiskData(level = this.getDifficultyLevel()) {
     const total = { hpPct: 0, atkPct: 0, defPct: 0, aiBonus: 0, enemyReach: 0, minusGold: 0, minusHeal: 0, plusCost: 0, plusDmgTaken: 0, eliteHpPct: 0, eliteAtkPct: 0 };
+    const NUMBERED = Object.keys(total);
     for (const rule of this.riskLevels().slice(0, level)) {
-      for (const key of Object.keys(total)) total[key] += rule[key] || 0;
+      for (const key of NUMBERED) total[key] += rule[key] || 0;
       if (rule.allElite) total.allElite = true;
       if (rule.droneOut) total.droneOut = true;
       if (rule.gunCdCut) total.gunCdCut = (total.gunCdCut || 0) + rule.gunCdCut;
       if (rule.defPierce) total.defPierce = (total.defPierce || 0) + rule.defPierce;
     }
+    // Risk XI (OBLIVION): every numbered rule before it counts double
+    if (this.riskLevels().slice(0, level).some((r) => r.doubleRules)) for (const key of NUMBERED) total[key] *= 2;
     return total;
   }
 
