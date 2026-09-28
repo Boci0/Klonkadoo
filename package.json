@@ -1,6 +1,6 @@
 {
   "name": "slingshot",
-  "version": "2.2.8",
+  "version": "2.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
