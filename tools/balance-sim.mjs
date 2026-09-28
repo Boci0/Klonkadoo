@@ -14,7 +14,7 @@
 
 import { CONFIG } from '../src/config.js';
 import { planTurn, applyAction } from '../src/ai/LaneAI.js';
-import { enemyMech, enemyRig, pickEnemyElement, elementLean, roleElements, withMech, getPart, legsRules, riskEase, tierRange, maxLevel, RARITY_ORDER } from '../src/meta/Mech.js';
+import { enemyMech, enemyRig, pickEnemyElement, elementLean, roleElements, riskShred, withMech, getPart, legsRules, riskEase, tierRange, maxLevel, RARITY_ORDER } from '../src/meta/Mech.js';
 import { withMastery } from '../src/meta/Mastery.js';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => (a.startsWith('--') ? a.slice(2).split('=') : ['runs', a])));
@@ -82,7 +82,7 @@ function playerUnit(perm, hp, maxHp) {
     shield: !!m.startForcefield, specials: m.specials.map((sp) => ({ kind: sp.special, uses: sp.uses, en: sp.en || 0, heat: sp.heat || 0, range: sp.range || 0, dist: sp.dist || 0, ram: (sp.ram || 0) * G.dmgScale * atk, away: !!sp.away, drain: sp.drain || 0 })),
     guns: m.weapons.map((w) => gunOf(w, w.dmg * G.dmgScale * atk * 1.0375)), // +5% crit x1.75
     drones: m.drones.map((d) => ({ dmg: (d.dmg || 0) * G.dmgScale * atk, heal: d.heal || 0, chill: d.chill || 0, en: d.upkeep?.en ?? 4, dtype: d.dtype || 'phys' })),
-    killHeal: m.killHeal || 0, lifesteal: 0,
+    killHeal: m.killHeal || 0,
   };
 }
 
@@ -92,7 +92,7 @@ function gunOf(w, dmg) {
     dtype: w.dtype || 'phys', pierce: !!w.fx?.pierce, heatFx: w.fx?.heat, drain: w.fx?.drain, push: w.fx?.push || 0, pull: w.fx?.pull || 0,
     drag: w.fx?.drag || 0, freeze: !!w.fx?.freeze, mine: !!w.fx?.mine, hotBonus: !!w.fx?.hotBonus, lowEnBonus: !!w.fx?.lowEnBonus, execute: w.fx?.execute || 0,
     meltdown: !!w.fx?.meltdown, steal: !!w.fx?.steal, jam: !!w.fx?.jam, coolDmg: w.fx?.coolDmg || 0, regenDmg: w.fx?.regenDmg || 0,
-    dump: !!w.fx?.dump, dumpScale: G.dmgScale, backfire: Math.round((w.backfire || 0) * G.dmgScale), lifesteal: w.fx?.lifesteal || 0,
+    dump: !!w.fx?.dump, dumpScale: G.dmgScale, backfire: Math.round((w.backfire || 0) * G.dmgScale),
     resDrain: { ...(w.fx?.resDrain || {}), ...(w.fx?.corrode ? { phys: w.fx.corrode } : {}) },
   };
 }
@@ -101,7 +101,7 @@ const ARCH_KEYS = (floor) => Object.entries(CONFIG.archetypeWeights[Math.min(5, 
 function pickArch(floor, rnd, element) {
   if (args.arch) return args.arch; // --arch=tank: every enemy is this archetype
   // Only roles that come in the enemy's damage type (main.js pickArchetype)
-  const list = ARCH_KEYS(floor).filter(([k]) => roleElements(k).includes(element));
+  const list = ARCH_KEYS(floor).filter(([k]) => roleElements(k).includes(element)).map(([k, w]) => [k, k === 'corroder' ? w * riskShred(RISK).role : w]);
   let r = rnd() * list.reduce((s, [, w]) => s + w, 0);
   for (const [k, w] of list) if ((r -= w) <= 0) return k;
   return list[0][0];
@@ -124,7 +124,7 @@ function enemyTeam(type, floor, rnd, playerRes = {}) {
     const archetype = type === 'boss' && i === 0 ? 'standard' : pickArch(floor, rnd, element);
     const arch = CONFIG.enemyArchetypes[archetype];
     const boss = type === 'boss' && i === 0;
-    const mech = enemyMech(type, archetype, floor, rnd, { atkMult, boss, element });
+    const mech = enemyMech(type, archetype, floor, rnd, { atkMult, boss, element, shredChance: riskShred(RISK).gun });
     const rig = enemyRig(type, { cdCut: risk.gunCdCut || 0, element: mech.element });
     const maxHp = Math.round(tier.hp * G.enemyHpScale * arch.hpMult * hpMult * floorHp * waveHp * (type === 'boss' && i > 0 ? 0.55 : 1));
     out.push({
@@ -207,11 +207,8 @@ function playTurn(me, foe, mines, difficulty, rnd) {
     const s = { size: SIZE, me, foe, mines, stompHeat: G.stompHeat };
     const plan = planTurn(s, { difficulty, rnd });
     const a = plan[0] || { type: 'end' };
-    const hpBefore = foe.hp;
     const st = { size: SIZE, me, foe, mines, stompHeat: G.stompHeat, dealt: 0 };
     if (!applyAction(st, a)) break;
-    // Siphon Ray
-    if (a.type === 'fire' && me.guns[a.gun]?.lifesteal && me.team === 'player') me.hp = Math.min(me.maxHp, me.hp + (hpBefore - foe.hp) * me.guns[a.gun].lifesteal);
     if (a.type === 'end') break;
   }
 }
@@ -279,8 +276,24 @@ function battle(team, type, floor, rnd, rules) {
 }
 
 /** Your team for a run: --team=N copies of the loadout (garage mechs 2 and 3), each with its own HP. */
+// --boons=def,atk,hp,swift,power,regen: run boons (RunState.applyBoon; one of each counts)
+const BOONS = (args.boons || '').split(',').filter(Boolean);
+function withBoons(perm) {
+  const p = { ...perm, mech: { ...perm.mech } };
+  for (const b of new Set(BOONS)) {
+    if (b === 'atk') p.atkBonus = (p.atkBonus || 0) + 0.1;
+    else if (b === 'swift') p.atkBonus = (p.atkBonus || 0) + 0.08; // (+1 walk not modelled)
+    else if (b === 'def') p.defBonus = (p.defBonus || 0) + 2;
+    else if (b === 'hp') p.hpBonus = (p.hpBonus || 0) + 400;
+    else if (b === 'power') p.mech.weapons = p.mech.weapons.map((w) => ({ ...w, reach: [w.reach[0], Math.min(SIZE - 1, w.reach[1] + 1)] }));
+    else if (b === 'regen') p.boonRegen = (p.boonRegen || 0) + 0.06;
+    else throw new Error('unknown boon ' + b);
+  }
+  return p;
+}
+
 function makeTeam(parts) {
-  const perm = withMastery(withMech({}, parts.map(ownedPart)), MASTERY);
+  const perm = withBoons(withMastery(withMech({}, parts.map(ownedPart)), MASTERY));
   const maxHp = Math.round((CONFIG.run.maxHpBase + (perm.hpBonus || 0)) / (1 + riskData().plusDmgTaken / 100)); // GLASS ARMOR as less HP
   return Array.from({ length: Math.max(1, Math.min(3, Number(args.team || 1))) }, () => ({ perm, hp: maxHp, maxHp }));
 }
@@ -334,6 +347,8 @@ function simRun(seed, rules, parts) {
         }
         log.lowest = Math.min(log.lowest, hpPct());
         gold += (CONFIG.nodes.rewards[type] || {}).gold || 0;
+        const regen = team[0].perm.boonRegen || 0;
+        if (regen) healAll((max) => max * regen);
         const postHeal = rules.postWinHeal[type] || 0;
         if (postHeal) healAll((max) => max * postHeal);
       } else if (type === 'rest') {
@@ -346,8 +361,8 @@ function simRun(seed, rules, parts) {
         }
       } else if (type === 'encounter') {
         // A pick-one event: heal when hurt, gold otherwise; some cost HP
-        if (hpPct() < 0.6) healAll(() => 20);
-        else if (rnd() < 0.35) team[0].hp = Math.max(1, team[0].hp - (5 + rnd() * 9));
+        if (hpPct() < 0.6) healAll(() => 20 * G.hpScale);
+        else if (rnd() < 0.35) team[0].hp = Math.max(1, team[0].hp - (5 + rnd() * 9) * G.hpScale);
         else gold += 8;
       }
     }

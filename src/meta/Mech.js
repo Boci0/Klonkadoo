@@ -68,11 +68,12 @@ export const resistOf = (ball, type) => (ball.def || 0) + (ball.res?.[type] || 0
 // Weight in kg (CONFIG.gear.loadCap for the whole mech).
 // Weapons: mount side / top, reach [min, max] in lane positions (1 = the next position),
 // dmg = average per shot (hits roll ±CONFIG.gear.dmgSpread), en / heat per shot,
-// ammo = shots per battle, arc = lobbed (over cover), backfire = HP it costs YOU per shot.
+// ammo = shots per battle, arc = lobbed (only how the shot flies), backfire = HP it costs YOU per shot.
 // fx: burn / freeze / corrode / splash / line (beam) / pierce (ignores resists) / crit
 //     burst (hits N times) / drain (burns target energy) / heat (adds target heat) / push / pull
 //     resDrain { type: n } (strips that resist for the fight) / mine (plants a mine instead)
-//     execute (x1.8 damage below that share of the target's HP) / lifesteal (repairs you for that share of HP dealt)
+//     execute (x1.8 damage below that share of the target's HP) / steal (what it drains goes to you). No gun heals: repairs
+//     come from drones, frames and modules only
 // Frames and some modules set the reactor: energy (pool), regen (per turn), heatCap, cool (per turn).
 // `unique` modules fit once per mech. `tiers` [lowest, highest] defaults to [rarity, rarity + 3].
 export const PARTS = [
@@ -127,7 +128,7 @@ export const PARTS = [
   // Finishers and sustain: battles don't heal you any more, so HP won back mid-fight matters
   { id: 'wp_breacher', type: 'weapon', name: 'BREACHER', rarity: 'rare', dtype: 'phys', weight: 75, reach: [1, 3], dmg: 11, en: 8, heat: 12, fx: { execute: 0.35 }, color: '#ff5d73', icon: 'wp_scatter', desc: 'A finisher: x1.8 damage against a target below 35% HP.' },
   { id: 'wp_needler', type: 'weapon', name: 'NEEDLE RIFLE', rarity: 'epic', dtype: 'phys', weight: 70, reach: [2, 5], dmg: 9, en: 10, heat: 9, fx: { pierce: true }, color: '#94b0c2', icon: 'wp_rifle', desc: 'Tungsten needles: ignores resists. The side-mount answer to armored mechs.' },
-  { id: 'wp_siphon', type: 'weapon', name: 'SIPHON RAY', rarity: 'epic', dtype: 'energy', weight: 80, reach: [1, 3], dmg: 11, en: 18, heat: 5, fx: { line: true, lifesteal: 0.3 }, color: '#a7f070', icon: 'wp_beam', desc: 'Repairs you for 30% of the HP damage it deals (the Risk heal penalty applies).' },
+  { id: 'wp_siphon', type: 'weapon', name: 'SIPHON RAY', rarity: 'epic', dtype: 'energy', weight: 80, reach: [1, 3], dmg: 11, en: 18, heat: 5, fx: { line: true, drain: 10, steal: true }, color: '#a7f070', icon: 'wp_beam', desc: 'What it drains goes into your battery (energy only, never HP).' },
   { id: 'wp_omega', type: 'weapon', name: 'OMEGA REPEATER', rarity: 'mythic', dtype: 'phys', weight: 95, reach: [1, 4], dmg: 7, en: 12, heat: 15, fx: { burst: 4, crit: 0.15 }, color: '#ff5d73', icon: 'wp_smg', desc: 'Every round has +15% crit chance.' },
   // Explosive specialists: cook the target until it locks up, then cash the heat in
   { id: 'wp_blowtorch', type: 'weapon', name: 'BLOWTORCH', rarity: 'common', dtype: 'heat', weight: 45, reach: [1, 2], dmg: 5, en: 4, heat: 16, fx: { heat: 18 }, color: '#ef7d57', desc: 'Weak hit, but pumps a lot of heat into the target.' },
@@ -156,7 +157,7 @@ export const PARTS = [
   { id: 'wp_concussion', type: 'weapon', mount: 'top', name: 'CONCUSSION MORTAR', rarity: 'rare', dtype: 'phys', weight: 90, reach: [4, 8], dmg: 9, en: 8, heat: 12, arc: true, fx: { push: 2 }, color: '#94b0c2', desc: 'Into the edge: the target slams for extra damage.' },
   { id: 'wp_napalm', type: 'weapon', mount: 'top', name: 'NAPALM LAUNCHER', rarity: 'rare', dtype: 'heat', weight: 80, reach: [3, 6], dmg: 8, en: 5, heat: 22, arc: true, fx: { heat: 12, napalm: 2 }, color: '#ff5d73', desc: "Sets the target's plate on fire for 2 turns: +8 heat to whoever stands or lands there." },
   { id: 'wp_harpoon', type: 'weapon', mount: 'top', name: 'HARPOON CANNON', rarity: 'rare', dtype: 'phys', weight: 85, reach: [4, 8], dmg: 13, en: 8, heat: 12, fx: { pull: 3 }, color: '#94b0c2', icon: 'wp_grapple', desc: 'Sets up stomps, rams, short guns and mines in its way.' },
-  { id: 'wp_arcmortar', type: 'weapon', mount: 'top', name: 'ARC MORTAR', rarity: 'epic', dtype: 'energy', weight: 95, reach: [3, 7], dmg: 11, en: 20, heat: 6, arc: true, fx: { drain: 10 }, color: '#73eff7', icon: 'wp_mortar', desc: 'A lobbed EMP shell: flies over cover and drains energy.' },
+  { id: 'wp_arcmortar', type: 'weapon', mount: 'top', name: 'ARC MORTAR', rarity: 'epic', dtype: 'energy', weight: 95, reach: [3, 7], dmg: 11, en: 20, heat: 6, arc: true, fx: { drain: 10 }, color: '#73eff7', icon: 'wp_mortar' },
   { id: 'wp_missiles', type: 'weapon', mount: 'top', name: 'MISSILE POD', rarity: 'epic', dtype: 'phys', weight: 110, reach: [3, 6], dmg: 16, en: 6, heat: 9, ammo: 3, arc: true, color: '#ff5d73' },
   { id: 'wp_rail', type: 'weapon', mount: 'top', name: 'RAIL LANCE', rarity: 'epic', dtype: 'energy', weight: 115, reach: [5, 8], dmg: 20, en: 28, heat: 7, backfire: 3, fx: { pierce: true }, color: '#41a6f6', desc: 'Ignores resists.' },
   { id: 'wp_howitzer', type: 'weapon', mount: 'top', name: 'SIEGE HOWITZER', rarity: 'legendary', dtype: 'phys', weight: 155, reach: [6, 9], dmg: 24, en: 12, heat: 18, ammo: 2, backfire: 5, arc: true, fx: { splash: 1 }, color: '#ffcd75' },
@@ -315,6 +316,7 @@ export function partStats(owned) {
   const k = growth(owned);
   const out = { ...base, level: owned.level || 1, uid: owned.uid, baseRarity: base.rarity, rarity: tierOf(owned) };
   for (const f of SCALING) if (typeof base[f] === 'number') out[f] = base[f] * (FULL.has(f) ? k : 1 + (k - 1) * 0.5);
+  for (const f of ['hp', 'heal', 'absorb']) if (typeof out[f] === 'number') out[f] *= CONFIG.gear.hpScale; // HP numbers are x10
   if (base.type === 'module') for (const f of REACTOR) if (typeof base[f] === 'number') out[f] = Math.round(base[f] * k);
   if (base.res) out.res = Object.fromEntries(Object.entries(base.res).map(([t, v]) => [t, v * (1 + (k - 1) * 0.5)]));
   // Heat pumped into the target and energy drained grow like damage (guns and drones)
@@ -384,7 +386,6 @@ export function describePart(owned) {
   if (p.heal) L.push(`HEAL ${Math.round(p.heal)}/turn`);
   if (p.chill) L.push(`COOLS YOU ${Math.round(p.chill)}/turn`);
   if (p.fx?.execute) L.push(`x1.8 BELOW ${pct(p.fx.execute)}% HP`);
-  if (p.fx?.lifesteal) L.push(`REPAIRS ${pct(p.fx.lifesteal)}% OF DMG`);
   if (p.type === 'special' && p.drain) L.push(`DRAINS ${p.drain} EN`);
   if (p.away) L.push('DASHES AWAY');
   if (p.type === 'special') L.push(`${p.uses} USE${p.uses > 1 ? 'S' : ''} PER BATTLE`);
@@ -435,7 +436,7 @@ export function partChips(owned) {
   add(p.en, 'energy', `${p.en}`, 'Energy per use', DTYPES.energy.color);
   add(p.heat, 'heat', `${p.heat}`, 'Heat per use', DTYPES.heat.color);
   add(p.ammo, 'ammo', `${p.ammo}/FIGHT`, 'Shots per battle');
-  add(p.backfire, 'backfire', `-${Math.round(p.backfire || 0)}`, 'Backfire: HP it costs you per shot', '#ff5d73');
+  add(p.backfire, 'backfire', `-${Math.round((p.backfire || 0) * CONFIG.gear.dmgScale)}`, 'Backfire: HP it costs you per shot', '#ff5d73');
   for (const [t, v] of Object.entries(p.fx?.resDrain || {})) add(true, 'resdrain', `-${v}`, `Strips ${DTYPES[t].name} resist per hit`, DTYPES[t].color);
   add(p.fx?.corrode, 'resdrain', `-${p.fx?.corrode}`, 'Strips PHYSICAL resist per hit', DTYPES.phys.color);
   const rx = p.dmg || p.fx ? reactorHit(p, battleDmg(p)) : { heat: 0, drain: 0 };
@@ -444,7 +445,6 @@ export function partChips(owned) {
   add(p.fx?.push, 'push', `${p.fx?.push}`, 'Knocks the target back');
   add(p.fx?.pull, 'pull', `${p.fx?.pull}`, 'Pulls the target in');
   add(p.fx?.pierce, 'pierce', '', 'Ignores resists');
-  add(p.arc, 'arc', '', 'Lobbed: flies over cover');
   add(p.energy, 'energy', `${p.type === 'frame' ? '' : '+'}${p.energy}`, 'Energy pool', DTYPES.energy.color);
   add(p.regen, 'regen', `+${p.regen}`, 'Energy regen per turn', DTYPES.energy.color);
   add(p.heatCap, 'heat', `${p.type === 'frame' ? '' : '+'}${p.heatCap}`, 'Heat cap', DTYPES.heat.color);
@@ -453,7 +453,6 @@ export function partChips(owned) {
   add(p.heal, 'hp', `MAX ${pct(CONFIG.gear.droneHealCap)}%`, 'Repairs at most this share of your max HP per battle');
   add(p.chill, 'cool', `-${Math.round(p.chill || 0)}/T`, 'Heat it pulls out of you per turn', '#73eff7');
   add(p.fx?.execute, 'skull', `<${pct(p.fx?.execute || 0)}%`, `x1.8 damage against a target below ${pct(p.fx?.execute || 0)}% HP`, '#ff5d73');
-  add(p.fx?.lifesteal, 'heal', `${pct(p.fx?.lifesteal || 0)}%`, 'Repairs you for this share of the HP damage it deals');
   add(p.type === 'special' && p.drain, 'drain', `${p.drain}`, 'Drains their energy', DTYPES.energy.color);
   add(p.away, 'move', 'AWAY', 'Dashes away from the enemy (no ram)');
   add(p.type === 'special', 'ammo', `${p.uses}/FIGHT`, 'Uses per battle');
@@ -634,16 +633,25 @@ export function tokenReward(nodeType) {
  * How soft enemies are at a Risk level: { hp, atk, ai } multipliers / AI shift,
  * easing from CONFIG.risk.ease at Risk 0 to full strength at ease.fullAt.
  */
+/** Enemy HP / ATK multiplier that keeps pace with the gear players have at a Risk level (CONFIG.risk.gearComp). */
+export function gearComp(level = 0) {
+  const C = CONFIG.risk.gearComp;
+  if (!C) return { hp: 1, atk: 1 };
+  const i = Math.max(0, Math.min(C.hp.length - 1, level));
+  return { hp: C.hp[i], atk: C.atk[i] };
+}
+
 export function riskEase(level = 0) {
   const E = CONFIG.risk.ease;
+  const g = gearComp(level);
   const t = Math.max(0, Math.min(1, level / E.fullAt));
   const ai = E.ai * (1 - t);
   // A tuned per-level curve (enemy HP and damage) wins over the straight line
   if (E.curve) {
     const k = E.curve[Math.max(0, Math.min(E.curve.length - 1, level))];
-    return { hp: k, atk: k, ai };
+    return { hp: k * g.hp, atk: k * g.atk, ai };
   }
-  return { hp: E.hp + (1 - E.hp) * t, atk: E.atk + (1 - E.atk) * t, ai };
+  return { hp: (E.hp + (1 - E.hp) * t) * g.hp, atk: (E.atk + (1 - E.atk) * t) * g.atk, ai };
 }
 
 // ---------- Enemy mechs ----------
@@ -743,6 +751,15 @@ export function elementLean(nodeType, floor, abyssDepth = 0) {
   return Math.min(1, base + 0.1 * abyssDepth);
 }
 
+/** The resist shredder each damage type brings (strips that resist from you for the fight). */
+const SHREDDER = { phys: 'wp_shredder', heat: 'wp_scorcher', energy: 'wp_ionizer' };
+
+/** How Risk pushes resist shredders (CONFIG.risk.shred): { role: Acid Unit odds multiplier, gun: chance of an extra shredder }. */
+export function riskShred(level = 0) {
+  const R = CONFIG.risk.shred || {};
+  return { role: 1 + (R.roleGrowth || 0) * level, gun: Math.max(0, Math.min(1, (level - (R.gunFrom || 99) + 1) * (R.gunPerLevel || 0))) };
+}
+
 /** Frame (for its look and reactor tier) by fight tier; normal fights and elites wear their type. */
 const ENEMY_FRAME = { combat: 'fr_scout', elite: 'fr_brawler', miniboss: 'fr_titan', boss: 'fr_colossus' };
 const ELEMENT_FRAME = { heat: 'fr_furnace', energy: 'fr_conduit' };
@@ -778,7 +795,7 @@ export function enemyRig(nodeType, { cdCut = 0, element = null } = {}) {
  * / wave multiplier the enemy's ATK gets. `element` picks the set (a role
  * that doesn't come in it uses its first); it comes back as `element`.
  */
-export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMult = 1, boss = false, final = false, element = 'phys' } = {}) {
+export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMult = 1, boss = false, final = false, element = 'phys', shredChance = 0 } = {}) {
   const f = Math.max(1, Math.min(5, floor));
   const tier = ['elite', 'miniboss', 'boss'].includes(nodeType) ? nodeType : 'combat';
   const role = final ? ENEMY_LOADOUTS.final : boss ? ENEMY_LOADOUTS.boss : ENEMY_LOADOUTS[archetype] || ENEMY_LOADOUTS.standard;
@@ -789,6 +806,8 @@ export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMu
   const slots = L.guns.slice(0, boss || final ? L.guns.length : ENEMY_GUNS[tier]);
   const gunIds = slots.map(pick);
   if (L.heavy && tier !== 'combat') gunIds[gunIds.length - 1] = L.heavy;
+  // High Risk: elites and up may bring a resist shredder of their type on top (riskShred)
+  if (tier !== 'combat' && SHREDDER[el] && !gunIds.includes(SHREDDER[el]) && rnd() < shredChance) gunIds.push(SHREDDER[el]);
   const G = CONFIG.gear;
   // More guns than in 2.0 (and a drone): each hits a little softer, so the
   // total stays close while the enemy covers more ranges
@@ -819,7 +838,7 @@ export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMu
   }));
   // Drone: elites from floor 3, mini-bosses and bosses; it hits like their guns
   const dr = tier !== 'combat' && (tier !== 'elite' || f >= 3) && L.drone ? getPart(L.drone) : null;
-  const drones = dr ? [{ ...dr, level: 1, fx: fxOf(dr), dmg: dr.dmg ? frac(dr.dmg * scale * atkMult) : 0, heal: dr.heal ? Math.round(dr.heal * k) : 0 }] : [];
+  const drones = dr ? [{ ...dr, level: 1, fx: fxOf(dr), dmg: dr.dmg ? frac(dr.dmg * scale * atkMult) : 0, heal: dr.heal ? Math.round(dr.heal * k * G.hpScale) : 0 }] : [];
   return {
     element: el,
     weapons,

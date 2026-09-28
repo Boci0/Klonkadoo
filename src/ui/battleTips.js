@@ -67,7 +67,7 @@ function gunTip(game, i) {
   const per = w.fx?.burst > 1 ? ' per hit' : '';
   return `<h4 style="color:${w.color || '#f4f4f4'}"><img class="pxi" src="${partIcon(w.id)}" alt=""> ${w.name} <em>[${i + 1}] · 1 action</em></h4>
     ${irow('dmg', w.fx?.mine ? `${dmgLabel(w.dmg)} mine` : `${dmgLabel(st.dmg || w.dmg)}${hits}`, `${t.name} damage${st.dmg ? ' vs this target' : ''}`, t.color)}
-    ${irow('range', `${reachLabel(w.reach)}${w.arc ? ' ⌒' : ''}`, w.arc ? 'Range · lobbed over cover' : 'Range · needs a clear line')}
+    ${irow('range', reachLabel(w.reach), 'Range (positions)')}
     ${irow('energy', `${w.en || 0} <small>/ ${Math.floor(p.energy)}</small>`, 'Energy (you have)', DTYPES.energy.color)}
     ${irow('heat', `+${w.heat || 0} <small>${Math.ceil(p.heat)}/${p.heatCap}</small>`, 'Heat (yours / cap)', DTYPES.heat.color)}
     ${w.ammo ? irow('ammo', `${w.ammoLeft}/${w.ammo}`, 'Shots left', '#ffcd75') : ''}

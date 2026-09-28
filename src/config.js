@@ -72,14 +72,15 @@ export const CONFIG = {
 
   // --- Gear combat: guns are the only damage ---
   gear: {
-    dmgScale: 1.3, // gun/drone damage vs the classic numbers (bodies no longer hit)
+    dmgScale: 13, // gun/drone damage vs the part numbers (x10 since 2.3: HP and damage are big numbers so upgrades show)
+    hpScale: 10, // HP on parts, repairs and every fixed HP / damage number (spikes, burn, mines, events) x this
     enemyDmgScale: 0.5, // enemy guns hit this much of a same-level player gun
     droneHealCap: 0.2, // repair drones fix at most this share of max HP per battle
-    enemyHpScale: 0.75, // every enemy's HP: elites ~10-12 turns, bosses ~20 (tools/balance-sim.mjs)
+    enemyHpScale: 7.5, // every enemy's HP: elites ~10-12 turns, bosses ~20 (tools/balance-sim.mjs)
     exposedMult: 1.25, // rammed targets take +25% gun damage until their next turn
     // Damage types (Mech.DTYPES): Explosive hits add heat and Electric hits drain energy,
     // dtypeLoad x the hit; whatever the reactor can't absorb spills into HP at dtypeSpill x
-    dtypeLoad: 0.5,
+    dtypeLoad: 0.05, // heat / drain per point of battle damage
     dtypeSpill: 0.5,
     ramSpeed: 380, // impact speed (px/s) that counts as a ram
     shotGap: 0.45, // seconds between an enemy's actions, so you can follow them
@@ -89,11 +90,11 @@ export const CONFIG = {
     // Build: one load cap for every mech; up to overweightMax kg over costs HP per kg, past that you can't deploy
     loadCap: 1000,
     overweightMax: 10,
-    overweightHp: 2,
+    overweightHp: 20,
     dmgSpread: 0.15, // every hit rolls mean ±15%
     // Tiers: max level per tier (common..mythic); each tier up multiplies stats, levels add up to one more step
     tierLevelCap: [5, 10, 15, 20, 25],
-    tierStep: 1.12,
+    tierStep: 1.25, // +25% per tier, and a tier's levels add up to one more step (a transformed common lands near a native legendary)
     transform: { parts: [2, 3, 4, 5], scrap: [20, 60, 150, 400] }, // from common, rare, epic, legendary
     // Energy pool / refill per turn, heat cap / cooling per turn when no frame sets them
     baseRig: { energy: 30, regen: 14, heatCap: 30, cool: 12 },
@@ -186,12 +187,20 @@ export const CONFIG = {
   risk: {
     scrapPerLevel: 15,
     keysPerLevel: 10, // +10% Keys per level (fractions carry over between fights)
+    // Resist shredders get more common with Risk: the Acid Unit's odds x (1 + roleGrowth x level), and from
+    // gunFrom up, elites / mini-bosses / bosses may bring a shredder of their type on top of their guns
+    // (gunPerLevel for each level from gunFrom: Risk XI = 35%). Mech.riskShred reads it.
+    shred: { roleGrowth: 0.3, gunFrom: 5, gunPerLevel: 0.05 },
     // Enemy strength per Risk level (HP and gun damage x curve[level]), on top of the
     // level rules below. Fitted with tools/balance-sim.mjs so ONE mech climbs a steady
     // ramp (~90% wins at Risk 1 down to ~8% at Risk XI) against the gear players have
     // by then: max-level parts at Risk 1-4, one tier up at 5-6, two tiers up (with a
     // Medic Drone) from 7. It dips at 9-XI because those rules already pile on. Risk 0 stays half strength for new players. Aim eases from
     // `ai` at Risk 0 to none at `fullAt`. The Abyss is always full strength (1).
+    // Gear got stronger per level in 2.3 (tierStep 1.12 -> 1.25): enemy HP / ATK x this per Risk level, from the
+    // gear players have there (max level at I-IV, one tier up at V-VI, two from VII; tools/balance-sim.mjs).
+    // The Abyss uses its run's Risk level.
+    gearComp: { hp: [1, 1.12, 1.12, 1.12, 1.12, 1.27, 1.27, 1.41, 1.41, 1.41, 1.41, 1.41], atk: [1, 1.04, 1.04, 1.04, 1.04, 1.2, 1.2, 1.25, 1.25, 1.25, 1.25, 1.25] },
     ease: { hp: 0.5, atk: 0.5, ai: -0.2, fullAt: 12, curve: [0.5, 0.75, 0.87, 0.94, 1.04, 1.18, 1.22, 1.29, 1.26, 1.12, 0.97, 0.8] },
     levels: [
       { name: 'HARDENED', desc: 'Enemies +15% HP.', hpPct: 15 },
@@ -260,7 +269,7 @@ export const CONFIG = {
 
   // --- Roguelike run modifiers ---
   run: {
-    maxHpBase: 140,
+    maxHpBase: 1400,
     atkBase: 1,
     defBase: 0,
     maxDefCap: 15, // DEF cap = 60% damage reduction
@@ -336,17 +345,17 @@ export const CONFIG = {
     { id: 'quest_boss_kill', name: 'Slayer', desc: 'Defeat a boss node', reward: 20 },
     { id: 'quest_perfect', name: 'Flawless Run', desc: 'Reach floor 5 without losing a combat', reward: 25 },
     { id: 'quest_elite', name: 'Elite Killer', desc: 'Defeat an elite combat node', reward: 15 },
-    { id: 'quest_rest', name: 'Recovery', desc: 'Heal 150+ HP at Safe Zones in one run', reward: 5 },
-    { id: 'quest_lowhp', name: 'Survivor', desc: 'Win a combat with 10 HP or less', reward: 15 },
+    { id: 'quest_rest', name: 'Recovery', desc: 'Heal 1500+ HP at Safe Zones in one run', reward: 5 },
+    { id: 'quest_lowhp', name: 'Survivor', desc: 'Win a combat with 100 HP or less', reward: 15 },
   ],
 
-  // --- Roguelike boons (collected as map rewards) ---
+  // --- Roguelike boons (collected as map rewards; one of each per run, they don't stack) ---
   boons: [
-    { id: 'boon_atk', name: 'Overcharge', desc: '+20% ATK.', color: '#ffcd75' },
-    { id: 'boon_def', name: 'Hardened Shell', desc: '+4 DEF.', color: '#41a6f6' },
-    { id: 'boon_hp', name: 'Colossus', desc: '+40 max HP.', color: '#a7f070' },
-    { id: 'boon_greed', name: 'Greed', desc: '+25% gold, but -5 max HP.', color: '#ffcd75' },
-    { id: 'boon_swift', name: 'Swift Loader', desc: '+15% ATK, +1 walk.', color: '#c46fd6' },
+    { id: 'boon_atk', name: 'Overcharge', desc: '+10% ATK.', color: '#ffcd75' },
+    { id: 'boon_def', name: 'Hardened Shell', desc: '+2 DEF.', color: '#41a6f6' },
+    { id: 'boon_hp', name: 'Colossus', desc: '+400 max HP.', color: '#a7f070' },
+    { id: 'boon_greed', name: 'Greed', desc: '+25% gold, but -50 max HP.', color: '#ffcd75' },
+    { id: 'boon_swift', name: 'Swift Loader', desc: '+8% ATK, +1 walk.', color: '#c46fd6' },
     { id: 'boon_power', name: 'Long Barrel', desc: '+1 max range on every gun.', color: '#ef7d57' },
     { id: 'boon_regen', name: 'Regeneration', desc: 'Repair 6% of max HP after each battle won.', color: '#a7f070' },
   ],

@@ -490,7 +490,7 @@ export class Game {
     if (u.hp <= 0) return;
     if (this.hazards.some((h) => h.type === 'fire' && h.pos === u.pos)) this._burnPlate(u);
     if (this.hazards.some((h) => h.type === 'spikes' && h.pos === u.pos)) {
-      const dmg = u.team === 'player' ? this.collisionSystem.calculatePlayerDamage(8, { bypassDef: true }) : 8;
+      const dmg = u.team === 'player' ? this.collisionSystem.calculatePlayerDamage(8 * G.hpScale, { bypassDef: true }) : 8 * G.hpScale;
       const killed = u.takeDamage(dmg);
       this._spawnHitParticles(u.x, W.groundY);
       this._callout(u, 'SPIKES', '#ff5d73');
@@ -500,7 +500,7 @@ export class Game {
     const mine = this.hazards.find((h) => h.type === 'mine' && h.pos === u.pos && (thrown || h.owner !== u.team));
     if (!mine) return;
     this.hazards.splice(this.hazards.indexOf(mine), 1);
-    const raw = mine.dmg || 15;
+    const raw = mine.dmg || 15 * G.hpScale;
     const dmg = u.team === 'player' ? this.collisionSystem.calculatePlayerDamage(raw) : Math.max(1, Math.round(raw * (1 - Math.min(15, resistOf(u, 'phys')) * CONFIG.damage.defensePerPoint)));
     const killed = u.takeDamage(dmg);
     this.particles.push({ type: 'shockwave', x: u.x, y: W.groundY, radius: 10, maxRadius: 160, life: 0.35, maxLife: 0.35 });
@@ -534,7 +534,7 @@ export class Game {
     }
     this._callout(unit, n > 0 ? 'KNOCKED BACK' : 'HOOKED', color);
     if (blocked && n > 0 && unit.hp > 0) {
-      const slam = unit.team === 'player' ? this.collisionSystem.calculatePlayerDamage(8) : 8;
+      const slam = unit.team === 'player' ? this.collisionSystem.calculatePlayerDamage(8 * G.hpScale) : 8 * G.hpScale;
       const killed = unit.takeDamage(slam);
       this._callout(unit, 'SLAMMED', '#f4f4f4');
       this.events.emit('damage', { attacker: from, victim: unit, damage: slam, killed });
@@ -574,7 +574,7 @@ export class Game {
   /** Burn damage at the start of a turn; returns false if it killed the unit. */
   _tickBurn(u) {
     if (!(u.burnTicks > 0)) return true;
-    const raw = u.burnDmg || 6;
+    const raw = u.burnDmg || 6 * G.hpScale;
     const dmg = u === this.player ? this.collisionSystem.calculatePlayerDamage(raw, { bypassDef: true }) : raw;
     u.burnTicks -= 1;
     const killed = u.takeDamage(dmg);
@@ -1088,7 +1088,7 @@ export class Game {
     }
     if (w.fx?.meltdown && target.heat > target.heatCap) {
       const excess = target.heat - target.heatCap;
-      dmg += excess * 2;
+      dmg += excess * 2 * G.hpScale;
       target.heat = target.heatCap;
       this._callout(target, 'MELTDOWN', '#ff5d73');
       this.renderer.addScreenShake(12);
@@ -1157,14 +1157,9 @@ export class Game {
       if (!w.fx?.pierce) dmg *= 1 - Math.min(CONFIG.run.maxDefCap || 15, resistOf(target, type)) * CONFIG.damage.defensePerPoint;
       dmg = Math.max(1, Math.round(dmg)) + this._reactorFx(target, w, w.dmg ?? rawDmg, owner); // heat / drain from the base hit, not specialist bonuses
       const killed = target.takeDamage(dmg);
-      // Siphon Ray: part of the damage comes back as repairs
-      if (w.fx?.lifesteal && yours && this.player.hp > 0) {
-        const got = this._healPlayer(dmg * w.fx.lifesteal);
-        if (got > 0) this._callout(this.player, `SIPHON +${got}`, '#a7f070');
-      }
       if (w.fx?.burn) {
         target.burnTicks = Math.max(target.burnTicks || 0, w.fx.burn);
-        target.burnDmg = Math.max(target.burnDmg || 0, 6);
+        target.burnDmg = Math.max(target.burnDmg || 0, 6 * G.hpScale);
       }
       if (w.fx?.freeze) target.isFrozen = true;
       for (const [t, n] of Object.entries(strip)) {
@@ -1185,7 +1180,7 @@ export class Game {
     const killed = this.player.takeDamage(dmg);
     if (w.fx?.burn) {
       this.player.burnTicks = Math.max(this.player.burnTicks || 0, w.fx.burn);
-      this.player.burnDmg = Math.max(this.player.burnDmg || 0, 6);
+      this.player.burnDmg = Math.max(this.player.burnDmg || 0, 6 * G.hpScale);
     }
     if (w.fx?.freeze) this.player.isFrozen = true;
     for (const [t, n] of Object.entries(strip)) {
@@ -1214,7 +1209,7 @@ export class Game {
       const want = Math.round((w.fx?.drain ?? dmg * G.dtypeLoad) * this._reactorKeep(target, 'energy'));
       const took = Math.min(target.energy, want);
       target.energy -= took;
-      extra = want - took;
+      extra = (want - took) * G.hpScale; // energy it could not drain comes off HP
       if (took) this._callout(target, `-${took} EN`, DTYPES.energy.color);
       if (extra) this._callout(target, 'ENERGY BREAK', '#ff5d73');
       // Leech Coil: what it drains, you get
@@ -1697,7 +1692,7 @@ export class Game {
     const mult = this.run ? this.run.healMult : saveSystem.getHealingMultiplier();
     const before = p.hp;
     p.hp = Math.min(p.maxHp, p.hp + Math.max(0, Math.round(amount * mult)));
-    return p.hp - before;
+    return Math.round(p.hp - before);
   }
 
   render() {

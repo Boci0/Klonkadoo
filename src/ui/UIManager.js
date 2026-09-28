@@ -1281,7 +1281,9 @@ export class UIManager {
       if (c.gainKeys) parts.push(`<span class="tag-pill tag-gold">+${c.gainKeys} KEYS</span>`);
       if (c.gainBoon) {
         const boon = CONFIG.boons.find((b) => b.id === c.gainBoon);
-        if (boon) parts.push(`<span class="tag-pill tag-boon">+ ${boon.name.toUpperCase()}: ${boon.desc}</span>`);
+        // Boons don't stack: a second copy does nothing, so say so before you pay for it
+        if (boon && run?.boons?.includes(boon.id)) parts.push(`<span class="tag-pill tag-loss">${boon.name.toUpperCase()}: ALREADY YOURS, NO EFFECT</span>`);
+        else if (boon) parts.push(`<span class="tag-pill tag-boon">+ ${boon.name.toUpperCase()}: ${boon.desc}</span>`);
       }
       return parts.length ? `<div class="encounter-tags">${parts.join('')}</div>` : '';
     };

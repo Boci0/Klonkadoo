@@ -11,7 +11,7 @@
 export const MAX_MASTERY = 20;
 
 /** What every level above 1 gives. */
-export const PER_LEVEL = { hp: 4, dmgPct: 0.02 };
+export const PER_LEVEL = { hp: 40, dmgPct: 0.02 };
 
 /** XP needed to go from `level` to `level + 1`. */
 export const xpToNext = (level) => 60 + 20 * level;

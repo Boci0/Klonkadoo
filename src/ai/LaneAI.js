@@ -15,6 +15,8 @@
 // live battle, so a plan can't change anything by itself.
 // ============================================================
 
+import { CONFIG } from '../config.js';
+
 const DEF_PER_POINT = 0.04;
 const DEF_CAP = 15;
 
@@ -133,7 +135,7 @@ function apply(s, a) {
     if (g.lowEnBonus && foe.energy < (foe.energyMax || 0) * 0.25) shot = { ...shot, dmg: shot.dmg * 2 }; // Arc Turret
     if (g.execute && foe.hp < (foe.maxHp || foe.hp) * g.execute) shot = { ...shot, dmg: shot.dmg * 1.8 };
     if (g.meltdown && foe.heat > foe.heatCap) {
-      shot = { ...shot, dmg: shot.dmg + (foe.heat - foe.heatCap) * 2 };
+      shot = { ...shot, dmg: shot.dmg + (foe.heat - foe.heatCap) * 2 * CONFIG.gear.hpScale };
       foe.heat = foe.heatCap;
     }
     if (g.dump) {
@@ -141,12 +143,12 @@ function apply(s, a) {
       me.energy = 0;
     }
     let dmg = hitDamage(shot, foe);
-    if ((g.dtype === 'heat' || g.heatFx) && !g.meltdown) foe.heat += g.heatFx ?? Math.round(g.dmg * 0.5);
+    if ((g.dtype === 'heat' || g.heatFx) && !g.meltdown) foe.heat += g.heatFx ?? Math.round(g.dmg * CONFIG.gear.dtypeLoad);
     if (g.dtype === 'energy' || g.drain) {
-      const want = g.drain ?? Math.round(g.dmg * 0.5);
+      const want = g.drain ?? Math.round(g.dmg * CONFIG.gear.dtypeLoad);
       const took = Math.min(foe.energy, want);
       foe.energy -= took;
-      dmg += want - took; // energy break
+      dmg += (want - took) * CONFIG.gear.hpScale; // energy break
       if (g.steal) me.energy = Math.min(me.energyMax, me.energy + took);
     }
     if (g.coolDmg) foe.cool = Math.max(2, foe.cool - g.coolDmg);

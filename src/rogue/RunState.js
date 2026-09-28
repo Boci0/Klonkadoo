@@ -117,28 +117,28 @@ export class RunState {
     return this.boons.filter((id) => id === boonId).length;
   }
 
-  /** Apply a boon by id at run time (supports stacking). */
+  /** Apply a boon by id at run time. One of each per run: a second copy does nothing. */
   applyBoon(boonId) {
     const def = CONFIG.boons.find((b) => b.id === boonId);
-    if (!def) return false;
+    if (!def || this.boons.includes(boonId)) return false;
     this.boons.push(boonId);
 
     switch (boonId) {
       case 'boon_atk':
-        this.atkMult += 0.2;
+        this.atkMult += 0.1;
         break;
       case 'boon_def':
-        this.def += 4;
+        this.def += 2;
         break;
       case 'boon_hp':
-        this.addMaxHp(40);
+        this.addMaxHp(400);
         break;
       case 'boon_greed':
-        this.maxHp -= 5;
+        this.maxHp -= 50;
         if (this.hp > this.maxHp) this.hp = this.maxHp;
         break;
       case 'boon_swift':
-        this.atkMult += 0.15;
+        this.atkMult += 0.08;
         break;
       case 'boon_power':
         // handled per stack in combat launch power

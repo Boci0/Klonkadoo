@@ -124,7 +124,6 @@ export function battlePartHtml(w) {
   add(w.fx?.push, 'push', `${w.fx?.push}`, 'Knocks back');
   add(w.fx?.pull, 'pull', `${w.fx?.pull}`, 'Pulls in');
   add(w.fx?.pierce, 'pierce', '', 'Ignores resists');
-  add(w.arc, 'arc', '', 'Lobbed: flies over cover');
   // Drones and specials
   add(p.type === 'drone' && w.dmg, 'dmg', dmgLabel(w.dmg || 0), `${t.name} damage every turn, any range`, t.color);
   add(w.heal, 'heal', `+${Math.round(w.heal || 0)}`, 'Repair every turn', '#a7f070');
@@ -163,7 +162,6 @@ export const ICON_KEY = [
   ['top', 'TOP GUN', 'Heavy or lobbed: fits the 2 top slots'],
   ['ammo', 'AMMO / USES', 'Shots or uses per battle (3/FIGHT)'],
   ['burst', 'HITS', 'Hits per shot (x3): each one deals the damage and its heat / drain'],
-  ['arc', 'LOBBED', 'Flies over cover'],
   ['pierce', 'PIERCE', 'Ignores resists'],
   ['backfire', 'BACKFIRE', 'HP each shot costs you'],
   ['resdrain', 'STRIP', 'Takes away the target\'s resist for the rest of the fight'],

@@ -7,6 +7,7 @@
 // ============================================================
 
 import { getSupply, repairAmount } from './Supplies.js';
+import { CONFIG } from '../config.js';
 
 const hpPct = (run) => (run.maxHp > 0 ? run.hp / run.maxHp : 0);
 
@@ -56,17 +57,18 @@ export function pickChoice(enc, run) {
     if (c.loseGold && c.loseGold > run.gold) return -Infinity;
     if (c.loseHp && c.loseHp >= run.hp) return -Infinity;
     let s = 0;
-    s += Math.min(c.heal || 0, missing) * (hp < 0.6 ? 1.2 : 0.4);
-    s += (c.gainMaxHp || 0) * 1.2;
+    const S = CONFIG.gear.hpScale;
+    s += (Math.min(c.heal || 0, missing) / S) * (hp < 0.6 ? 1.2 : 0.4);
+    s += ((c.gainMaxHp || 0) / S) * 1.2;
     s += (c.gainActions || 0) * 14;
     s += c.gainBoon && !run.boons?.includes(c.gainBoon) ? 22 : 0;
     s += (c.gainGold || 0) * 0.45;
     s += (c.gambleGold || 0) * 0.2;
     s += (c.gainScrap || 0) * 0.6;
     s += (c.gainKeys || 0) * 9;
-    s -= (c.loseHp || 0) * (hp < 0.5 ? 1.6 : 0.6);
+    s -= ((c.loseHp || 0) / S) * (hp < 0.5 ? 1.6 : 0.6);
     s -= (c.loseGold || 0) * 0.45;
-    s -= (c.loseMaxHp || 0) * 1.4;
+    s -= ((c.loseMaxHp || 0) / S) * 1.4;
     return s;
   };
   let best = 0;

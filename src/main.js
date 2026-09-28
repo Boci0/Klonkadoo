@@ -25,7 +25,7 @@ import { DevTools } from './dev/DevTools.js';
 import { checkMedals } from './meta/Medals.js';
 import './platform/native.js';
 import './platform/desktop.js';
-import { withMech, tokenReward, riskEase, CRATES, enemyMech, enemyRig, pickEnemyElement, elementLean, roleElements, CLEAN_WIN_KEYS, DTYPES, dtypeOf, droneUpkeep } from './meta/Mech.js';
+import { withMech, tokenReward, riskEase, gearComp, CRATES, enemyMech, enemyRig, pickEnemyElement, elementLean, roleElements, riskShred, CLEAN_WIN_KEYS, DTYPES, dtypeOf, droneUpkeep } from './meta/Mech.js';
 import { partIcon, ico } from './rendering/pixelIcons.js';
 import { pickNode, pickChoice, pickBuys, supplyValue } from './rogue/AutoRun.js';
 import { withMastery, masteryLevel, runXp } from './meta/Mastery.js';
@@ -686,6 +686,7 @@ function startNewRun(skin = 'default') {
   const perm = withMastery(withMech({}, lead), mastery);
   run = new RunState(perm, ballType);
   run.v2 = true; // 2.0 rules (see resumeSavedRun)
+  run.v23 = true; // 2.3 numbers: x10 HP, new level growth, smaller boons
   // Garage mechs 2 and 3 join the team, each with its own HP for the run
   run.team = rest.map((parts) => ({ perm: withMastery(withMech({}, parts), mastery), hp: 0 }));
   run.team.forEach((m, i) => (m.hp = run.member(i + 1).maxHp));
@@ -757,6 +758,7 @@ function resumeSavedRun() {
     run.team = [];
     run.v2 = true;
   }
+  if (!run.v23) migrateRunTo23(run);
   map = s.map;
   runSeed = s.runSeed;
   currentFloorView = s.currentFloorView;
@@ -926,7 +928,7 @@ function proceedFromNode(node, leaveShop) {
       ui.showMinigameIntro();
       break;
     case 'treasure': {
-      const offer = rollSupplies(2);
+      const offer = rollSupplies(2, Math.random, run.boons);
       if (autoRun) {
         // AUTO RUN: take the one worth more right now
         const best = [...offer].sort((a, b) => supplyValue(b, run) - supplyValue(a, run))[0];
@@ -1181,7 +1183,7 @@ function startCombat(node) {
   const condAtk = (cond === 'glass_war' ? 1.3 : 1) * (cond === 'blood_moon' ? 1.15 : 1);
   // Abyss: +8% HP and +5% ATK per depth, on top of the normal per-floor scaling
   // Low Risk softens every enemy; the Abyss is always full strength
-  const ease = abyssDepth ? { hp: 1, atk: 1, ai: 0 } : riskEase(riskLevel);
+  const ease = abyssDepth ? { ...gearComp(riskLevel), ai: 0 } : riskEase(riskLevel);
   const hpMult = (1 + (riskData.hpPct + (isEliteTier ? riskData.eliteHpPct : 0)) / 100) * condHp * (1 + ABYSS_HP_PER_DEPTH * abyssDepth) * ease.hp;
   const atkMult = (1 + (riskData.atkPct + (isEliteTier ? riskData.eliteAtkPct : 0)) / 100) * condAtk * (1 + ABYSS_ATK_PER_DEPTH * abyssDepth) * ease.atk;
   const defMult = 1 + riskData.defPct / 100;
@@ -1202,11 +1204,11 @@ function startCombat(node) {
   for (let i = 0; i < count; i++) {
     // Its damage type first (leaning toward what you resist least), then a role that comes in it
     const element = pickEnemyElement(run.res, elementLean(node.type, floorKey, abyssDepth));
-    const archetype = pickArchetype(node.type, floorKey, i, element);
+    const archetype = pickArchetype(node.type, floorKey, i, element, riskLevel);
     const arch = CONFIG.enemyArchetypes[archetype];
     const isBoss = node.type === 'boss' && i === 0;
     const isFinal = isBoss && abyssDepth === ABYSS_FINAL_DEPTH; // the true final boss
-    const mech = enemyMech(node.type, archetype, run.floor + 1, Math.random, { atkMult: atkMult * waveAtkScale, boss: isBoss, final: isFinal, element });
+    const mech = enemyMech(node.type, archetype, run.floor + 1, Math.random, { atkMult: atkMult * waveAtkScale, boss: isBoss, final: isFinal, element, shredChance: riskShred(riskLevel).gun });
 
     const finalHp = Math.round(tier.hp * CONFIG.gear.enemyHpScale * arch.hpMult * hpMult * floorHp * devHp * waveHpScale * (isFinal ? 1.5 : 1) * (node.type === 'boss' && i > 0 ? 0.55 : 1)); // boss escorts are lighter
     const finalAtk = Math.round((tier.atk * arch.atkMult * atkMult * floorAtk * devAtk * waveAtkScale) * 100) / 100;
@@ -1315,11 +1317,44 @@ function startCombat(node) {
 }
 
 /** Pick an enemy archetype based on floor weights. */
-function pickArchetype(nodeType, floor, index, element = 'phys') {
+/**
+ * A run saved before 2.3: HP and damage went x10, levels grow faster and
+ * the big boons shrank. Rebuild every mech's stats from the garage, keep
+ * each mech's share of its HP, scale the run's extra max HP (boons,
+ * plating, events) and take the old boon values back off.
+ */
+function migrateRunTo23(r) {
+  const S = CONFIG.gear.hpScale;
+  const mastery = masteryLevel(saveSystem.getMasteryXp(r.ballType)).level;
+  const [lead, ...rest] = saveSystem.getTeamLoadouts();
+  const leadPct = r.maxHp > 0 ? r.hp / r.maxHp : 1;
+  const teamPct = (r.team || []).map((m, i) => { const mx = r.member(i + 1)?.maxHp || 1; return mx > 0 ? m.hp / mx : 1; });
+  const boost = r.hpBoost * S;
+  const oldPerm = r.permanent || {};
+  const perm = withMastery(withMech({}, lead), mastery);
+  r.atkMult += (perm.atkBonus || 0) - (oldPerm.atkBonus || 0);
+  r.def += (perm.defBonus || 0) - (oldPerm.defBonus || 0);
+  for (const b of r.boons || []) {
+    if (b === 'boon_atk') r.atkMult -= 0.1;
+    if (b === 'boon_swift') r.atkMult -= 0.07;
+    if (b === 'boon_def') r.def -= 2;
+  }
+  r.permanent = perm;
+  r.baseMaxHp = CONFIG.run.maxHpBase + (perm.hpBonus || 0) + (r.ball?.hpBonus || 0);
+  r.maxHp = r.baseMaxHp + boost;
+  r.hp = Math.max(1, Math.round(r.maxHp * leadPct));
+  r.shieldHp = (r.shieldHp || 0) * S;
+  r.team = rest.slice(0, (r.team || []).length).map((parts) => ({ perm: withMastery(withMech({}, parts), mastery), hp: 0 }));
+  r.team.forEach((m, i) => (m.hp = teamPct[i] > 0 ? Math.max(1, Math.round(r.member(i + 1).maxHp * teamPct[i])) : 0));
+  r.v23 = true;
+}
+
+function pickArchetype(nodeType, floor, index, element = 'phys', risk = 0) {
   const all = CONFIG.archetypeWeights[['elite', 'miniboss', 'boss'].includes(nodeType) ? nodeType : floor] || CONFIG.archetypeWeights[1];
   // Only roles that come in this damage type (Blaze is Explosive only, Surge Electric, Mine Layer Physical)
   const fit = Object.fromEntries(Object.entries(all).filter(([k]) => roleElements(k).includes(element)));
   const weights = Object.keys(fit).length ? fit : all;
+  if (weights.corroder) weights.corroder *= riskShred(risk).role; // resist shredders get common with Risk
   // Waves roll each enemy from the same weights; escorts in a boss / elite
   // wave skip the heavy hitters so fights stay readable
   if (index > 0 && (nodeType === 'boss' || nodeType === 'miniboss')) return Math.random() < 0.5 ? 'standard' : 'striker';
@@ -1526,7 +1561,7 @@ function resolveEncounterChoice(idx) {
       addFeedEntry(`<span class="feed-gold">+${choice.gainGold} GOLD</span>`);
     }
     if (choice.loseMaxHp) {
-      run.maxHp = Math.max(20, run.maxHp - choice.loseMaxHp);
+      run.maxHp = Math.max(20 * CONFIG.gear.hpScale, run.maxHp - choice.loseMaxHp);
       run.hp = Math.min(run.hp, run.maxHp);
     }
     if (choice.gambleGold) {
@@ -1567,7 +1602,7 @@ function resolveEncounterChoice(idx) {
 
 /** Three shelf slots: { id, sold } (the supply is looked up by id, so saves stay small). */
 function rollShopItems() {
-  return rollSupplies(3).map((s) => ({ id: s.id, sold: false }));
+  return rollSupplies(3, Math.random, run.boons).map((s) => ({ id: s.id, sold: false }));
 }
 
 /** Buy shelf slot `i` of the current shop. */
@@ -1800,7 +1835,7 @@ function endRun(victory) {
 
 // ---------- Encounters (small pool, can expand) ----------
 
-const ENCOUNTERS = [
+const ENCOUNTERS_RAW = [
   {
     title: 'BEACON OVERCLOCK',
     desc: 'A tactical terminal can override local map relays to gain extra operational time.',
@@ -1994,6 +2029,15 @@ const ENCOUNTERS = [
     ],
   },
 ];
+// HP in events is written small; battles run on x10 HP (CONFIG.gear.hpScale)
+const ENCOUNTERS = ENCOUNTERS_RAW.map((e) => ({
+  ...e,
+  choices: e.choices.map((c) => {
+    const o = { ...c };
+    for (const k of ['heal', 'loseHp', 'gainMaxHp', 'loseMaxHp']) if (typeof o[k] === 'number') o[k] *= CONFIG.gear.hpScale;
+    return o;
+  }),
+}));
 
 // ---------- Main loop ----------
 
