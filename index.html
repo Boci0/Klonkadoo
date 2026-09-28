@@ -10,8 +10,8 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/Klonkadoo/favicon-32.png" />
   <link rel="icon" type="image/png" sizes="512x512" href="/Klonkadoo/icon-512.png" />
   <link rel="apple-touch-icon" href="/Klonkadoo/icon-512.png" />
-  <script type="module" crossorigin src="/Klonkadoo/assets/index-gIWXaEJv.js"></script>
-  <link rel="stylesheet" crossorigin href="/Klonkadoo/assets/index-BrXfVlHI.css">
+  <script type="module" crossorigin src="/Klonkadoo/assets/index-oQubjlsT.js"></script>
+  <link rel="stylesheet" crossorigin href="/Klonkadoo/assets/index-KD2PoUbH.css">
 </head>
 
 <body>
@@ -28,7 +28,10 @@
           <button id="menu-daily" class="daily-card px-frame" type="button"></button>
         </div>
         <div class="menu-buttons">
-          <button id="btn-play" class="btn btn-primary btn-large btn-menu">&#9654; START OPERATION</button>
+          <div class="menu-play-row">
+            <button id="btn-play" class="btn btn-primary btn-large btn-menu">&#9654; START OPERATION</button>
+            <button id="btn-raid" class="btn btn-raid btn-menu" type="button">RAID</button>
+          </div>
           <div class="menu-tiles">
             <button id="btn-gear" class="menu-tile" data-icon="gun"><span>RIG</span></button>
             <button id="btn-almanac" class="menu-tile" data-icon="book"><span>ALMANAC</span></button>
@@ -40,6 +43,16 @@
           </div>
         </div>
       </div>
+    </section>
+
+    <!-- ===== WEEKLY RAID ===== -->
+    <section id="screen-raid" class="screen hidden">
+      <div class="screen-header">
+        <button id="btn-raid-back" class="btn btn-outline btn-back">&#9664; BACK</button>
+        <h2 class="raid-title">WEEKLY RAID</h2>
+        <div id="raid-clock" class="raid-clock"></div>
+      </div>
+      <div id="raid-body" class="raid-body"></div>
     </section>
 
     <!-- ===== RIG ===== -->
