@@ -4788,6 +4788,13 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 .salv-opt b { display: inline-grid; place-items: center; width: 14px; height: 14px; border: 2px solid #566c86; color: var(--p-yellow); font-size: 10px; }
 .salv-opt.on { color: var(--p-white, #f4f4f4); }
 .salv-opt.on b { border-color: var(--p-yellow); }
+.salv-opt { text-align: left; align-items: flex-start; }
+.salv-opt b { flex: 0 0 auto; margin-top: 1px; }
+.salv-opt span { display: flex; flex-direction: column; gap: 1px; }
+.salv-opt em { font-style: normal; font-size: 10px; color: var(--p-silver); }
+.salv-opt.on em { color: var(--p-yellow); }
+.salv-hint { margin: 0; font-size: 11px; color: var(--p-silver); }
+.rig-foot .warn { color: var(--p-red); }
 .salv-list { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 5px; }
 .salv-item { position: relative; width: 44px; height: 44px; display: grid; place-items: center; background: #151827; border: 2px solid var(--rar); }
 .salv-item img { width: 32px; image-rendering: pixelated; }

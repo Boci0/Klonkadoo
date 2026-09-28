@@ -571,7 +571,7 @@ export class RigScreen {
     this.body.innerHTML = `
       <div class="rig-pods">${pods}</div>
       <div class="rig-foot-row">
-        <p class="rig-foot">${ico('key')} Win fights to earn keys · ${saveSystem.getMech().owned.length}/${INVENTORY_CAP} parts · ${PARTS.length} to find</p>
+        <p class="rig-foot">${ico('key')} Win fights to earn keys · ${saveSystem.getMech().owned.length > INVENTORY_CAP ? `<b class="warn" title="Over the limit: your salvage settings found nothing to take. Salvage spares or pick more tiers.">${saveSystem.getMech().owned.length}/${INVENTORY_CAP} PARTS: FULL</b>` : `${saveSystem.getMech().owned.length}/${INVENTORY_CAP} parts`} · ${PARTS.length} to find</p>
         <button class="btn btn-outline rig-salvage-btn" data-act="bulk-salvage" title="Turn spare parts into scrap, by tier">${ico('scrap')}SALVAGE SPARES${saveSystem.getSalvagePrefs().auto ? ' <em>AUTO</em>' : ''}</button>
       </div>
       <div class="rig-reveal hidden" id="rig-reveal"></div>`;
@@ -608,7 +608,12 @@ export class RigScreen {
         const n = saveSystem.salvageCandidates({ ...prefs, tiers: [r] }).length;
         return `<button class="salv-tier ${on ? 'on' : ''}" data-tier="${r}" style="--rar:${rarityColor(r)}" title="${on ? 'Salvaging' : 'Keeping'} ${rarityName(r).toLowerCase()} spares">${rarityName(r)}<i>${n}</i></button>`;
       }).join('');
-      const opt = (key, label, tip) => `<button class="salv-opt ${prefs[key] ? 'on' : ''}" data-opt="${key}" title="${tip}"><b>${prefs[key] ? '&#10003;' : ''}</b>${label}</button>`;
+      // Every tick here means "salvage more": the keep settings show flipped (ticked = salvage them too)
+      // Each toggle says what it does right now on a second line (no hover needed)
+      const opt = (key, label, onText, offText, flip = false) => {
+        const on = flip ? !prefs[key] : !!prefs[key];
+        return `<button class="salv-opt ${on ? 'on' : ''}" data-opt="${key}"><b>${on ? '&#10003;' : ''}</b><span>${label}<em>${on ? onText : offText}</em></span></button>`;
+      };
       // No scrolling: as many icons as fit, then a count
       const SHOW = 28;
       const icons = list.slice(0, SHOW).map((o) => `<span class="salv-item" data-tip-uid="${o.uid}" style="--rar:${rarityColor(tierOf(o))}"><img src="${partIcon(o.id)}" alt=""><i>${o.level}</i></span>`).join('');
@@ -616,11 +621,12 @@ export class RigScreen {
       box.classList.remove('mythic');
       box.innerHTML = `<div class="drops-panel salv-panel" style="--pod:#94b0c2">
           <div class="drops-title"><strong>${ico('scrap')}SALVAGE SPARES</strong><span>Equipped parts are never salvaged</span><button class="btn btn-outline" data-act="close">&#10005;</button></div>
+          <p class="salv-hint">Lit tiers get salvaged (the number is how many spares). Past ${INVENTORY_CAP} parts, new pods salvage spares by these same settings.</p>
           <div class="salv-tiers">${tierBtns}</div>
           <div class="salv-opts">
-            ${opt('keepBest', 'KEEP MY BEST COPY OF EACH PART', 'Your highest tier (then level) copy of every part stays')}
-            ${opt('keepLeveled', 'KEEP UPGRADED PARTS', 'Parts above LV 1 stay: you spent scrap on them')}
-            ${opt('auto', 'AUTO: SALVAGE NEW POD DUPLICATES', 'New pod drops in the chosen tiers that you already own as good or better turn straight into scrap')}
+            ${opt('keepBest', 'ALSO SALVAGE MY BEST COPY', 'Your best copy of each part can go too', 'Your best copy of each part is always kept', true)}
+            ${opt('keepLeveled', 'ALSO SALVAGE UPGRADED PARTS', 'Parts above LV 1 can go too', 'Parts above LV 1 are always kept', true)}
+            ${opt('auto', 'AUTO-SALVAGE POD DUPLICATES', 'New drops you already own as good or better become scrap', 'New drops always stay in your inventory')}
           </div>
           <div class="salv-list">${icons || '<p class="dim-text">Nothing to salvage with these settings.</p>'}${list.length > SHOW ? `<span class="salv-more">+${list.length - SHOW}</span>` : ''}</div>
           <div class="rig-actions">

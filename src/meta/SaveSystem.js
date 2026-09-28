@@ -799,14 +799,12 @@ export class SaveSystem {
         if (better) part.autoSalvaged = this.salvagePart(part.uid, false);
       }
     }
-    // Past the cap, the weakest spare parts are salvaged automatically
-    while (m.owned.length > INVENTORY_CAP) {
-      const worn = this.getWornUids();
-      const fresh = new Set(got.map((p) => p.uid));
-      const spare = m.owned.filter((o) => !worn.has(o.uid) && !fresh.has(o.uid)).sort((a, b) => salvageValue(a) - salvageValue(b));
-      if (!spare[0]) break;
-      this.salvagePart(spare[0].uid, false);
-    }
+    // Past the cap, spare parts go by your salvage settings (cheapest first): only the
+    // tiers you chose, and your best copies / upgraded parts stay unless you said so.
+    // Nothing left to take: the inventory runs over the cap and the Rig warns you.
+    const fresh = new Set(got.map((p) => p.uid));
+    const spare = this.salvageCandidates().filter((o) => !fresh.has(o.uid));
+    while (m.owned.length > INVENTORY_CAP && spare.length) this.salvagePart(spare.shift().uid, false);
     this.save();
     return got;
   }
