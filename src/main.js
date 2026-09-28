@@ -1235,7 +1235,7 @@ function startCombat(node) {
       atk: finalAtk,
       def: finalDef,
       displayName: isFinal ? 'KLONKADOO PRIME' : isBoss ? (abyssDepth ? `ABYSS WARDEN ${abyssDepth}` : 'SECTOR COMMANDER') : arch.name,
-      rank: node.type === 'boss' || node.type === 'miniboss' ? node.type : null,
+      rank: isBoss || node.type === 'miniboss' ? node.type : null, // the crown: escorts don't get one
       archetype,
       aiDifficulty: Math.max(0.1, Math.min(0.95, tier.aiDifficulty + arch.aiShift + riskData.aiBonus + ease.ai)),
       thinkDelay,
@@ -1253,6 +1253,8 @@ function startCombat(node) {
       startForcefield: mech.startForcefield,
     });
   }
+  // Escorts fight first: the boss waits in reserve and drops in once they fall
+  if (node.type === 'boss' && enemies.length > 1) enemies.push(enemies.shift());
 
   const battleConfig = {
     player: {
@@ -1312,7 +1314,7 @@ function startCombat(node) {
 
   // Bosses get an intro card; the fight is frozen until it is dismissed
   if (node.type === 'miniboss' || node.type === 'boss') {
-    const boss = enemies[0];
+    const boss = enemies[enemies.length - 1]; // the boss comes out last
     const arch = CONFIG.enemyArchetypes[boss.archetype];
     battlePaused = true;
     ui.showBossIntro({

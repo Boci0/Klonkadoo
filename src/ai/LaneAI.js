@@ -143,9 +143,11 @@ function apply(s, a) {
       me.energy = 0;
     }
     let dmg = hitDamage(shot, foe);
-    if ((g.dtype === 'heat' || g.heatFx) && !g.meltdown) foe.heat += g.heatFx ?? Math.round(g.dmg * CONFIG.gear.dtypeLoad);
+    // Resists cut heat and drain too (Game._reactorKeep)
+    const keep = (type) => 1 - Math.min(DEF_CAP, (foe.def || 0) + (foe.res?.[type] || 0)) * DEF_PER_POINT;
+    if ((g.dtype === 'heat' || g.heatFx) && !g.meltdown) foe.heat += Math.round((g.heatFx ?? g.dmg * CONFIG.gear.dtypeLoad) * keep('heat'));
     if (g.dtype === 'energy' || g.drain) {
-      const want = g.drain ?? Math.round(g.dmg * CONFIG.gear.dtypeLoad);
+      const want = Math.round((g.drain ?? g.dmg * CONFIG.gear.dtypeLoad) * keep('energy'));
       const took = Math.min(foe.energy, want);
       foe.energy -= took;
       dmg += (want - took) * (CONFIG.gear.hpScale / CONFIG.gear.rxScale); // energy break

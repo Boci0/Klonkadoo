@@ -14,7 +14,7 @@
 
 import { CONFIG } from '../src/config.js';
 import { planTurn, applyAction } from '../src/ai/LaneAI.js';
-import { enemyMech, enemyRig, enemyTier, pickEnemyElement, elementLean, roleElements, riskShred, withMech, getPart, legsRules, riskEase, tierRange, maxLevel, RARITY_ORDER } from '../src/meta/Mech.js';
+import { enemyMech, enemyRig, enemyTier, pickEnemyElement, elementLean, roleElements, riskShred, withMech, getPart, legsRules, riskEase, tierRange, maxLevel, RARITY_ORDER, ELEMENT_DMG } from '../src/meta/Mech.js';
 import { withMastery } from '../src/meta/Mastery.js';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => (a.startsWith('--') ? a.slice(2).split('=') : ['runs', a])));
@@ -31,6 +31,8 @@ if (args.easeFull != null) CONFIG.risk.ease.fullAt = Number(args.easeFull);
 // --curve=0.5,0.7,... : enemy HP/damage multiplier per Risk level (CONFIG.risk.ease.curve)
 if (args.curve) CONFIG.risk.ease.curve = args.curve.split(',').map(Number);
 if (args.enemyDmg != null) G.enemyDmgScale = Number(args.enemyDmg);
+// --elemDmg=phys:1.3,energy:0.6 : enemy damage by type (Mech.ELEMENT_DMG)
+if (args.elemDmg) for (const kv of args.elemDmg.split(',')) { const [k, v] = kv.split(':'); ELEMENT_DMG[k] = Number(v); }
 const SIZE = CONFIG.lane?.size || 12;
 
 // ---------- Loadouts ----------
@@ -49,6 +51,14 @@ const LOADOUTS = {
   midMedic: ['fr_brawler', 'lg_strider', 'wp_blaster', 'wp_scatter', 'wp_rifle', 'wp_mortar', 'dr_medic', 'md_plating', 'md_physres', 'md_heavyplate'],
   midSiphon: ['fr_brawler', 'lg_strider', 'wp_blaster', 'wp_siphon', 'wp_rifle', 'wp_mortar', 'dr_hornet', 'md_plating', 'md_physres', 'md_heavyplate'],
   midSalvage: ['fr_reclaimer', 'lg_strider', 'wp_blaster', 'wp_scatter', 'wp_rifle', 'wp_mortar', 'dr_hornet', 'md_plating', 'md_physres', 'md_salvage'],
+  // Counter check (Super Mechs' "one stat maxed" builds): the same mid kit with all 8 modules on one defense,
+  // against --element=phys|heat|energy enemies. A counter should win its matchup, not every matchup.
+  ...Object.fromEntries(Object.entries({ resPhys: 'md_physres', resHeat: 'md_heatres', resElec: 'md_elecres', hpStack: 'md_heavyplate' })
+    .map(([k, md]) => [k, ['fr_brawler', 'lg_strider', 'wp_blaster', 'wp_scatter', 'wp_rifle', 'wp_mortar', 'dr_hornet', ...Array(8).fill(md)]])),
+  resMixed: ['fr_brawler', 'lg_strider', 'wp_blaster', 'wp_scatter', 'wp_rifle', 'wp_mortar', 'dr_hornet', 'md_physres', 'md_physres', 'md_heatres', 'md_heatres', 'md_elecres', 'md_elecres', 'md_plating', 'md_plating'],
+  // ...and one damage type on offense (mixed defense), to see which guns carry and which get walled
+  gunsHeat: ['fr_brawler', 'lg_strider', 'wp_flamer', 'wp_heatray', 'wp_scorcher', 'wp_napalm', 'dr_hornet', 'md_physres', 'md_physres', 'md_heatres', 'md_heatres', 'md_elecres', 'md_elecres', 'md_plating', 'md_plating'],
+  gunsElec: ['fr_brawler', 'lg_strider', 'wp_emp', 'wp_beam', 'wp_ionizer', 'wp_arcmortar', 'dr_hornet', 'md_physres', 'md_physres', 'md_heatres', 'md_heatres', 'md_elecres', 'md_elecres', 'md_plating', 'md_plating'],
 };
 // --kit=file.json: a real loadout ([{ id, tier, level }], e.g. decoded from a save export) as gear "kit"
 import { readFileSync } from 'node:fs';
@@ -140,6 +150,7 @@ function enemyTeam(type, floor, rnd, playerRes = {}) {
       droneOn: !!risk.droneOut,
     });
   }
+  if (type === 'boss' && out.length > 1) out.push(out.shift()); // escorts fight first, the boss last (as in main.js)
   return out;
 }
 

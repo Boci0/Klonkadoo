@@ -792,11 +792,12 @@ export function riskShred(level = 0) {
 const ENEMY_FRAME = { combat: 'fr_scout', elite: 'fr_brawler', miniboss: 'fr_titan', boss: 'fr_colossus' };
 const ELEMENT_FRAME = { heat: 'fr_furnace', energy: 'fr_conduit' };
 /**
- * Damage by type: Explosive and Electric guns also overheat / drain you, so
- * they hit softer to keep the three types about as dangerous against a mech
- * with no resists (tools/balance-sim.mjs --element=...). Your resists decide the rest.
+ * Damage by type, by role (Super Mechs): Physical hits hardest and does
+ * nothing else; Electric drains, and past empty the drain comes off HP;
+ * Explosive hits softest but overheats you into lost turns. Your resists
+ * decide the rest.
  */
-export const ELEMENT_DMG = { phys: 1, heat: 0.75, energy: 0.7 };
+export const ELEMENT_DMG = { phys: 1, heat: 0.7, energy: 0.75 };
 /** Gun slots fitted by fight tier (the rest of the list is left empty). */
 const ENEMY_GUNS = { combat: 2, elite: 3, miniboss: 4, boss: 4 };
 
