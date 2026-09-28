@@ -441,7 +441,6 @@ let autoPending = null; // the node AUTO RUN just stepped into: { type, node }
 /** Can AUTO RUN farm this run? The Risk must be won once already, and not in the Abyss. */
 function autoRunAllowed() {
   if (!run || run.runOver) return { ok: false, why: '' };
-  if (run.floor >= CONFIG.map.floors) return { ok: false, why: 'Not in the Abyss' };
   const best = saveSystem.getBallStats(run.ballType).bestRiskWin ?? -1;
   if (best < (run.risk ?? 0)) return { ok: false, why: 'Win a run on this Risk first' };
   return { ok: true, why: '' };
@@ -452,7 +451,7 @@ function updateAutoRunBtn() {
   if (!b) return;
   const can = autoRunAllowed();
   b.disabled = !can.ok && !autoRun;
-  b.title = can.ok ? 'AUTO RUN: moves, fights and picks rewards for you until the Abyss' : can.why;
+  b.title = can.ok ? 'AUTO RUN: moves, fights and picks rewards for you, and keeps descending into the Abyss' : can.why;
   b.classList.toggle('btn-accent', autoRun);
   b.classList.toggle('btn-outline', !autoRun);
   b.innerHTML = `${ico(can.ok || autoRun ? 'auto' : 'lock')}${autoRun ? 'AUTO ON' : 'AUTO RUN'}`;
@@ -539,6 +538,9 @@ function autoModal() {
     resolveRest(run.teamHurt ? 'heal' : 'leave');
     return;
   }
+  // The sector-clear / Abyss screen: always DESCEND (dying down there still counts as a win, and shards wait deeper)
+  const down = ui.modalActions.querySelector('[data-act="descend"]');
+  if (down) return down.click();
   // Anything else (a boon, a result card, a notice): take its main button
   const btn = ui.modalActions.querySelector('.btn-primary:not(:disabled), .btn-accent:not(:disabled)') || ui.modalActions.querySelector('button:not(:disabled)');
   btn?.click();
@@ -1938,7 +1940,7 @@ function sectorCleared() {
     }
   }
   ui.updateRunHud(run);
-  stopAutoRun('SECTOR CLEARED'); // the Abyss is yours to choose
+  if (autoRun) addFeedEntry(`<span class="feed-boon">${ico('auto')} AUTO RUN: DESCENDING</span>`); // (a death down there still counts as a win)
   persistRun('descend', { descend: { depth, next: depth + 1 } });
   const next = depth + 1;
   ui.showDescend({ depth, next, rewards, hp: run.hp, maxHp: run.maxHp, keeper: abyssKeeper(next).name, scaling: { hp: next * ABYSS_HP_PER_DEPTH, atk: next * ABYSS_ATK_PER_DEPTH }, nextKeys: 5 + next * 3 }, descend, () => endRun(true));

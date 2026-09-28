@@ -1767,6 +1767,8 @@ export class Game {
       playerSpecials: this.playerSpecials || [],
       projectiles: this.projectiles,
       gear: true,
+      insanity: this.insanity || 0, // Abyss: shown as a tag on the enemy's panel
+      insanityHp: this.battleConfig?.insanity?.hpPerTurn || 0,
       showHints: !!this.battleConfig?.showHints,
       fireTarget: this.activeEnemy,
       inspected: this.inspected && this.inspected.ball.hp > 0 ? this.inspected : null,

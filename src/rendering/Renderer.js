@@ -1532,6 +1532,12 @@ export class Renderer {
 
   _drawStatusTags(ctx, ball, panelX, tagY, panelW, alignRight) {
     const tags = [];
+    // Abyss insanity (Game._tickInsanity): how much harder enemies hit by now
+    const ins = ball.team === 'enemy' ? this.worldRef?.insanity || 0 : 0;
+    if (ins > 0) {
+      const hp = Math.round((this.worldRef?.insanityHp || 0.01) * 100);
+      tags.push({ label: `INSANE +${Math.round(ins * 100)}%`, color: '#c46fd6', desc: `Abyss insanity: hits ${Math.round(ins * 100)}% harder, climbing every turn (yours and theirs), and loses ${hp}% of its max HP each turn.` });
+    }
     if (ball.burnTicks > 0)
       tags.push({ label: `BURN ${ball.burnTicks}`, color: '#ef7d57', desc: `Burning! Takes ${Math.round(ball.burnDmg || 6 * CONFIG.gear.hpScale)} damage at the start of each turn. ${ball.burnTicks} turn(s) remaining.` });
     if (ball.isFrozen)
