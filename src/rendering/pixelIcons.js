@@ -1076,6 +1076,8 @@ const UI_GRIDS = {
   move: ['...kk...', '..kgek..', '.kggeek.', 'kkkgekkk', '..kgek..', '..kgek..', '..kkkk..'],
   energy: ['....kkk.', '...kcck.', '..kcck..', '.kccckk.', 'kkkccck.', '..kcck..', '.kcck...', '.kkk....'],
   heat: ['...k....', '..kok...', '..koyk..', '.koyyok.', 'koyywyok', 'koywwyok', '.koyyok.', '..kkkk..'],
+  burst: ['.k....k.', 'kyk..kyk', '.k....k.', '...kk...', '..kyyk..', '...kk...', '........'],
+  heatin: ['...k....', '..kok...', '.koyok..', 'koyyyok.', '.kooook.', '.kkkkkkk', '..kRRRk.', '...kRk..'],
   ammo: ['.k...k..', 'kyk.kyk.', 'kyk.kyk.', 'kok.kok.', 'kok.kok.', 'kdk.kdk.', 'kkk.kkk.'],
   lock: ['..kkkk..', '.kllllk.', '.kk..kk.', 'kyyyyyyk', 'kyykkyok', 'kyykkyok', 'kyyyyook', 'kkkkkkkk'],
   top: ['...kk...', '..kwwk..', '.kwwwwk.', 'kkkwwkkk', '..kwwk..', 'kkkkkkkk', 'klllllld', 'kkkkkkkk'],

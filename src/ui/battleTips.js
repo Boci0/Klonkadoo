@@ -7,7 +7,7 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
-import { DTYPES, dtypeOf, partNote, reachLabel, droneUpkeep, dmgLabel } from '../meta/Mech.js';
+import { DTYPES, dtypeOf, partNote, reachLabel, droneUpkeep, dmgLabel, reactorHit } from '../meta/Mech.js';
 import { ico, partIcon } from '../rendering/pixelIcons.js';
 
 const G = CONFIG.gear;
@@ -63,15 +63,18 @@ function gunTip(game, i) {
   const t = DTYPES[dtypeOf(w)];
   const p = game.player;
   const hits = w.fx?.burst ? ` x${w.fx.burst}` : '';
+  const rx = reactorHit(w, w.dmg || 0);
+  const per = w.fx?.burst > 1 ? ' per hit' : '';
   return `<h4 style="color:${w.color || '#f4f4f4'}"><img class="pxi" src="${partIcon(w.id)}" alt=""> ${w.name} <em>[${i + 1}] · 1 action</em></h4>
-    ${irow(t.icon, w.fx?.mine ? `${dmgLabel(w.dmg)} mine` : `${dmgLabel(st.dmg || w.dmg)}${hits}`, `${t.name} damage${st.dmg ? ' vs this target' : ''}`, t.color)}
+    ${irow('dmg', w.fx?.mine ? `${dmgLabel(w.dmg)} mine` : `${dmgLabel(st.dmg || w.dmg)}${hits}`, `${t.name} damage${st.dmg ? ' vs this target' : ''}`, t.color)}
     ${irow('range', `${reachLabel(w.reach)}${w.arc ? ' ⌒' : ''}`, w.arc ? 'Range · lobbed over cover' : 'Range · needs a clear line')}
     ${irow('energy', `${w.en || 0} <small>/ ${Math.floor(p.energy)}</small>`, 'Energy (you have)', DTYPES.energy.color)}
     ${irow('heat', `+${w.heat || 0} <small>${Math.ceil(p.heat)}/${p.heatCap}</small>`, 'Heat (yours / cap)', DTYPES.heat.color)}
     ${w.ammo ? irow('ammo', `${w.ammoLeft}/${w.ammo}`, 'Shots left', '#ffcd75') : ''}
     ${w.backfire ? irow('backfire', `-${Math.round(w.backfire)}`, 'Backfire: costs you HP', '#ff5d73') : ''}
     ${Object.entries(w.fx?.resDrain || {}).map(([k, v]) => irow('resdrain', `-${v}`, `${DTYPES[k].name} resist, rest of fight`, DTYPES[k].color)).join('')}
-    ${w.fx?.drain ? irow('drain', w.fx.drain, 'Drains their energy', DTYPES.energy.color) : ''}
+    ${rx.heat ? irow('heatin', `+${rx.heat}`, `Heat into the target${per}`, DTYPES.heat.color) : ''}
+    ${rx.drain ? irow('drain', rx.drain, `Drains their energy${per}`, DTYPES.energy.color) : ''}
     ${w.fx?.push ? irow('push', w.fx.push, 'Knocks back') : ''}
     ${w.fx?.pull ? irow('pull', w.fx.pull, 'Pulls in') : ''}
     ${w.desc ? `<p>${w.desc}</p>` : ''}
@@ -85,7 +88,7 @@ function droneTip(game, i) {
   const { en, heat } = droneUpkeep(d);
   const t = DTYPES[dtypeOf(d)];
   return `<h4 style="color:${d.color || '#f4f4f4'}"><img class="pxi" src="${partIcon(d.id)}" alt=""> ${d.name} <em>${d.off ? 'DOCKED' : 'DEPLOYED'}</em></h4>
-    ${d.heal ? irow('heal', `+${Math.round(d.heal)}`, 'Repair every turn', '#a7f070') : d.forcefieldEvery ? irow('def', `1/${d.forcefieldEvery}`, 'Forcefield every few turns', '#a7f070') : irow(t.icon, dmgLabel(d.dmg), `${t.name} damage every turn, any range`, t.color)}
+    ${d.heal ? irow('heal', `+${Math.round(d.heal)}`, 'Repair every turn', '#a7f070') : d.forcefieldEvery ? irow('def', `1/${d.forcefieldEvery}`, 'Forcefield every few turns', '#a7f070') : irow('dmg', dmgLabel(d.dmg), `${t.name} damage every turn, any range`, t.color)}
     ${irow('energy', `${en}/T`, 'Energy per turn', DTYPES.energy.color)}
     ${heat ? irow('heat', `+${heat}/T`, 'Heat per turn', DTYPES.heat.color) : ''}
     <p>${d.off ? 'Tap: DEPLOY (1 action)' : 'Tap: recall (free)'}</p>`;

@@ -8,7 +8,7 @@
 import { CONFIG } from '../config.js';
 import {
   getPart, partChips, partNote, rarityColor, rarityName, TYPE_LABEL, reachLabel,
-  tierRange, tierOf, maxLevel, RARITY_ORDER, LANE_SIZE, DTYPES, DTYPE_KEYS, dtypeOf, dmgLabel,
+  tierRange, tierOf, maxLevel, RARITY_ORDER, LANE_SIZE, DTYPES, DTYPE_KEYS, dtypeOf, dmgLabel, reactorHit,
 } from '../meta/Mech.js';
 import { ico, partIcon } from '../rendering/pixelIcons.js';
 
@@ -107,8 +107,8 @@ export function battlePartHtml(w) {
   const C = [];
   const add = (cond, icon, text, tip, color) => { if (cond) C.push({ icon, text, tip, color }); };
   add(w.type === 'weapon', w.mount === 'top' ? 'top' : 'side', w.mount === 'top' ? 'TOP' : 'SIDE', 'Mount');
-  add(w.dmg && !w.drone, t.icon, dmgLabel(w.dmg), `${t.name} damage per hit`, t.color);
-  add(w.fx?.burst, 'ammo', `x${w.fx?.burst}`, 'Hits per shot');
+  add(w.dmg && !w.drone, 'dmg', dmgLabel(w.dmg), `${t.name} damage per hit`, t.color);
+  add(w.fx?.burst, 'burst', `x${w.fx?.burst}`, 'Hits per shot');
   add(w.reach, 'range', w.reach ? reachLabel(w.reach) : '', 'Range (positions)');
   add(w.en, 'energy', `${w.en}`, 'Energy per use', DTYPES.energy.color);
   add(w.heat, 'heat', `${w.heat}`, 'Heat per use', DTYPES.heat.color);
@@ -117,14 +117,16 @@ export function battlePartHtml(w) {
   add(w.backfire, 'backfire', `-${Math.round(w.backfire || 0)}`, 'Backfire: HP it costs its user', '#ff5d73');
   for (const [k, v] of Object.entries(w.fx?.resDrain || {})) add(true, 'resdrain', `-${v}`, `Strips ${DTYPES[k].name} resist`, DTYPES[k].color);
   add(w.fx?.corrode, 'resdrain', `-${w.fx?.corrode}`, 'Strips PHYSICAL resist', DTYPES.phys.color);
-  add(w.fx?.drain, 'drain', `${w.fx?.drain}`, 'Drains energy', DTYPES.energy.color);
-  add(w.fx?.heat, 'heat', `+${w.fx?.heat}`, 'Heat into the target', DTYPES.heat.color);
+  const rx = w.dmg || w.fx ? reactorHit(w, w.dmg || 0) : { heat: 0, drain: 0 };
+  const per = w.fx?.burst > 1 ? ' per hit' : '';
+  add(rx.drain, 'drain', `${rx.drain}`, `Drains energy${per}`, DTYPES.energy.color);
+  add(rx.heat, 'heatin', `+${rx.heat}`, `Heat into the target${per}`, DTYPES.heat.color);
   add(w.fx?.push, 'push', `${w.fx?.push}`, 'Knocks back');
   add(w.fx?.pull, 'pull', `${w.fx?.pull}`, 'Pulls in');
   add(w.fx?.pierce, 'pierce', '', 'Ignores resists');
   add(w.arc, 'arc', '', 'Lobbed: flies over cover');
   // Drones and specials
-  add(p.type === 'drone' && w.dmg, t.icon, dmgLabel(w.dmg || 0), `${t.name} damage every turn, any range`, t.color);
+  add(p.type === 'drone' && w.dmg, 'dmg', dmgLabel(w.dmg || 0), `${t.name} damage every turn, any range`, t.color);
   add(w.heal, 'heal', `+${Math.round(w.heal || 0)}`, 'Repair every turn', '#a7f070');
   add(w.forcefieldEvery, 'def', `1/${w.forcefieldEvery}`, 'Forcefield every few turns', '#a7f070');
   add(w.ram, 'dmg', `${Math.round(w.ram || 0)}`, 'Ram damage');
@@ -148,9 +150,10 @@ export function battlePartHtml(w) {
 /** Every stat symbol and what it means (the Almanac ICONS tab, the Rig's ? button). */
 export const ICON_KEY = [
   ['range', 'RANGE', 'How far a gun reaches, in lane positions (1 = right next to you)'],
-  ['dmg', 'PHYSICAL', 'Physical damage per hit (the hit rolls between the two numbers)'],
-  ['heat', 'HEAT', 'Explosive damage, the heat a shot adds to you, or your heat cap'],
-  ['energy', 'ENERGY', 'Electric damage, the energy a shot costs, or your energy pool'],
+  ['dmg', 'DAMAGE', 'Damage per hit, coloured by type: white Physical, orange Explosive, cyan Electric (the hit rolls between the two numbers)'],
+  ['heat', 'HEAT', 'The heat a shot adds to YOU, or your heat cap'],
+  ['heatin', 'HEAT IN', 'Heat it pumps into the TARGET per hit: over its cap, it loses its next turn'],
+  ['energy', 'ENERGY', 'The energy a shot costs YOU, or your energy pool'],
   ['regen', 'REGEN', 'Energy you get back each turn'],
   ['cool', 'COOLING', 'Heat you lose each turn (VENT cools twice as much)'],
   ['hp', 'HP', 'Health. Going over the weight cap costs some'],
@@ -158,7 +161,8 @@ export const ICON_KEY = [
   ['load', 'WEIGHT', 'Kilograms. Every mech carries up to 1000'],
   ['side', 'SIDE GUN', 'Fits the 4 side slots'],
   ['top', 'TOP GUN', 'Heavy or lobbed: fits the 2 top slots'],
-  ['ammo', 'AMMO / USES', 'Shots or uses per battle; on guns "x3" = hits per shot'],
+  ['ammo', 'AMMO / USES', 'Shots or uses per battle (3/FIGHT)'],
+  ['burst', 'HITS', 'Hits per shot (x3): each one deals the damage and its heat / drain'],
   ['arc', 'LOBBED', 'Flies over cover'],
   ['pierce', 'PIERCE', 'Ignores resists'],
   ['backfire', 'BACKFIRE', 'HP each shot costs you'],
