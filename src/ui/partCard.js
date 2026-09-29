@@ -83,12 +83,13 @@ export function statBarHtml(t, next = null) {
   };
   const stat = ([icon, tip, f, c, fmt = (v) => v]) => `<span class="rstat" title="${tip}" style="--c:${c}">${ico(icon)}<b>${fmt(f(t))}</b>${next ? delta(f(t), f(next)) : ''}</span>`;
   // Module / frame bonuses: only the ones this build (or the part you're eyeing) has
-  const pc = (k) => (x) => Math.round((x[k] || 0) * 1000) / 10; // share -> % with one decimal
+  // share -> %, rounded like the part cards (whole %, crit to one decimal)
+  const pc = (k, dp = 0) => (x) => Math.round((x[k] || 0) * 100 * 10 ** dp) / 10 ** dp;
   const plus = (v) => `+${v}%`;
   const bonus = [
     ['dmg', 'All damage', pc('atkPct'), '#ffcd75', plus],
     ['gun', 'Gun damage', pc('weaponDmgPct'), '#ffcd75', plus],
-    ['star', 'Crit chance', pc('crit'), '#ffcd75', plus],
+    ['star', 'Crit chance', pc('crit', 1), '#ffcd75', plus],
     ['range', 'Max range on every gun', (x) => x.reachBonus || 0, '#94b0c2', (v) => `+${v}`],
     ['stomp', 'Stomp damage', pc('stompPct'), '#94b0c2', plus],
     ['heat', 'Damage while above half your heat cap', pc('hotAtk'), DTYPES.heat.color, plus],
