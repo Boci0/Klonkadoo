@@ -200,6 +200,23 @@ class SoundEngine {
     if (!this._ready() || !this._throttle('shot', 45)) return;
     const v = small ? 0.55 : 1;
     switch (kind) {
+      case 'salvo': // a ripple of launch whooshes
+        for (let i = 0; i < 5; i++) this._noise({ dur: 0.12, vol: 0.16 * v, filter: 'bandpass', freq: 700 + i * 120, to: 2200, at: i * 0.05 });
+        break;
+      case 'rail': // capacitor whine climbing, then the crack of the slug
+        this._tone({ type: 'sawtooth', freq: 220, to: 1800, dur: 0.26, vol: 0.07 * v });
+        this._noise({ dur: 0.12, vol: 0.45 * v, filter: 'highpass', freq: 2500, at: 0.26 });
+        this._tone({ type: 'sine', freq: 120, to: 40, dur: 0.2, vol: 0.5 * v, at: 0.26 });
+        break;
+      case 'spin': // motor spin-up, then the rattle
+        this._tone({ type: 'square', freq: 90, to: 420, dur: 0.2, vol: 0.06 * v });
+        for (let i = 0; i < 4; i++) this._noise({ dur: 0.05, vol: 0.3 * v, filter: 'bandpass', freq: 2600, to: 900, at: 0.2 + i * 0.06 });
+        break;
+      case 'flak': // dull thump out, pops in the air
+        this._tone({ type: 'sine', freq: 180, to: 60, dur: 0.1, vol: 0.4 * v });
+        this._noise({ dur: 0.1, vol: 0.3 * v, freq: 1800, to: 400, at: 0.2 });
+        break;
+      case 'cluster':
       case 'lob': // thump out of the tube, then a rising whistle
         this._tone({ type: 'sine', freq: 140, to: 50, dur: 0.16, vol: 0.55 * v });
         this._noise({ dur: 0.1, vol: 0.2 * v, freq: 900, to: 200 });

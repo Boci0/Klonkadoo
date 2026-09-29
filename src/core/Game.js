@@ -28,7 +28,7 @@ import { soundEngine } from '../utils/SoundEngine.js';
 import { saveSystem } from '../meta/SaveSystem.js';
 import { haptics } from '../platform/haptics.js';
 import { getBall } from '../meta/Balls.js';
-import { DEFAULT_LEGS, DTYPES, dtypeOf, resistOf, getPart, legsRules, droneUpkeep, meleeOf } from '../meta/Mech.js';
+import { DEFAULT_LEGS, DTYPES, dtypeOf, resistOf, getPart, legsRules, droneUpkeep, meleeOf, signatureOf } from '../meta/Mech.js';
 import { pickArena } from './Arenas.js';
 
 /** Runs saved before the lane: guns without a reach and legs without walk/jump get them from the catalog. */
@@ -44,6 +44,7 @@ const L = CONFIG.lane;
 /** How a gun's shot looks in flight (see Renderer._drawProjectiles). */
 export function vfxOf(w) {
   if (meleeOf(w)) return 'melee';
+  if (signatureOf(w)) return signatureOf(w);
   if (w.arc) return 'lob';
   if (w.fx?.pull) return 'hook';
   if (w.fx?.push || w.fx?.drain) return 'pulse';
@@ -976,23 +977,31 @@ export class Game {
       hook: Math.max(0.14, Math.min(0.42, dist / 1500)),
       pulse: Math.max(0.12, Math.min(0.45, dist / 1100)),
       melee: 0.2,
+      salvo: 0.8,
+      spin: Math.max(0.08, Math.min(0.3, dist / 2200)),
+      rail: 0.42, // 0.26 s of charge, then the beam
+      flak: Math.max(0.18, Math.min(0.4, dist / 1500)),
+      cluster: 0.7 + Math.min(0.4, dist / 2400),
     }[kind];
     const rounds = w.fx?.burst || 1;
+    // When each round leaves: the repeater spins up first and then hoses, bomblets share one shell
+    const start = { spin: (i) => 0.2 + i * 0.06, cluster: (i) => i * 0.05 }[kind] || ((i) => i * 0.09);
     for (let i = 0; i < rounds; i++) {
       this.projectiles.push({
         kind,
+        i,
         color: w.color || '#f4f4f4',
         x0: from.x,
         y0: from.y,
         target,
-        t: -i * 0.09,
+        t: -start(i),
         dur,
         last: i === rounds - 1,
         onHit: (last) => this._landShot(shooter, w, target, last),
       });
     }
     soundEngine.playShot(kind, dtypeOf(w));
-    if (shooter === this.player) haptics.impact(kind === 'lob' || w.dmg > 60 * G.hpScale ? 'medium' : 'light');
+    if (shooter === this.player) haptics.impact(['lob', 'salvo', 'cluster', 'rail'].includes(kind) || w.dmg > 60 * G.hpScale ? 'medium' : 'light');
   }
 
   _updateProjectiles(dt) {

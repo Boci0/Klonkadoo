@@ -520,6 +520,10 @@ export function legsLabel(p) {
 const MELEE = { wp_scythe: 'slash', wp_phoenix: 'rake', wp_magma: 'punch', wp_breaker: 'thrust' };
 export const meleeOf = (w) => MELEE[w?.id] || null;
 
+/** Guns with a shot of their own (Renderer._drawProjectiles); the rest look like their kind. */
+const SIGNATURE = { wp_missiles: 'salvo', wp_omega: 'spin', wp_rail: 'rail', wp_nova: 'rail', wp_flak: 'flak', wp_cluster: 'cluster' };
+export const signatureOf = (w) => SIGNATURE[w?.id] || null;
+
 /** A gun's reach in positions: '3-7', or '1' for melee. */
 export const reachLabel = (r) => (r[0] === r[1] ? `${r[0]}` : `${r[0]}-${r[1]}`);
 

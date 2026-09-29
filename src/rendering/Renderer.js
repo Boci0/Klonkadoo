@@ -16,7 +16,7 @@ import { getTerrain, groundAt } from '../core/Terrain.js';
 import { fitCanvas, clientToWorld } from './viewport.js';
 import { partCanvas, iconCanvas, iconSize } from './pixelIcons.js';
 import { showTip, hideTip, battlePartHtml } from '../ui/partCard.js';
-import { DTYPES, DTYPE_KEYS, dtypeOf, resistOf, legsLabel, reachLabel, LANE_SIZE, dmgLabel, meleeOf } from '../meta/Mech.js';
+import { DTYPES, DTYPE_KEYS, dtypeOf, resistOf, legsLabel, reachLabel, LANE_SIZE, dmgLabel, meleeOf, signatureOf } from '../meta/Mech.js';
 import { mechLook, torsoCanvas, legsCanvas } from './mechSprite.js';
 import { drawEffect } from './fxDraw.js';
 
@@ -725,6 +725,171 @@ export class Renderer {
           ctx.fillRect(4, 4, 6, 4);
           break;
         }
+        case 'salvo': {
+          // Five mini missiles pop up out of the pod, then curve down on the target one after another
+          const dir = Math.sign(dx) || 1;
+          for (let m = 0; m < 5; m++) {
+            const kk = Math.max(0, Math.min(1, (k - m * 0.07) / 0.72));
+            if (kk <= 0) continue;
+            const ex = tx + (m - 2) * 9;
+            const pt = (u) => {
+              const a = (1 - u) ** 3, b = 3 * (1 - u) ** 2 * u, c = 3 * (1 - u) * u * u, d = u ** 3;
+              const c1x = p.x0 + dir * (10 + m * 14), c1y = p.y0 - 170 - m * 18;
+              const c2x = ex - dir * 60, c2y = ty - 190;
+              return { x: a * p.x0 + b * c1x + c * c2x + d * ex, y: a * p.y0 + b * c1y + c * c2y + d * ty };
+            };
+            if (kk >= 1) {
+              // It's in: a small burst that fades while the rest land
+              const f = Math.min(1, (k - (m * 0.07 + 0.72)) / 0.2);
+              ctx.globalAlpha = 1 - f;
+              ctx.fillStyle = m % 2 ? '#ffcd75' : '#ef7d57';
+              const s = 16 + f * 22;
+              ctx.fillRect(Math.round(ex - s / 2), Math.round(ty - s / 2), s, s);
+              ctx.globalAlpha = 1;
+              continue;
+            }
+            for (let j = 1; j <= 5; j++) {
+              const q = pt(Math.max(0, kk - j * 0.04));
+              ctx.globalAlpha = 0.4 * (1 - j / 6);
+              ctx.fillStyle = '#94b0c2';
+              const s = 4 + j * 2;
+              ctx.fillRect(Math.round(q.x - s / 2), Math.round(q.y - s / 2), s, s);
+            }
+            ctx.globalAlpha = 1;
+            const q = pt(kk);
+            const q2 = pt(Math.min(1, kk + 0.02));
+            ctx.save();
+            ctx.translate(q.x, q.y);
+            ctx.rotate(Math.atan2(q2.y - q.y, q2.x - q.x));
+            ctx.fillStyle = '#1a1c2c';
+            ctx.fillRect(-9, -4, 16, 8);
+            ctx.fillStyle = p.color;
+            ctx.fillRect(-7, -2, 12, 4);
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(3, -2, 3, 4);
+            ctx.fillStyle = '#ffcd75';
+            ctx.fillRect(-11, -1, 3, 2);
+            ctx.restore();
+          }
+          break;
+        }
+        case 'spin': {
+          // Repeater round: a long thin tracer
+          const x = p.x0 + dx * k;
+          const y = p.y0 + dy * k;
+          ctx.strokeStyle = '#ffcd75';
+          ctx.globalAlpha = 0.7;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(x - Math.cos(ang) * 60, y - Math.sin(ang) * 60);
+          ctx.lineTo(x, y);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.translate(x, y);
+          ctx.rotate(ang);
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(-6, -2, 10, 4);
+          break;
+        }
+        case 'rail': {
+          const charge = 0.26 / 0.42;
+          if (k < charge) {
+            // Energy gathers at the muzzle: sparks spiral in, the core swells
+            const c = k / charge;
+            for (let s = 0; s < 8; s++) {
+              const a = (s / 8) * Math.PI * 2 + c * 5;
+              const r = (1 - c) * 46 + 4;
+              ctx.fillStyle = s % 2 ? '#fff' : p.color;
+              ctx.fillRect(Math.round(p.x0 + Math.cos(a) * r - 3), Math.round(p.y0 + Math.sin(a) * r - 3), 6, 6);
+            }
+            const core = 4 + c * 14;
+            ctx.fillStyle = p.color;
+            ctx.fillRect(Math.round(p.x0 - core / 2), Math.round(p.y0 - core / 2), core, core);
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(Math.round(p.x0 - core / 4), Math.round(p.y0 - core / 4), core / 2, core / 2);
+          } else {
+            // The slug: a thick beam that punches through and past the target, then thins out
+            const b = (k - charge) / (1 - charge);
+            const ex = p.x0 + Math.cos(ang) * dist * 1.6;
+            const ey = p.y0 + Math.sin(ang) * dist * 1.6;
+            ctx.globalAlpha = 1 - b * 0.6;
+            for (const [lw, c] of [[26 * (1 - b) + 4, p.color], [9 * (1 - b) + 2, '#fff']]) {
+              ctx.strokeStyle = c;
+              ctx.lineWidth = lw;
+              ctx.beginPath();
+              ctx.moveTo(p.x0, p.y0);
+              ctx.lineTo(ex, ey);
+              ctx.stroke();
+            }
+            // Rings along the beam
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            for (let r = 1; r <= 3; r++) {
+              const f = r / 4;
+              ctx.beginPath();
+              ctx.ellipse(p.x0 + dx * f, p.y0 + dy * f, 6 + b * 10, 18 + b * 16, ang, 0, Math.PI * 2);
+              ctx.stroke();
+            }
+          }
+          break;
+        }
+        case 'flak': {
+          // A shell to just short of the target, then an air burst around it
+          const bx = tx + (p.i ? 26 : -22);
+          const by = ty - (p.i ? 16 : 34);
+          if (k < 0.7) {
+            const kk = k / 0.7;
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(Math.round(p.x0 + (bx - p.x0) * kk - 4), Math.round(p.y0 + (by - p.y0) * kk - 4), 8, 8);
+          } else {
+            const f = (k - 0.7) / 0.3;
+            ctx.fillStyle = '#ffcd75';
+            const c = 18 * (1 - f) + 4;
+            ctx.fillRect(Math.round(bx - c / 2), Math.round(by - c / 2), c, c);
+            for (let s = 0; s < 7; s++) {
+              const a = (s / 7) * Math.PI * 2;
+              const r = 10 + f * 30;
+              ctx.globalAlpha = 1 - f * 0.7;
+              ctx.fillStyle = s % 2 ? '#94b0c2' : '#566c86';
+              const sz = 10 + f * 8;
+              ctx.fillRect(Math.round(bx + Math.cos(a) * r - sz / 2), Math.round(by + Math.sin(a) * r - sz / 2), sz, sz);
+            }
+          }
+          break;
+        }
+        case 'cluster': {
+          // One shell up the arc; at the top it splits and the bomblets fan out onto the target
+          const arcH = 120 + dist * 0.28;
+          const at = (kk) => ({ x: p.x0 + dx * kk, y: p.y0 + dy * kk - arcH * 4 * kk * (1 - kk) });
+          if (k < 0.5) {
+            if (p.i) break; // the others ride inside the first shell
+            const q = at(k);
+            const q2 = at(k + 0.02);
+            ctx.translate(q.x, q.y);
+            ctx.rotate(Math.atan2(q2.y - q.y, q2.x - q.x));
+            ctx.fillStyle = '#1a1c2c';
+            ctx.fillRect(-12, -7, 24, 14);
+            ctx.fillStyle = p.color;
+            ctx.fillRect(-10, -5, 20, 10);
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(5, -3, 4, 6);
+          } else {
+            const s = (k - 0.5) / 0.5;
+            const a = at(0.5);
+            const ex = tx + ((p.i || 0) - 1) * 34;
+            const x = a.x + (ex - a.x) * s;
+            const y = a.y + (ty - a.y) * s * s;
+            if (s < 0.08 && !p.i) {
+              ctx.fillStyle = '#fff';
+              ctx.fillRect(Math.round(a.x - 14), Math.round(a.y - 14), 28, 28);
+            }
+            ctx.fillStyle = '#1a1c2c';
+            ctx.fillRect(Math.round(x - 6), Math.round(y - 6), 12, 12);
+            ctx.fillStyle = s * 10 % 2 < 1 ? '#ffcd75' : p.color; // blinking fuse
+            ctx.fillRect(Math.round(x - 4), Math.round(y - 4), 8, 8);
+          }
+          break;
+        }
         case 'pulse': {
           const x = p.x0 + dx * k;
           const y = p.y0 + dy * k;
@@ -793,9 +958,15 @@ export class Renderer {
         const w = iw * S * k;
         const h = ih * S * k;
         const swing = meleeOf(g) && since < MELEE_MS ? meleeSwing(meleeOf(g), since / MELEE_MS) : null;
-        const recoil = swing ? -swing.dx * k : since < 180 ? (1 - since / 180) * 10 * k : 0;
+        const sig = signatureOf(g);
+        // Repeater: shakes while it spins up (200 ms), then kicks with every round; rail: kicks when the slug leaves
+        const spinning = sig === 'spin' && since < 480;
+        const pulse = spinning && since > 200 && (since - 200) % 60 < 25;
+        const kick = sig === 'rail' ? (since > 260 && since < 440 ? (1 - (since - 260) / 180) * 14 : 0) : spinning ? (pulse ? 7 : 0) : since < 180 ? (1 - since / 180) * 10 : 0;
+        const recoil = swing ? -swing.dx * k : kick * k;
+        const shake = spinning && since < 200 ? (Math.random() - 0.5) * 3 * k : 0;
         ctx.save();
-        ctx.translate(Math.round(mx), Math.round(my));
+        ctx.translate(Math.round(mx), Math.round(my + shake));
         ctx.rotate(g._ang);
         if (Math.cos(g._ang) < 0) ctx.scale(1, -1); // keep the sprite upright
         if (swing) ctx.rotate(swing.ang);
@@ -810,7 +981,8 @@ export class Renderer {
           ctx.fillRect(Math.round(w - 10 - recoil), Math.round(-3), 4, 6);
         }
         ctx.globalAlpha = alpha;
-        if (since < 110 && !meleeOf(g)) flash(w - 2 - recoil, 0, g.color || '#ffcd75');
+        const flashing = sig === 'spin' ? pulse : sig === 'rail' ? since > 260 && since < 340 : since < 110 && !meleeOf(g);
+        if (flashing) flash(w - 2 - recoil, 0, g.color || '#ffcd75');
         ctx.restore();
         g._muzzle = { x: mx + Math.cos(g._ang) * (w - 6), y: my + Math.sin(g._ang) * (w - 6) };
         if (hot > 0.75) {
