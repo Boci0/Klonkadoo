@@ -45,11 +45,14 @@ const L = CONFIG.lane;
 export function vfxOf(w) {
   if (meleeOf(w)) return 'melee';
   if (signatureOf(w)) return signatureOf(w);
+  // The catalog's own fx: partStats fills in heat / drain on every Explosive / Electric gun,
+  // which must not turn them all into beams and pulses
+  const fx = getPart(w.id)?.fx ?? w.fx;
   if (w.arc) return 'lob';
-  if (w.fx?.pull) return 'hook';
-  if (w.fx?.push || w.fx?.drain) return 'pulse';
-  if (w.fx?.line || w.fx?.chain || w.fx?.pierce || w.fx?.heat) return 'beam';
-  if (w.fx?.burn || w.fx?.corrode || w.fx?.freeze) return 'spray';
+  if (fx?.pull) return 'hook';
+  if (fx?.push || fx?.drain) return 'pulse';
+  if (fx?.line || fx?.chain || fx?.pierce || fx?.heat) return 'beam';
+  if (fx?.burn || fx?.corrode || fx?.freeze) return 'spray';
   return 'bullet';
 }
 

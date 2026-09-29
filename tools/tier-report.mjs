@@ -32,17 +32,21 @@ export function bestForm(p) {
 const perUse = (s) => Math.round((s.dmg || 0) * (s.fx?.burst || 1) * G.dmgScale);
 const hp = (s) => Math.round(s.hp || 0);
 const sumRes = (s) => Object.values(s.res || {}).reduce((a, b) => a + b, 0);
+const bandOf = (p) => (p.reach[1] <= 2 ? 'close' : p.reach[1] <= 4 ? 'mid' : 'far');
 const moveOf = (p) => (p.anchored ? 'anchored' : p.jump ? (p.walk >= 2 ? 'walk+jump' : 'jumper') : 'walker');
 
 // role -> which parts, what they're for, how to show them
 const ROLES = [
+  // Guns by mount, type and reach band: reach trades damage on purpose (Mech.REACH_DMG)
   ...['side', 'top'].flatMap((mnt) =>
-    ['phys', 'heat', 'energy'].map((dt) => ({
-      name: `${mnt} guns · ${dt}`,
-      pick: (p) => p.type === 'weapon' && (p.mount === 'top' ? 'top' : 'side') === mnt && p.dtype === dt,
-      score: perUse,
-      unit: 'dmg/use',
-    })),
+    ['phys', 'heat', 'energy'].flatMap((dt) =>
+      ['close', 'mid', 'far'].map((band) => ({
+        name: `${mnt} guns · ${dt} · ${band}`,
+        pick: (p) => p.type === 'weapon' && (p.mount === 'top' ? 'top' : 'side') === mnt && p.dtype === dt && bandOf(p) === band,
+        score: perUse,
+        unit: 'dmg/use',
+      })),
+    ),
   ),
   { name: 'frames', pick: (p) => p.type === 'frame', score: hp, unit: 'HP (reactor never grows on frames)' },
   ...['walker', 'jumper', 'walk+jump', 'anchored'].map((m) => ({ name: `legs · ${m}`, pick: (p) => p.type === 'legs' && moveOf(p) === m, score: hp, unit: 'HP' })),
