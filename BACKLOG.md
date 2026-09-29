@@ -1,6 +1,55 @@
 # Backlog
 
-## Next up (after v2.5.5, 2026-09-29)
+## NEXT: the numbers rework (decided 2026-09-29, after v2.5.9)
+
+Re-derive the game's core numbers from SuperMechs Reloaded's ratios instead of "the old numbers x10"
+(CONFIG.gear hpScale 10 / rxScale 10 / dmgScale 13). Its own release. The user's calls:
+- **Fights are short:** an elite takes you **5-8 turns**, a boss ~10-12 (today 15-20 and 14-17).
+- **You rarely overheat from your own guns:** only when you over-fire; overheating mostly comes from
+  Explosive enemies heating you (that's what makes the element scary).
+- **Heavy frames** (already in 2.5.9): the frame is a third of the 1000 kg cap.
+
+**Measured today** (`node tools/balance-sim.mjs 200 --fights=1 --gear=mid --gearLvl=max --tierUp=3 --skill=1 --risk=10`,
+the per-fight ratio line was added for this):
+- Risk 10-11: you lose **40-57% of your turns to overheat**, enemies 0-9%. Enemy HP is 2.2-3x yours
+  (5.5-8.6k vs ~2.4-2.7k). Fights run 14-20 turns. This is also why the sim never beats the floor 5
+  boss (old item "balance-sim: nobody beats the floor 5 boss"): the planner, which AUTO uses too,
+  overheats half the time. Enemies run on their own reactors (CONFIG.gear.enemyRig) that never starve.
+- Risk 0: fights are one-sided (enemies would need 40-200 turns to kill you).
+
+**How the numbers work now** (read before changing): hit = dmg x dmgScale x roll ±15% x crit 1.75 x ATK,
+then resists cut a **percentage** (4%/point, cap 15 = 60%; SuperMechs subtracts resist flat).
+Explosive heats / Electric drains 50% of the hit (dtypeLoad), drain past 0 hits HP. Reactor: regen and
+cool once per turn; over the cap at turn start = turn lost, still over after cooling = shutdown.
+VENT = 2x cooling, ends the turn. Enemies: HP = tier x enemyHpScale 7.5 x archetype x Risk; guns at
+enemyDmgScale 0.5 of a same-level player gun (their own foeDmg where set); reactors from enemyRig.
+Gun costs (en / heat) are fixed at every tier; frame reactors never grow (Mech.partStats).
+
+**SuperMechs Reloaded reference** (`sh tools/supermechs/fetch.sh`, then `node tools/supermechs/weapons.cjs`;
+tools/supermechs/load.cjs loads every item; docs/supermechs-research.md has the weight notes):
+- Mythic lv50: torso HP ~1000-1100, energy cap/regen ~265/76, heat cap/cool ~265/76; plating 315 HP;
+  side guns 250-320 per hit at melee, ~200 at 3-6, top 4-8 ~260; costs per shot: Physical 31/31,
+  Explosive 16 en / 47 heat, Electric 47 / 16; heat ~30% / drain ~40% of the hit; hit roll ~±25%.
+- Growth: a gun's **cost is fixed within a tier and x1.5-1.8 per tier step**; damage at level 1 of
+  each tier jumps by about the same, so every tier starts at the same damage per cost and levels make
+  it more efficient. Torso / module energy and heat **caps** grow with level and tier, **regen / cooling**
+  only per tier (x1.4-1.7). Torso HP grows with both.
+
+**Plan:**
+1. A ratio tool (extend the sim's --fights line): hits to kill, shots a full reactor supports, shots per
+   turn it sustains (regen / cost, cooling / heat), turns to lock an enemy with heat or drain; for real
+   builds at every tier, player and enemies.
+2. Pick targets from the calls above and SuperMechs: e.g. ~1.5 shots/turn sustained, a full tank covers a
+   2-gun burst for a few turns, elites 5-8 of your turns, bosses 10-12, enemy HP ~1-1.5x yours (bosses more).
+3. Rebuild base scales (HP, damage, caps, regen, cooling, costs, resists; flat resists are an option) with
+   SuperMechs-like magnitudes, and growth: gun costs x tierStep per tier (not per level), frame reactors
+   grow (caps with level + tier, regen/cool per tier) so high-tier guns stay fireable.
+4. Enemies get their own pass (enemyRig, enemyHpScale, enemyDmgScale, Risk curve) to land on the targets.
+5. Check with tools/tier-report.mjs (rarity ranks at best form), tools/weight-report.mjs, the sim
+   (--fights and runs, Risk 0 / 5 / 10 / 11, team 1-3), then the game in the browser. Saves keep their
+   items: everything goes through partStats, so no save migration should be needed; check the Rig numbers.
+
+## Next up (after v2.5.9, 2026-09-29)
 
 1. **Abyss depth: OK for now.** On 2.5.3 the user reaches Abyss 6 (Risk XI, 2x ascended Phoenix, Leviathan,
    Medic drone) and that's intended: one mech shouldn't make a joke of the Abyss, going deeper should take
@@ -8,9 +57,9 @@
    On 2.5.6 the same player reached Abyss 11 (no Abyss changes since): user puts it down to ascending any
    part (2.5.2) and a kinder map roll. Depth swings run to run; judge Abyss balance on several runs.
 2. **balance-sim: nobody beats the floor 5 boss.** 2026-09-29: `--skill=1 --gear=mid --gearLvl=max --tierUp=3`
-   at Risk 10 team 2 / Risk 11 team 3 / Risk 5 solo all win 0%; every run that reaches the boss dies there
-   (memory says team runs used to win Risk 10/XI 80-95%). Find what drifted (presets, enemy HP, boss
-   loadout) before trusting the sim for boss or Abyss balance again.
+   at Risk 10 team 2 / Risk 11 team 3 / Risk 5 solo all win 0%; every run that reaches the boss dies there.
+   Likely cause found: the planner loses ~50% of its turns to overheat (see the numbers rework above).
+   Re-check after the rework; if it still can't win, look at presets / enemy HP / boss loadout.
 3. **Abyss mode for tools/balance-sim.mjs.** The sim stops at floor 5: no Abyss depth scaling, no insanity,
    no reactor growth, so Abyss balance can't be checked headlessly. Add it before tuning the Abyss again.
 4. **Wishlist.** Star parts you're hunting (Almanac / Rig); a WISHLIST! badge and sound on the pod card,

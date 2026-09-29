@@ -254,7 +254,10 @@ function battle(team, type, floor, rnd, rules) {
   let p = playerUnit(team[idx].perm, team[idx].hp, team[idx].maxHp);
   const writeBack = () => (team[idx].hp = Math.max(0, p.hp));
   let turns = 0;
+  // --fights: what each side did per turn (the numbers rework's ratios)
+  const stat = { yourTurns: 0, foeTurns: 0, youLost: 0, foeLost: 0, dealt: 0, taken: 0, foeHp: 0 };
   for (const e of foes) {
+    stat.foeHp += e.hp;
     const mines = [];
     p.pos = 3;
     e.pos = Math.min(SIZE, p.pos + 6);
@@ -263,22 +266,30 @@ function battle(team, type, floor, rnd, rules) {
     let first = true;
     while (e.hp > 0 && turns < 60) {
       turns += 1;
+      const eHp0 = e.hp;
+      stat.yourTurns += 1;
       if (first || upkeep(p)) playTurn(p, e, mines, SKILL, rnd);
+      else stat.youLost += 1;
       first = false;
       pt += 1;
       drones(p, e, pt, heal);
+      stat.dealt += eHp0 - Math.max(0, e.hp);
       if (e.hp <= 0) break;
+      const pHp0 = p.hp;
+      stat.foeTurns += 1;
       if (upkeep(e)) playTurn(e, p, mines, e.difficulty, rnd);
+      else stat.foeLost += 1;
       // --trace: what both sides did, for fights that drag on (loops)
       if (args.trace && turns > 40 && turns <= 46) console.log(`T${turns} you@${p.pos} hp${Math.round(p.hp)} heat${Math.round(p.heat)}/${p.heatCap} en${Math.round(p.energy)} [${(p.trace || []).join(' ')}] | foe@${e.pos} hp${Math.round(e.hp)} heat${Math.round(e.heat)}/${e.heatCap} en${Math.round(e.energy)} [${(e.trace || []).join(' ')}] guns ${e.guns.map((g) => g.reach.join('-')).join(',')}`);
       p.trace = []; e.trace = [];
       et += 1;
       drones(e, p, et, 1);
+      stat.taken += pHp0 - Math.max(0, p.hp);
       if (p.hp <= 0) {
         // Knocked out: the next team mech drops in on the same spot
         writeBack();
         const next = team.findIndex((m) => m.hp > 0);
-        if (next < 0) return { won: false, turns };
+        if (next < 0) return { won: false, turns, stat };
         const pos = p.pos;
         idx = next;
         p = playerUnit(team[idx].perm, team[idx].hp, team[idx].maxHp);
@@ -289,14 +300,14 @@ function battle(team, type, floor, rnd, rules) {
     }
     if (e.hp > 0) {
       writeBack();
-      return { won: false, turns, timeout: true };
+      return { won: false, turns, timeout: true, stat };
     }
     if (p.killHeal) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * p.killHeal * heal);
   }
   writeBack();
   // Knocked-out mechs stay down until a Safe Zone (--limp=1: the old rule, they limp on at 1 HP)
   if (args.limp) for (const m of team) m.hp = Math.max(1, m.hp);
-  return { won: true, turns };
+  return { won: true, turns, stat };
 }
 
 /** The weekly raid boss (meta/Raid.js raidBoss) as a sim unit, at full pool. */
@@ -503,14 +514,18 @@ if (args.fights) {
     for (const [type, floor] of [['combat', 1], ['combat', 2], ['elite', 2], ['combat', 3], ['elite', 3], ['miniboss', 3], ['combat', 5], ['elite', 5], ['boss', 5]]) {
       const rnd = mulberry(7);
       let won = 0, lost = 0, turns = 0, timeouts = 0;
+      const S = { yourTurns: 0, foeTurns: 0, youLost: 0, foeLost: 0, dealt: 0, taken: 0, foeHp: 0 };
       for (let i = 0; i < RUNS; i++) {
         const team = makeTeam(LOADOUTS[g]);
         const r = battle(team, type, floor, rnd, NEW);
         if (r.won) { won += 1; lost += team.reduce((a, m) => a + (m.maxHp - m.hp), 0) / team.reduce((a, m) => a + m.maxHp, 0); }
         if (r.timeout) timeouts += 1;
         turns += r.turns;
+        for (const k in S) S[k] += r.stat?.[k] || 0;
       }
       console.log(`F${floor} ${type.padEnd(8)} win ${String(Math.round((won / RUNS) * 100)).padStart(3)}% | HP lost when won ${won ? Math.round((lost / won) * 100) : '-'}% | turns ${(turns / RUNS).toFixed(1)}${timeouts ? ` | timeouts ${timeouts}` : ''}`);
+      const per = (a, b) => (b ? Math.round(a / b) : 0);
+      console.log(`           you ${per(S.dealt, S.yourTurns)} dmg/turn, lost ${Math.round((S.youLost / Math.max(1, S.yourTurns)) * 100)}% of turns to heat | foe HP ${per(S.foeHp, RUNS)}, ${per(S.taken, S.foeTurns)} dmg/turn, lost ${Math.round((S.foeLost / Math.max(1, S.foeTurns)) * 100)}% of turns | your HP ${maxHp}: ${per(maxHp, per(S.taken, S.foeTurns))} of its turns to kill you, ${per(per(S.foeHp, RUNS), per(S.dealt, S.yourTurns))} of yours to kill it`);
     }
   }
   process.exit(0);
