@@ -2,7 +2,9 @@
 // MenuBackground — animated pixel backdrop behind the main menu:
 // two parallax skyline layers drifting sideways, twinkling stars,
 // and a slingshot ball arcing across every few seconds.
-// Only animates while its canvas is visible.
+// Only animates while its canvas is visible. The skylines are drawn once
+// onto offscreen canvases; the browser may drop those after a long session
+// or a GPU reset, so they're rebuilt whenever the menu comes back into view.
 // ============================================================
 
 const PIX = 3; // CSS px per art pixel
@@ -20,6 +22,7 @@ export class MenuBackground {
       requestAnimationFrame(tick);
       if (this.canvas.offsetParent === null) {
         this._last = now;
+        this._layers = null; // rebuild the skylines when the menu shows again
         return; // hidden: skip work
       }
       const dt = Math.min(0.05, (now - this._last) / 1000);
@@ -34,6 +37,7 @@ export class MenuBackground {
     const rng = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     const layer = (color, windowCol, minH, maxH) => {
       const c = document.createElement('canvas');
+      c.addEventListener('contextrestored', () => (this._layers = null)); // its pixels are gone: redraw it
       c.width = pw; // tiled twice while scrolling
       c.height = ph;
       const g = c.getContext('2d');
@@ -71,7 +75,7 @@ export class MenuBackground {
     const rect = this.canvas.getBoundingClientRect();
     const pw = Math.max(1, Math.ceil(rect.width / PIX));
     const ph = Math.max(1, Math.ceil(rect.height / PIX));
-    if (this.canvas.width !== pw || this.canvas.height !== ph) {
+    if (this.canvas.width !== pw || this.canvas.height !== ph || !this._layers) {
       this.canvas.width = pw;
       this.canvas.height = ph;
       this._buildLayers(pw, ph);
