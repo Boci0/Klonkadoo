@@ -1942,6 +1942,7 @@ function sectorCleared() {
     const shards = rollShards(final ? 'prime' : 'warden', run.risk ?? saveSystem.getDifficultyLevel());
     if (shards) {
       saveSystem.addShards(shards);
+      run.shardsEarned = (run.shardsEarned || 0) + shards;
       addFeedEntry(`<span class="feed-boon">+${shards} ABYSS SHARD${shards > 1 ? 'S' : ''}</span>`);
     }
     rewards = { keys, scrap, final, pod, pods, shards };

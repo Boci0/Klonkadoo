@@ -1499,6 +1499,23 @@ canvas {
   text-overflow: ellipsis;
 }
 
+.result-stat-shard {
+  border-color: #c46fd6;
+}
+
+.result-stat-shard strong {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #c46fd6;
+}
+
+.result-stat-shard strong svg,
+.result-stat-shard strong img {
+  width: 16px;
+  height: 16px;
+}
+
 .result-tp {
   font-family: var(--font-display);
   color: var(--accent-gold);

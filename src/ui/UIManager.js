@@ -1600,6 +1600,9 @@ export class UIManager {
       tile('SCRAP EARNED', run.scrapEarned || 0),
       tile('RISK', saveSystem.getDifficultyLevel()),
       tile('CONDITION', cond ? cond.name : '-'),
+      // Abyss loot: only when some actually dropped this run
+      run.podsEarned ? tile('PODS EARNED', run.podsEarned) : '',
+      run.shardsEarned ? `<div class="result-stat result-stat-shard"><span>ABYSS SHARDS</span><strong>${ico('shard', '#c46fd6')}+${run.shardsEarned}</strong></div>` : '',
     ].join('');
 
     const questList = document.getElementById('result-quests');
