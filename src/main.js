@@ -432,13 +432,13 @@ function takeControl() {
 
 // ---------- AUTO RUN ----------
 // Farms a Risk you've already beaten: picks the next map node, fights on
-// AUTO, takes the best reward / event choice / shop buys. It stops at the
-// Abyss (or when the run ends, or when you act yourself).
+// AUTO, takes the best reward / event choice / shop buys, and keeps
+// descending into the Abyss. It stops when the run ends or you act yourself.
 
 let autoRunTimer = 0;
 let autoPending = null; // the node AUTO RUN just stepped into: { type, node }
 
-/** Can AUTO RUN farm this run? The Risk must be won once already, and not in the Abyss. */
+/** Can AUTO RUN farm this run? The Risk must be won once already (the Abyss has no gate of its own). */
 function autoRunAllowed() {
   if (!run || run.runOver) return { ok: false, why: '' };
   const best = saveSystem.getBallStats(run.ballType).bestRiskWin ?? -1;
