@@ -81,7 +81,29 @@ export function statBarHtml(t, next = null) {
     const d = Math.round((b - a) * 10) / 10;
     return d ? `<em class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : ''}${d}</em>` : '';
   };
-  const stats = rows.map(([icon, tip, f, c]) => `<span class="rstat" title="${tip}" style="--c:${c}">${ico(icon)}<b>${f(t)}</b>${next ? delta(f(t), f(next)) : ''}</span>`).join('');
+  const stat = ([icon, tip, f, c, fmt = (v) => v]) => `<span class="rstat" title="${tip}" style="--c:${c}">${ico(icon)}<b>${fmt(f(t))}</b>${next ? delta(f(t), f(next)) : ''}</span>`;
+  // Module / frame bonuses: only the ones this build (or the part you're eyeing) has
+  const pc = (k) => (x) => Math.round((x[k] || 0) * 1000) / 10; // share -> % with one decimal
+  const plus = (v) => `+${v}%`;
+  const bonus = [
+    ['dmg', 'All damage', pc('atkPct'), '#ffcd75', plus],
+    ['gun', 'Gun damage', pc('weaponDmgPct'), '#ffcd75', plus],
+    ['star', 'Crit chance', pc('crit'), '#ffcd75', plus],
+    ['range', 'Max range on every gun', (x) => x.reachBonus || 0, '#94b0c2', (v) => `+${v}`],
+    ['stomp', 'Stomp damage', pc('stompPct'), '#94b0c2', plus],
+    ['heat', 'Damage while above half your heat cap', pc('hotAtk'), DTYPES.heat.color, plus],
+    ['dmg', 'Damage while below 35% HP', pc('lowHpAtk'), '#ff5d73', plus],
+    ['heal', 'Repair (share of max HP) per enemy mech destroyed', pc('killHeal'), '#a7f070', (v) => `+${v}%/KILL`],
+    ['heal', 'Heal after each win', pc('healAfterWin'), '#a7f070', (v) => `+${v}%/WIN`],
+    ['energy', 'VENT refills energy: this share of the heat it cools', pc('ventEnergy'), DTYPES.energy.color, (v) => `VENT ${v}%`],
+    ['gold', 'Gold', pc('goldPct'), '#ffcd75', plus],
+  ].filter(([, , f]) => f(t) || (next && f(next)));
+  const flags = [
+    ['energy', 'First gun each battle costs no energy', 'freeFirstShot', '1ST FREE'],
+    ['def', 'Start each battle with a Forcefield', 'startForcefield', 'FIELD'],
+  ].filter(([, , k]) => t[k] || next?.[k])
+    .map(([icon, tip, k, label]) => `<span class="rstat${t[k] ? '' : ' rstat-new'}" title="${tip}${t[k] ? '' : ' (with this part)'}">${ico(icon)}<b>${label}</b></span>`);
+  const stats = [...rows.map(stat), ...bonus.map(stat), ...flags].join('');
   // Load: one meter to the cap, the overweight margin in red after it
   const w = next ? next.weight : t.weight;
   const pct = Math.min(100, (w / t.capacity) * 100);

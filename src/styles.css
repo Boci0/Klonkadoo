@@ -2724,6 +2724,7 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 .rstat em, .rig-load em.kg-up, .rig-load em.kg-down { font-style: normal; font-size: 11px; margin-left: 3px; }
 .rstat em.up { color: var(--p-lime); }
 .rstat em.down { color: #ff5d73; }
+.rstat-new { opacity: 0.6; }
 .rig-load em.kg-up { color: var(--p-yellow); }
 .rig-load em.kg-down { color: var(--p-lime); }
 
