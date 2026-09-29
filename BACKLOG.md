@@ -2,9 +2,9 @@
 
 ## Next up (after v2.5.3, 2026-09-29)
 
-1. **Check the Abyss after 2.5.3.** On 2.5.2 the user fell from Abyss 18 to Abyss 3 (Risk XI, Phoenix heat build).
-   2.5.3 stopped enemy cooling/regen growing with depth (only heat cap + battery, +4%/depth). Ask how deep
-   they get now; if still far off, look at what else 2.5.2 changed.
+1. **Abyss depth: OK for now.** On 2.5.3 the user reaches Abyss 6 (Risk XI, 2x ascended Phoenix, Leviathan,
+   Medic drone) and that's intended: one mech shouldn't make a joke of the Abyss, going deeper should take
+   more mechs or other builds. Don't soften it; `rxOut` (enemy heat/drain grows with depth) stays.
 2. **Abyss mode for tools/balance-sim.mjs.** The sim stops at floor 5: no Abyss depth scaling, no insanity,
    no reactor growth, so Abyss balance can't be checked headlessly. Add it before tuning the Abyss again.
 3. **Wishlist.** Star parts you're hunting (Almanac / Rig); a WISHLIST! badge and sound on the pod card,
@@ -16,6 +16,16 @@
 6. **Ideas not started:** real online raid leaderboard (tiny free backend) instead of the simulated field;
    team fights (2v2 on the lane) for the endgame.
 7. **Untested live:** AUTO RUN through the Abyss, 1-action SWAP, UPGRADE / SCRAP badges on pod cards.
+8. **Weight balancing.** Some parts feel too heavy for what they give, others too light. Dump every part's
+   weight vs. power (dmg/stat per kg, by slot and tier) with a script, flag the outliers, and retune so the
+   1000 kg cap forces real trade-offs.
+9. **Heat drones.** Heat only has FIREFLY (common, borrows the Gnat icon); phys goes to rare, energy to
+   mythic. Add rare → mythic heat drones (heat-on-hit, maybe a shutdown/overheat angle) with their own art,
+   and give Firefly its own icon.
+10. **Torso (frame) variety.** 9 frames, mostly a stat ladder (Scout → Brawler → Titan → Colossus →
+    Leviathan). Only Furnace (heat) and Conduit (energy) are element-built, both rare; Phantom (free first
+    shot) and Reclaimer (heal on kill) are the only ones with a perk. Add frames with a real identity per
+    element and tier (e.g. an epic+ heat and energy frame, a phys frame), each with its own perk and art.
 
 ## Play Console recommendations (from release 1 / 1.0.0, 2026-09-26)
 
