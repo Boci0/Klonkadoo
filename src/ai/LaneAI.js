@@ -145,12 +145,12 @@ function apply(s, a) {
     let dmg = hitDamage(shot, foe) * (me.enrage || 1); // raid boss enrage (Game._weaponHit)
     // Resists cut heat and drain too (Game._reactorKeep)
     const keep = (type) => 1 - Math.min(DEF_CAP, (foe.def || 0) + (foe.res?.[type] || 0)) * DEF_PER_POINT;
-    if ((g.dtype === 'heat' || g.heatFx) && !g.meltdown) foe.heat += Math.round((g.heatFx ?? g.dmg * CONFIG.gear.dtypeLoad) * keep('heat'));
+    if ((g.dtype === 'heat' || g.heatFx) && !g.meltdown) foe.heat += Math.round((g.heatFx ?? g.dmg * CONFIG.gear.dtypeLoad.heat * (g.load || 1)) * keep('heat'));
     if (g.dtype === 'energy' || g.drain) {
-      const want = Math.round((g.drain ?? g.dmg * CONFIG.gear.dtypeLoad) * keep('energy'));
+      const want = Math.round((g.drain ?? g.dmg * CONFIG.gear.dtypeLoad.energy * (g.load || 1)) * keep('energy'));
       const took = Math.min(foe.energy, want);
       foe.energy -= took;
-      dmg += (want - took) * (CONFIG.gear.hpScale / CONFIG.gear.rxScale); // energy break
+      dmg += (want - took) * CONFIG.gear.breakHp; // energy break
       if (g.steal) me.energy = Math.min(me.energyMax, me.energy + took);
     }
     if (g.coolDmg) foe.cool = Math.max(2 * CONFIG.gear.rxScale, foe.cool - g.coolDmg);
@@ -198,7 +198,7 @@ function apply(s, a) {
         const want = Math.round(sp.drain * (1 - Math.min(DEF_CAP, (foe.def || 0) + (foe.res?.energy || 0)) * DEF_PER_POINT));
         const took = Math.min(Math.max(0, foe.energy), want);
         foe.energy -= took;
-        foe.hp -= (want - took) * (CONFIG.gear.hpScale / CONFIG.gear.rxScale);
+        foe.hp -= (want - took) * CONFIG.gear.breakHp;
       }
     } else if (sp.kind === 'charge') {
       const step = sp.away ? -dir : dir; // Retro Rockets back off

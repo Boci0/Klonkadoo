@@ -48,7 +48,9 @@ const ROLES = [
       })),
     ),
   ),
-  { name: 'frames', pick: (p) => p.type === 'frame', score: hp, unit: 'HP (reactor never grows on frames)' },
+  { name: 'frames', pick: (p) => p.type === 'frame', score: hp, unit: 'HP' },
+  // Frame reactors grow with tiers (2.6): caps with level too, regen / cooling per tier only
+  { name: 'frames · reactor', pick: (p) => p.type === 'frame', score: (s) => s.energy + s.heatCap + 3 * (s.regen + s.cool), unit: 'energy + heat cap + 3x (regen + cooling)' },
   ...['walker', 'jumper', 'walk+jump', 'anchored'].map((m) => ({ name: `legs · ${m}`, pick: (p) => p.type === 'legs' && moveOf(p) === m, score: hp, unit: 'HP' })),
   { name: 'drones · attack', pick: (p) => p.type === 'drone' && p.dmg, score: perUse, unit: 'dmg/turn' },
   { name: 'modules · HP armor', pick: (p) => p.type === 'module' && p.hp, score: hp, unit: 'HP' },

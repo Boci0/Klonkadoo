@@ -1272,15 +1272,15 @@ export class Game {
     let extra = 0;
     // (Meltdown vents the target instead of heating it)
     if ((type === 'heat' || w.fx?.heat) && !w.fx?.meltdown) {
-      const add = Math.round((w.fx?.heat ?? dmg * G.dtypeLoad) * this._reactorKeep(target, 'heat'));
+      const add = Math.round((w.fx?.heat ?? dmg * G.dtypeLoad.heat * (w.fx?.load || 1)) * this._reactorKeep(target, 'heat'));
       target.heat += add;
       this._callout(target, target.heat > target.heatCap ? 'OVERHEATING' : `+${add} HEAT`, DTYPES.heat.color);
     }
     if (type === 'energy' || w.fx?.drain) {
-      const want = Math.round((w.fx?.drain ?? dmg * G.dtypeLoad) * this._reactorKeep(target, 'energy'));
+      const want = Math.round((w.fx?.drain ?? dmg * G.dtypeLoad.energy * (w.fx?.load || 1)) * this._reactorKeep(target, 'energy'));
       const took = Math.min(target.energy, want);
       target.energy -= took;
-      extra = (want - took) * (G.hpScale / G.rxScale); // energy it could not drain comes off HP
+      extra = Math.round((want - took) * G.breakHp); // energy it could not drain comes off HP
       if (took) this._callout(target, `-${took} EN`, DTYPES.energy.color);
       if (extra) this._callout(target, 'ENERGY BREAK', '#ff5d73');
       // Leech Coil: what it drains, you get
@@ -1446,6 +1446,7 @@ export class Game {
         coolDmg: w.fx?.coolDmg || 0,
         regenDmg: w.fx?.regenDmg || 0,
         dump: !!w.fx?.dump,
+        load: w.fx?.load || 1,
         dumpScale: G.dmgScale / G.rxScale,
         backfire: Math.round(w.backfire || 0),
         resDrain: { ...(w.fx?.resDrain || {}), ...(w.fx?.corrode ? { phys: w.fx.corrode } : {}) },

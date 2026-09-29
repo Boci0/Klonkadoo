@@ -2,6 +2,12 @@
 
 ## NEXT: the numbers rework (decided 2026-09-29, after v2.5.9)
 
+**Status (2026-09-29): steps 1-5 done in the working tree, not released.** rxScale 3, gun costs by damage
+type, costs and frame regen/cooling x tierStep per tier, frame reactors on a x1.28-per-rarity ladder,
+dtypeLoad per type, breakHp, gearComp.rx, enemyGunShare, enemy HP cut, Risk curve refit (skill 1, mid
+gear: 97% R0 -> ~10% XI), Abyss strength x1.5 (a real Risk XI kit goes as deep as on 2.5.9 in the sim),
+run save flag v26. Left: a look in the browser, release notes, version bump.
+
 Re-derive the game's core numbers from SuperMechs Reloaded's ratios instead of "the old numbers x10"
 (CONFIG.gear hpScale 10 / rxScale 10 / dmgScale 13). Its own release. The user's calls:
 - **Fights are short:** an elite takes you **5-8 turns**, a boss ~10-12 (today 15-20 and 14-17).
@@ -60,8 +66,10 @@ tools/supermechs/load.cjs loads every item; docs/supermechs-research.md has the 
    at Risk 10 team 2 / Risk 11 team 3 / Risk 5 solo all win 0%; every run that reaches the boss dies there.
    Likely cause found: the planner loses ~50% of its turns to overheat (see the numbers rework above).
    Re-check after the rework; if it still can't win, look at presets / enemy HP / boss loadout.
-3. **Abyss mode for tools/balance-sim.mjs.** The sim stops at floor 5: no Abyss depth scaling, no insanity,
-   no reactor growth, so Abyss balance can't be checked headlessly. Add it before tuning the Abyss again.
+3. ~~Abyss mode for tools/balance-sim.mjs~~ done (2.6): `--abyss=N` (depth scaling, insanity, reactor growth,
+   keepers, Klonkadoo Prime), `--fights --depth=N`, `--kit=a.json,b.json` (one per garage mech). The sim is
+   ~4x harsher than a human down there (a real team at Abyss 13-17 clears ~3 in the sim): compare versions,
+   not absolute depth.
 4. **Wishlist.** Star parts you're hunting (Almanac / Rig); a WISHLIST! badge and sound on the pod card,
    never auto/SMART-salvaged, an inventory filter.
 5. **Economy.** Deep Abyss runs on Risk XI pay thousands of Keys/scrap (user had 12k Keys) and raid T1 pays

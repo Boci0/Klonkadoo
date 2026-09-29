@@ -74,20 +74,26 @@ export const CONFIG = {
   gear: {
     dmgScale: 13, // gun/drone damage vs the part numbers (x10 since 2.3: HP and damage are big numbers so upgrades show)
     hpScale: 10, // HP on parts, repairs and every fixed HP / damage number (spikes, burn, mines, events) x this
-    rxScale: 10, // heat and energy too: every reactor number on parts (costs, pools, regen, cooling, heat in, drain) is x this (Mech.PARTS)
-    enemyDmgScale: 0.5, // enemy guns hit this much of a same-level player gun
+    // Heat and energy: every reactor number on parts (costs, pools, regen, cooling, heat in, drain) is x this (Mech.PARTS).
+    // 2.6 numbers rework: SuperMechs Reloaded magnitudes (a Mythic reactor ~250 cap / ~75 per turn, shots ~15-50)
+    // and ratios (a Physical build fires ~2 shots a turn forever, Explosive / Electric ~1.5 on a standard frame)
+    rxScale: 3,
+    enemyDmgScale: 0.75, // enemy guns hit this much of a same-level player gun (x enemyGunShare by fight tier)
+    // By fight tier: a normal fight ~15% of your HP in 3-5 turns, an elite pair ~40% in 5-8,
+    // a mini-boss ~50%, the boss and its escorts ~60% in 10-12 (at the gear Risk expects; tools/balance-sim.mjs --fights)
+    enemyGunShare: { combat: 0.675, elite: 0.445, miniboss: 0.45, boss: 0.36 },
     droneHealCap: 0.2, // repair drones fix at most this share of max HP per battle
-    enemyHpScale: 7.5, // every enemy's HP: elites ~10-12 turns, bosses ~20 (tools/balance-sim.mjs)
+    enemyHpScale: 4.46, // every enemy's HP (2.6: normal fights 3-5 of your turns, elites 5-8, bosses 10-12; tools/balance-sim.mjs --fights)
     exposedMult: 1.25, // rammed targets take +25% gun damage until their next turn
     // Damage types (Mech.DTYPES): Explosive hits add heat and Electric hits drain energy,
-    // dtypeLoad x the hit; whatever the reactor can't absorb spills into HP at dtypeSpill x
-    dtypeLoad: 0.5, // heat / drain per point of battle damage
-    dtypeSpill: 0.5,
+    // dtypeLoad x the hit (or the gun's own amount); drain past an empty battery comes off HP (breakHp)
+    dtypeLoad: { heat: 0.2, energy: 0.1 }, // heat / drain per point of battle damage, by damage type
+    breakHp: 1.5, // ENERGY BREAK: HP per point of drain the target's empty battery can't cover (Reloaded: about the drain itself)
     ramSpeed: 380, // impact speed (px/s) that counts as a ram
     shotGap: 0.45, // seconds between an enemy's actions, so you can follow them
     actions: 2, // actions per turn: WALK / JUMP, FIRE a gun (each gun once per turn), DEPLOY a drone; VENT takes the rest of the turn
     vent: { coolMult: 2, energyPct: 0 }, // VENT (cooldown): cools 2x your cooling; energy only comes from regen
-    stompHeat: 40, // STOMP heat for legs that don't set their own (stompHeat on the legs part)
+    stompHeat: 12, // STOMP heat for legs that don't set their own (stompHeat on the legs part)
     // Build: one load cap for every mech; up to overweightMax kg over costs HP per kg, past that you can't deploy
     loadCap: 1000,
     overweightMax: 10,
@@ -98,13 +104,13 @@ export const CONFIG = {
     tierStep: 1.25, // +25% per tier, and a tier's levels add up to one more step (a transformed common lands near a native legendary)
     transform: { parts: [2, 3, 4, 5], scrap: [20, 60, 150, 400] }, // from common, rare, epic, legendary
     // Energy pool / refill per turn, heat cap / cooling per turn when no frame sets them
-    baseRig: { energy: 300, regen: 140, heatCap: 300, cool: 120 },
+    baseRig: { energy: 90, regen: 42, heatCap: 90, cool: 36 },
     // Enemy reactors by tier: bigger threats sustain more fire
     enemyRig: {
-      combat: { energy: 280, regen: 130, heatCap: 320, cool: 110 },
-      elite: { energy: 360, regen: 160, heatCap: 400, cool: 130 },
-      miniboss: { energy: 420, regen: 180, heatCap: 460, cool: 150 },
-      boss: { energy: 500, regen: 200, heatCap: 540, cool: 170 },
+      combat: { energy: 90, regen: 36, heatCap: 100, cool: 34 },
+      elite: { energy: 110, regen: 42, heatCap: 120, cool: 40 },
+      miniboss: { energy: 130, regen: 48, heatCap: 140, cool: 46 },
+      boss: { energy: 150, regen: 54, heatCap: 160, cool: 52 },
     },
   },
 
@@ -175,9 +181,9 @@ export const CONFIG = {
     5: { hp: 165, atk: 0.98, def: 3, aiDifficulty: 0.51 },
     // Elites: that floor's hostile, made clearly tougher (they used to be one fixed line, weaker than a
     // floor 5 hostile once split into a pair). Mech.enemyTier builds them.
-    elite: { hpMult: 1.2, atkMult: 1.05, def: 1, ai: 0.04 },
-    miniboss: { hp: 264, atk: 1.02, def: 4, aiDifficulty: 0.62 },
-    boss: { hp: 330, atk: 1.08, def: 5, aiDifficulty: 0.70 },
+    elite: { hpMult: 0.69, atkMult: 1.05, def: 1, ai: 0.04 },
+    miniboss: { hp: 345, atk: 1.02, def: 4, aiDifficulty: 0.62 },
+    boss: { hp: 145, atk: 1.08, def: 5, aiDifficulty: 0.70 },
   },
 
   // --- Floor scaling (applies to every enemy, shown to the player) ---
@@ -195,16 +201,18 @@ export const CONFIG = {
     // (gunPerLevel for each level from gunFrom: Risk XI = 35%). Mech.riskShred reads it.
     shred: { roleGrowth: 0.3, gunFrom: 5, gunPerLevel: 0.05 },
     // Enemy strength per Risk level (HP and gun damage x curve[level]), on top of the
-    // level rules below. Fitted with tools/balance-sim.mjs so ONE mech climbs a steady
-    // ramp (~90% wins at Risk 1 down to ~8% at Risk XI) against the gear players have
-    // by then: max-level parts at Risk 1-4, one tier up at 5-6, two tiers up (with a
-    // Medic Drone) from 7. It dips at 9-XI because those rules already pile on. Risk 0 stays half strength for new players. Aim eases from
-    // `ai` at Risk 0 to none at `fullAt`. The Abyss is always full strength (1).
+    // level rules below. Fitted with tools/balance-sim.mjs (2.6, skill 1 = AUTO at its best, mid gear)
+    // so ONE mech climbs a straight ramp (~96% of runs won at Risk 0, ~90% at I, down to ~8% at XI)
+    // against the gear players have by then: max-level parts at Risk 1-4, one tier up at 5-6, two
+    // tiers up at 7-9, three at 10-XI. It dips at 9-XI because those rules already pile on; teams do
+    // better. Aim eases from `ai` at Risk 0 to none at `fullAt`. The Abyss is always full strength (1).
     // Gear got stronger per level in 2.3 (tierStep 1.12 -> 1.25): enemy HP / ATK x this per Risk level, from the
     // gear players have there (max level at I-IV, one tier up at V-VI, two from VII; tools/balance-sim.mjs).
     // The Abyss uses its run's Risk level.
-    gearComp: { hp: [1, 1.12, 1.12, 1.12, 1.12, 1.27, 1.27, 1.41, 1.41, 1.41, 1.41, 1.41], atk: [1, 1.04, 1.04, 1.04, 1.04, 1.2, 1.2, 1.25, 1.25, 1.25, 1.25, 1.25] },
-    ease: { hp: 0.5, atk: 0.5, ai: -0.2, fullAt: 12, curve: [0.5, 0.75, 0.87, 0.94, 1.04, 1.18, 1.22, 1.29, 1.26, 1.12, 0.97, 0.7] }, // XI: 0.7 since OBLIVION doubles every earlier rule (2.3.2)
+    gearComp: { hp: [1, 1.12, 1.12, 1.12, 1.12, 1.27, 1.27, 1.41, 1.41, 1.41, 1.41, 1.41], atk: [1, 1.04, 1.04, 1.04, 1.04, 1.2, 1.2, 1.25, 1.25, 1.25, 1.25, 1.25],
+      // 2.6: frame cooling / regen grow x tierStep per tier, so the heat / drain enemies push grows with the tiers expected
+      rx: [1, 1, 1, 1, 1, 1.25, 1.25, 1.5, 1.5, 1.5, 1.95, 1.95] },
+    ease: { hp: 0.5, atk: 0.5, ai: -0.2, fullAt: 12, curve: [0.5, 0.77, 0.845, 0.86, 0.85, 0.895, 0.93, 1, 0.975, 0.87, 0.97, 0.63] }, // XI: low since OBLIVION doubles every earlier rule
     levels: [
       { name: 'HARDENED', desc: 'Enemies +15% HP.', hpPct: 15 },
       { name: 'RANGEFINDERS', desc: 'Enemy guns reach 1 position further.', enemyReach: 1 },
@@ -222,13 +230,13 @@ export const CONFIG = {
     // Hinted at in the Risk panel, the RULES list and the results screen.
     secret: {
       name: 'OBLIVION',
-      desc: 'Every rule above counts double. All hostiles are elites that pierce half your DEF and cool 40 more heat per turn. Double Keys, scrap and pods.',
+      desc: 'Every rule above counts double. All hostiles are elites that pierce half your DEF and cool faster. Double Keys, scrap and pods.',
       rewardMult: 2, // keys, scrap and Abyss pods x this (so it's worth the pain; not gold)
       hint: 'Win on Risk 10 without fighting a common hostile. Sneaking past is fine.',
       doubleRules: true, // Risk I-X count twice (HP, ATK, elite HP / ATK, reach, gold, healing, prices, damage taken)
       defPierce: 0.5,
       allElite: true,
-      gunCdCut: 1, // enemy reactors cool +40 heat per turn (the old gun cooldown cut; Mech.enemyRig)
+      gunCdCut: 1, // enemy reactors cool +4 x rxScale heat per turn (the old gun cooldown cut; Mech.enemyRig)
     },
   },
   // --- Abyss (Risk 10 and XI only): wardens and Klonkadoo Prime may drop Abyss Shards,
@@ -240,6 +248,9 @@ export const CONFIG = {
       warden: { 10: 0.25, 11: 0.35, amount: [1, 1] },
       prime: { 10: 0.6, 11: 0.75, amount: [1, 3] },
     },
+    // Abyss enemies skip the Risk curve (gear compensation only), then x this: fitted in 2.6 so a maxed
+    // team goes as deep as on 2.5.9 (tools/balance-sim.mjs --abyss=20 with a real kit, against the old numbers)
+    strength: { hp: 1.5, atk: 1.5 },
     reactorPerDepth: 0.04, // enemy heat cap + battery per Abyss depth (their cooling and regen stay)
     ascend: { shards: 5, scrap: 800 }, // one Mythic LV 25 part (any type) -> ASCENDED LV 1
     insanity: { dmgPerTurn: 0.01, hpPerTurn: 0.01 }, // every turn (yours and theirs): enemies +1% damage, the one on the lane -1% max HP

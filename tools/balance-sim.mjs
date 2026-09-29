@@ -1,7 +1,7 @@
 // ============================================================
 // balance-sim — headless runs for balance checks (no browser, no renderer).
 //
-//   node tools/balance-sim.mjs [runs=400] [--skill=0.3] [--risk=0] [--gear=starter|mid] [--team=1-3] [--gearLvl=max] [--tierUp=N]
+//   node tools/balance-sim.mjs [runs=400] [--skill=0.3] [--risk=0] [--gear=starter|mid] [--team=1-3] [--gearLvl=max] [--tierUp=N] [--abyss=N]
 //
 // Both sides are played by the game's own planner (ai/LaneAI.js) with its own
 // action rules; enemies are built by Mech.enemyMech with main.js's HP formula.
@@ -14,7 +14,7 @@
 
 import { CONFIG } from '../src/config.js';
 import { planTurn, applyAction } from '../src/ai/LaneAI.js';
-import { enemyMech, enemyRig, enemyTier, pickEnemyElement, elementLean, roleElements, riskShred, withMech, getPart, legsRules, riskEase, tierRange, maxLevel, RARITY_ORDER, ELEMENT_DMG } from '../src/meta/Mech.js';
+import { PARTS, gearComp, enemyMech, enemyRig, enemyTier, pickEnemyElement, elementLean, roleElements, riskShred, withMech, getPart, legsRules, riskEase, tierRange, maxLevel, RARITY_ORDER, ELEMENT_DMG } from '../src/meta/Mech.js';
 import { withMastery } from '../src/meta/Mastery.js';
 import { raidBoss } from '../src/meta/Raid.js';
 
@@ -32,6 +32,14 @@ if (args.easeFull != null) CONFIG.risk.ease.fullAt = Number(args.easeFull);
 // --curve=0.5,0.7,... : enemy HP/damage multiplier per Risk level (CONFIG.risk.ease.curve)
 if (args.curve) CONFIG.risk.ease.curve = args.curve.split(',').map(Number);
 if (args.enemyDmg != null) G.enemyDmgScale = Number(args.enemyDmg);
+// --abyssHp=1.3 --abyssAtk=1.3: Abyss enemy strength (CONFIG.abyss.strength)
+if (args.abyssHp != null || args.abyssAtk != null) CONFIG.abyss.strength = { hp: Number(args.abyssHp ?? CONFIG.abyss.strength.hp), atk: Number(args.abyssAtk ?? CONFIG.abyss.strength.atk) };
+// --heatLoad=0.2 --drainLoad=0.1: heat / drain per point of damage (CONFIG.gear.dtypeLoad);
+// --fxHeat=1.5 --fxDrain=1: every part's own heat-in / drain x this
+if (args.heatLoad != null) G.dtypeLoad.heat = Number(args.heatLoad);
+if (args.drainLoad != null) G.dtypeLoad.energy = Number(args.drainLoad);
+for (const [flag, k] of [['fxHeat', 'heat'], ['fxDrain', 'drain']]) if (args[flag] != null) for (const p of PARTS) if (typeof p.fx?.[k] === 'number') p.fx[k] = Math.round(p.fx[k] * Number(args[flag]));
+if (args.rx) CONFIG.risk.gearComp.rx = CONFIG.risk.gearComp.rx.map(() => Number(args.rx)); // --rx=1.4: one enemy heat / drain multiplier at every Risk
 // --elemDmg=phys:1.3,energy:0.6 : enemy damage by type (Mech.ELEMENT_DMG)
 if (args.elemDmg) for (const kv of args.elemDmg.split(',')) { const [k, v] = kv.split(':'); ELEMENT_DMG[k] = Number(v); }
 const SIZE = CONFIG.lane?.size || 12;
@@ -63,7 +71,9 @@ const LOADOUTS = {
 };
 // --kit=file.json: a real loadout ([{ id, tier, level }], e.g. decoded from a save export) as gear "kit"
 import { readFileSync } from 'node:fs';
-const KIT = args.kit ? JSON.parse(readFileSync(args.kit, 'utf8')) : null;
+// --kit=a.json,b.json: one file per garage mech (the team plays them in order)
+const KITS = args.kit ? args.kit.split(',').map((file) => JSON.parse(readFileSync(file, 'utf8'))) : null;
+const KIT = KITS?.[0] || null;
 if (KIT) LOADOUTS.kit = KIT.map((o) => o.id);
 const gear = (args.gear || (KIT ? 'kit' : 'starter')).split(',');
 
@@ -103,7 +113,7 @@ function gunOf(w, dmg) {
     dtype: w.dtype || 'phys', pierce: !!w.fx?.pierce, heatFx: w.fx?.heat, drain: w.fx?.drain, push: w.fx?.push || 0, pull: w.fx?.pull || 0,
     drag: w.fx?.drag || 0, freeze: !!w.fx?.freeze, mine: !!w.fx?.mine, hotBonus: !!w.fx?.hotBonus, lowEnBonus: !!w.fx?.lowEnBonus, execute: w.fx?.execute || 0,
     meltdown: !!w.fx?.meltdown, steal: !!w.fx?.steal, jam: !!w.fx?.jam, coolDmg: w.fx?.coolDmg || 0, regenDmg: w.fx?.regenDmg || 0,
-    dump: !!w.fx?.dump, dumpScale: G.dmgScale / G.rxScale, backfire: Math.round((w.backfire || 0) * G.dmgScale),
+    dump: !!w.fx?.dump, load: w.fx?.load || 1, dumpScale: G.dmgScale / G.rxScale, backfire: Math.round((w.backfire || 0) * G.dmgScale),
     resDrain: { ...(w.fx?.resDrain || {}), ...(w.fx?.corrode ? { phys: w.fx.corrode } : {}) },
   };
 }
@@ -118,29 +128,44 @@ function pickArch(floor, rnd, element) {
   return list[0][0];
 }
 
-function enemyTeam(type, floor, rnd, playerRes = {}) {
+// ---------- Abyss (main.js: enemy scaling per depth below floor 5, abyssKeeper, sectorCleared) ----------
+const ABYSS_FINAL_DEPTH = 5;
+const ABYSS_HP_PER_DEPTH = 0.08;
+const ABYSS_ATK_PER_DEPTH = 0.08;
+/** Who ends Abyss floor `depth`: a Warden (boss) on even floors and the final one, else a Guardian (mini-boss). */
+const abyssKeeper = (depth) => (depth === ABYSS_FINAL_DEPTH || depth % 2 === 0 ? 'boss' : 'miniboss');
+
+/** One enemy team; `depth` > 0 = an Abyss floor (floor 5's tables, always full strength, deeper = harder). */
+function enemyTeam(type, floor, rnd, playerRes = {}, depth = 0) {
   const count = CONFIG.enemyCounts[type]?.[floor] || 1;
   const tier = enemyTier(type, floor);
   const risk = riskData();
   const elite = type !== 'combat';
-  const ease = riskEase(RISK);
-  const hpMult = (1 + (risk.hpPct + (elite ? risk.eliteHpPct : 0)) / 100) * ease.hp;
-  const atkMult = (1 + (risk.atkPct + (elite ? risk.eliteAtkPct : 0)) / 100) * ease.atk;
+  // The Abyss skips the Risk curve: gear compensation only (main.js)
+  const S = CONFIG.abyss.strength || { hp: 1, atk: 1 };
+  const ease = depth ? { hp: gearComp(RISK).hp * S.hp, atk: gearComp(RISK).atk * S.atk, ai: 0 } : riskEase(RISK);
+  const hpMult = (1 + (risk.hpPct + (elite ? risk.eliteHpPct : 0)) / 100) * ease.hp * (1 + ABYSS_HP_PER_DEPTH * depth);
+  const atkMult = (1 + (risk.atkPct + (elite ? risk.eliteAtkPct : 0)) / 100) * ease.atk * (1 + ABYSS_ATK_PER_DEPTH * depth);
+  // Their reactors ramp with depth: heat cap and battery, and the heat / drain their guns push
+  const rxCap = 1 + CONFIG.abyss.reactorPerDepth * depth;
+  const rxOut = depth ? (1 + 0.05 * (CONFIG.map.floors - 1)) * (1 + ABYSS_ATK_PER_DEPTH * depth) : null;
   const floorHp = 1 + CONFIG.floorScaling.hpPerFloor * (floor - 1);
   const waveHp = count === 3 ? 0.75 : count === 2 ? 0.85 : 1;
   const out = [];
   for (let i = 0; i < count; i++) {
     // --element=heat forces one damage type; otherwise it leans toward your weakest resist
-    const element = args.element || pickEnemyElement(playerRes, elementLean(type, floor) * Number(args.lean ?? 1), rnd); // --lean=0: even odds
+    const element = args.element || pickEnemyElement(playerRes, elementLean(type, floor, depth) * Number(args.lean ?? 1), rnd); // --lean=0: even odds
     const archetype = type === 'boss' && i === 0 ? 'standard' : pickArch(floor, rnd, element);
     const arch = CONFIG.enemyArchetypes[archetype];
     const boss = type === 'boss' && i === 0;
-    const mech = enemyMech(type, archetype, floor, rnd, { atkMult, boss, element, shredChance: riskShred(RISK).gun });
+    const final = boss && depth === ABYSS_FINAL_DEPTH; // Klonkadoo Prime
+    const mech = enemyMech(type, archetype, floor, rnd, { atkMult, boss, final, element, shredChance: riskShred(RISK).gun, rxOut, rxMult: gearComp(RISK).rx });
     const rig = { ...enemyRig(type, { cdCut: risk.gunCdCut || 0, element: mech.element }) };
+    for (const k of ['heatCap', 'energy']) rig[k] = Math.round(rig[k] * rxCap);
     // --rxCap=1.24 --rxRate=1.24: try Abyss-style reactor growth (capacity: heat cap + battery; rate: cooling + regen)
     if (args.rxCap) for (const k of ['heatCap', 'energy']) rig[k] = Math.round(rig[k] * Number(args.rxCap));
     if (args.rxRate) for (const k of ['cool', 'regen']) rig[k] = Math.round(rig[k] * Number(args.rxRate));
-    const maxHp = Math.round(tier.hp * G.enemyHpScale * arch.hpMult * hpMult * floorHp * waveHp * (type === 'boss' && i > 0 ? 0.55 : 1));
+    const maxHp = Math.round(tier.hp * G.enemyHpScale * arch.hpMult * hpMult * floorHp * waveHp * (final ? 1.5 : 1) * (type === 'boss' && i > 0 ? 0.55 : 1));
     out.push({
       team: 'enemy', pos: 9, hp: maxHp, maxHp, heat: 0, heatCap: rig.heatCap, cool: rig.cool, energy: rig.energy, energyMax: rig.energy, regen: rig.regen,
       actions: G.actions, maxActions: G.actions, legs: mech.legs,
@@ -246,9 +271,19 @@ function fixPlayerHit(p, before) {
  * spot; knocked-out mechs stay down until a Safe Zone (main.js).
  * Returns { won, turns }.
  */
-function battle(team, type, floor, rnd, rules) {
+function battle(team, type, floor, rnd, rules, depth = 0) {
   const heal = rules.healMult;
-  const foes = enemyTeam(type, floor, rnd, team[0].perm.res);
+  const foes = enemyTeam(type, floor, rnd, team[0].perm.res, depth);
+  // Abyss INSANITY (Game._tickInsanity): every turn, yours and theirs, enemies hit +1% harder
+  // for the rest of the battle and the one on the lane loses 1% of its max HP
+  const I = depth ? CONFIG.abyss.insanity : null;
+  let insanity = 0;
+  const tickInsanity = (e) => {
+    if (!I) return;
+    insanity += I.dmgPerTurn;
+    for (const f of foes) f.enrage = 1 + insanity;
+    e.hp -= Math.max(1, Math.round(e.maxHp * I.hpPerTurn));
+  };
   let idx = team.findIndex((m) => m.hp > 0);
   if (idx < 0) return { won: false, turns: 0 };
   let p = playerUnit(team[idx].perm, team[idx].hp, team[idx].maxHp);
@@ -264,10 +299,12 @@ function battle(team, type, floor, rnd, rules) {
     let pt = 0;
     let et = 0;
     let first = true;
-    while (e.hp > 0 && turns < 60) {
+    while (e.hp > 0 && turns < (depth ? 400 : 60)) { // Abyss insanity ends any fight in time: no cap there
       turns += 1;
       const eHp0 = e.hp;
       stat.yourTurns += 1;
+      tickInsanity(e);
+      if (e.hp <= 0) break;
       if (first || upkeep(p)) playTurn(p, e, mines, SKILL, rnd);
       else stat.youLost += 1;
       first = false;
@@ -277,6 +314,8 @@ function battle(team, type, floor, rnd, rules) {
       if (e.hp <= 0) break;
       const pHp0 = p.hp;
       stat.foeTurns += 1;
+      tickInsanity(e);
+      if (e.hp <= 0) break;
       if (upkeep(e)) playTurn(e, p, mines, e.difficulty, rnd);
       else stat.foeLost += 1;
       // --trace: what both sides did, for fights that drag on (loops)
@@ -386,9 +425,16 @@ function withBoons(perm) {
 }
 
 function makeTeam(parts) {
-  const perm = withBoons(withMastery(withMech({}, parts.map(ownedPart)), MASTERY));
-  const maxHp = Math.round((CONFIG.run.maxHpBase + (perm.hpBonus || 0)) / (1 + riskData().plusDmgTaken / 100)); // GLASS ARMOR as less HP
-  return Array.from({ length: Math.max(1, Math.min(3, Number(args.team || 1))) }, () => ({ perm, hp: maxHp, maxHp }));
+  // A real kit as saved (duplicates at their own levels), one per garage mech
+  const asSaved = KITS && parts === LOADOUTS.kit && !args.tierUp && !args.gearLvl;
+  const size = Math.max(1, Math.min(3, Number(args.team || (asSaved ? KITS.length : 1))));
+  return Array.from({ length: size }, (_, i) => {
+    const owned = asSaved ? KITS[i % KITS.length].map((o) => ({ id: o.id, tier: o.tier, level: o.level })) : parts.map(ownedPart);
+    const perm = withBoons(withMastery(withMech({}, owned), MASTERY));
+    // GLASS ARMOR as less HP; mastery's VETERAN (damage taken -X%) as more
+    const maxHp = Math.round((CONFIG.run.maxHpBase + (perm.hpBonus || 0)) / (1 + riskData().plusDmgTaken / 100) / (1 - (perm.kineticDampenerPct || 0)));
+    return { perm, hp: maxHp, maxHp };
+  });
 }
 
 // ---------- One run ----------
@@ -418,32 +464,43 @@ function simRun(seed, rules, parts) {
   // Heals repair every standing mech (RunState.healFlat); only Safe Zones (`revive`) bring knocked-out ones back
   const healAll = (amount, revive = !!args.limp) => team.forEach((m) => (m.hp > 0 || revive) && (m.hp = Math.min(m.maxHp, m.hp + amount(m.maxHp) * heal)));
   let gold = CONFIG.currency.startGold;
-  const log = { fights: 0, died: null, hpAtBoss: null, rests: 0, lowest: 1 };
-  for (let floor = 1; floor <= 5; floor++) {
-    if (floor > 1 && rules.floorHeal) healAll((max) => max * rules.floorHeal);
+  const log = { fights: 0, died: null, hpAtBoss: null, rests: 0, lowest: 1, depth: 0, abyssDied: null };
+  // --abyss=N: after the floor 5 boss, keep descending up to N Abyss floors (laid out like floor 5,
+  // HP carries over, each ends with its keeper). Dying down there still counts as a win.
+  const lastFloor = 5 + Number(args.abyss || 0);
+  for (let f = 1; f <= lastFloor; f++) {
+    const depth = Math.max(0, f - 5);
+    const floor = Math.min(5, f); // Abyss floors reuse floor 5's tables
+    if (f > 1 && rules.floorHeal) healAll((max) => max * rules.floorHeal);
     const steps = CONFIG.map.baseFloorActions;
     for (let i = 0; i <= steps; i++) {
       let type;
       if (i === steps) {
-        if (floor === 3) type = 'miniboss';
+        if (depth) type = abyssKeeper(depth);
+        else if (floor === 3) type = 'miniboss';
         else if (floor === 5) type = 'boss';
         else break;
       } else type = pickNode(floor, rnd, hpPct(), gold);
       if (type === 'combat' && riskData().allElite) type = 'elite';
-      if (type === 'boss') log.hpAtBoss = hpPct();
+      if (type === 'boss' && !depth) log.hpAtBoss = hpPct();
       if (['combat', 'elite', 'miniboss', 'boss'].includes(type)) {
-        const r = battle(team, type, floor, rnd, rules);
+        const r = battle(team, type, floor, rnd, rules, depth);
         log.fights += 1;
         if (!r.won) {
-          log.died = { floor, type };
+          if (depth) log.abyssDied = { depth, type: i === steps ? 'keeper' : type };
+          else log.died = { floor, type };
           return log;
         }
+        // Nano Repair: a share of max HP after every won battle (main.js)
+        const nano = team[0].perm.mech.healAfterWin || 0;
+        if (nano) healAll((max) => max * nano);
         log.lowest = Math.min(log.lowest, hpPct());
         gold += (CONFIG.nodes.rewards[type] || {}).gold || 0;
         const regen = team[0].perm.boonRegen || 0;
         if (regen) healAll((max) => max * regen);
         const postHeal = rules.postWinHeal[type] || 0;
         if (postHeal) healAll((max) => max * postHeal);
+        if (depth && i === steps) log.depth = depth; // this Abyss floor is cleared
       } else if (type === 'rest') {
         log.rests += 1;
         healAll(rules.rest, true);
@@ -511,20 +568,26 @@ if (args.fights) {
   for (const g of gear) {
     const maxHp = makeTeam(LOADOUTS[g])[0].maxHp;
     console.log(`\n=== single fights, gear: ${g}, skill ${SKILL}, team ${args.team || 1}, full HP ${maxHp} each ===`);
-    for (const [type, floor] of [['combat', 1], ['combat', 2], ['elite', 2], ['combat', 3], ['elite', 3], ['miniboss', 3], ['combat', 5], ['elite', 5], ['boss', 5]]) {
+    const FIGHTS = args.depth ? [['elite', 5], ['miniboss', 5], ['boss', 5]] : [['combat', 1], ['combat', 2], ['elite', 2], ['combat', 3], ['elite', 3], ['miniboss', 3], ['combat', 5], ['elite', 5], ['boss', 5]];
+    for (const [type, floor] of FIGHTS) {
       const rnd = mulberry(7);
       let won = 0, lost = 0, turns = 0, timeouts = 0;
       const S = { yourTurns: 0, foeTurns: 0, youLost: 0, foeLost: 0, dealt: 0, taken: 0, foeHp: 0 };
       for (let i = 0; i < RUNS; i++) {
         const team = makeTeam(LOADOUTS[g]);
-        const r = battle(team, type, floor, rnd, NEW);
+        const r = battle(team, type, floor, rnd, NEW, Number(args.depth || 0)); // --depth=N: an Abyss floor
         if (r.won) { won += 1; lost += team.reduce((a, m) => a + (m.maxHp - m.hp), 0) / team.reduce((a, m) => a + m.maxHp, 0); }
         if (r.timeout) timeouts += 1;
         turns += r.turns;
         for (const k in S) S[k] += r.stat?.[k] || 0;
       }
-      console.log(`F${floor} ${type.padEnd(8)} win ${String(Math.round((won / RUNS) * 100)).padStart(3)}% | HP lost when won ${won ? Math.round((lost / won) * 100) : '-'}% | turns ${(turns / RUNS).toFixed(1)}${timeouts ? ` | timeouts ${timeouts}` : ''}`);
       const per = (a, b) => (b ? Math.round(a / b) : 0);
+      // --brief: one line per fight (win, HP it cost, your turns, turns lost to heat, team HP vs yours)
+      if (args.brief) {
+        console.log(`F${floor} ${type.padEnd(8)} win ${String(Math.round((won / RUNS) * 100)).padStart(3)}% | HP lost ${String(won ? Math.round((lost / won) * 100) : '-').padStart(3)}% | your turns ${(S.yourTurns / RUNS).toFixed(1).padStart(4)} (heat-lost ${String(Math.round((S.youLost / Math.max(1, S.yourTurns)) * 100)).padStart(2)}%, foe ${String(Math.round((S.foeLost / Math.max(1, S.foeTurns)) * 100)).padStart(2)}%) | you ${String(per(S.dealt, S.yourTurns)).padStart(4)}/t, foe ${String(per(S.taken, S.foeTurns)).padStart(4)}/t | foe HP ${(per(S.foeHp, RUNS) / maxHp).toFixed(2)}x yours${timeouts ? ` | timeouts ${timeouts}` : ''}`);
+        continue;
+      }
+      console.log(`F${floor} ${type.padEnd(8)} win ${String(Math.round((won / RUNS) * 100)).padStart(3)}% | HP lost when won ${won ? Math.round((lost / won) * 100) : '-'}% | turns ${(turns / RUNS).toFixed(1)}${timeouts ? ` | timeouts ${timeouts}` : ''}`);
       console.log(`           you ${per(S.dealt, S.yourTurns)} dmg/turn, lost ${Math.round((S.youLost / Math.max(1, S.yourTurns)) * 100)}% of turns to heat | foe HP ${per(S.foeHp, RUNS)}, ${per(S.taken, S.foeTurns)} dmg/turn, lost ${Math.round((S.foeLost / Math.max(1, S.foeTurns)) * 100)}% of turns | your HP ${maxHp}: ${per(maxHp, per(S.taken, S.foeTurns))} of its turns to kill you, ${per(per(S.foeHp, RUNS), per(S.dealt, S.yourTurns))} of yours to kill it`);
     }
   }
@@ -540,11 +603,15 @@ for (const g of gear) {
     let bossHp = [];
     let lowest = 0;
     const deaths = {};
+    const depths = [];
+    const abyssDeaths = {};
     for (let i = 0; i < RUNS; i++) {
       const r = simRun(1000 + i, rules, parts);
       fights += r.fights;
       lowest += r.lowest;
       if (r.hpAtBoss != null) bossHp.push(r.hpAtBoss);
+      if (!r.died) depths.push(r.depth);
+      if (r.abyssDied) abyssDeaths[r.abyssDied.type] = (abyssDeaths[r.abyssDied.type] || 0) + 1;
       if (r.died) {
         const k = `F${r.died.floor} ${r.died.type}`;
         deaths[k] = (deaths[k] || 0) + 1;
@@ -554,5 +621,12 @@ for (const g of gear) {
     const avg = (a) => (a.length ? `${Math.round((a.reduce((s, x) => s + x, 0) / a.length) * 100)}%` : '-');
     const topDeaths = Object.entries(deaths).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k}: ${pct(v)}`).join(', ');
     console.log(`${rules.name}\n  win ${pct(wins)} | fights/run ${(fights / RUNS).toFixed(1)} | reached boss ${pct(bossHp.length)} at ${avg(bossHp)} HP | lowest HP avg ${Math.round((lowest / RUNS) * 100)}%\n  deaths: ${topDeaths || 'none'}`);
+    // --abyss: how deep the winning runs got (floors cleared below floor 5)
+    if (args.abyss && depths.length) {
+      depths.sort((x, y) => x - y);
+      const reach = [1, 2, 3, 4, 5, 6, 8, 10, 13, 16, 20].filter((d) => d <= Number(args.abyss)).map((d) => `${d}: ${pct(depths.filter((x) => x >= d).length)}`).join('  ');
+      console.log(`  abyss (of all runs, floors cleared): median ${depths[Math.floor(depths.length / 2)]}, best ${depths[depths.length - 1]} | cleared at least ${reach}
+  abyss deaths: ${Object.entries(abyssDeaths).map(([k, v]) => `${k} ${Math.round((v / depths.length) * 100)}%`).join(', ') || 'none'}`);
+    }
   }
 }
