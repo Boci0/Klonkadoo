@@ -12,6 +12,18 @@ Sources: super-mechs.fandom.com (Tactics and General Info, Eamb's Reloaded guide
 - Weight cap 1000 kg. Every 1 kg over = -15 HP, hard cap 1010 kg (-150 HP).
 - Pros rarely fill all 6 weapons: 4 weapons (2 top + 2 side or 3 side + 1 top) and spend weight on modules.
 
+## Weight (Reloaded item data, 2026-09-29)
+Source: supermechs.netlify.app post-Reloaded items list (js/sm_item_*.js: every item at every level).
+- An item's weight never changes with level or tier.
+- Share of the 1000 kg cap: torso 301-370 (a third; kg tracks HP, r=0.75), legs 114-150, side 18-86
+  (median 52), top 19-75 (median 51), drones 20-57, specials 11-26, modules 15-51.
+- Weapons: weight buys convenience, not damage (kg vs damage r=0.37 side, -0.62 top).
+  Heaviest (70-86): no energy / no heat cost, knockback. Lightest (18-25): 1-2 uses per fight, even
+  huge hitters (Falcon, 1 use, 797 dmg at M, 19 kg).
+- Modules: survival is dear, the reactor cheap. Regen / cooling booster 15, capacity 22, dual reactor 25,
+  one resist 28, HP plating 40, all three resists 51.
+- Drones: the free-to-run ones (no energy or no heat cost) are the heavy ones.
+
 ## Stats and damage
 - HP, Energy cap, Regen, Heat cap, Cooling, 3 resistances (physical / heat / energy).
 - 3 damage elements: Physical, Heat, Energy. Advice: do not mix Heat and Energy; physical can pair with either.
