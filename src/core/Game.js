@@ -28,7 +28,7 @@ import { soundEngine } from '../utils/SoundEngine.js';
 import { saveSystem } from '../meta/SaveSystem.js';
 import { haptics } from '../platform/haptics.js';
 import { getBall } from '../meta/Balls.js';
-import { DEFAULT_LEGS, DTYPES, dtypeOf, resistOf, getPart, legsRules, droneUpkeep } from '../meta/Mech.js';
+import { DEFAULT_LEGS, DTYPES, dtypeOf, resistOf, getPart, legsRules, droneUpkeep, meleeOf } from '../meta/Mech.js';
 import { pickArena } from './Arenas.js';
 
 /** Runs saved before the lane: guns without a reach and legs without walk/jump get them from the catalog. */
@@ -43,6 +43,7 @@ const L = CONFIG.lane;
 
 /** How a gun's shot looks in flight (see Renderer._drawProjectiles). */
 export function vfxOf(w) {
+  if (meleeOf(w)) return 'melee';
   if (w.arc) return 'lob';
   if (w.fx?.pull) return 'hook';
   if (w.fx?.push || w.fx?.drain) return 'pulse';
@@ -960,6 +961,11 @@ export class Game {
     const kind = vfxOf(w);
     w.firedAt = performance.now(); // renderer: recoil + muzzle flash
     w.aimAt = target;
+    if (kind === 'melee') {
+      // The renderer lunges the mech in; the hit lands mid-swing
+      shooter.lungeAt = w.firedAt;
+      shooter.lungeTo = target;
+    }
     const from = w._muzzle ? { ...w._muzzle } : { x: shooter.x, y: shooter.y };
     const dist = Math.hypot(target.x - from.x, target.y - from.y);
     const dur = {
@@ -969,6 +975,7 @@ export class Game {
       spray: 0.3,
       hook: Math.max(0.14, Math.min(0.42, dist / 1500)),
       pulse: Math.max(0.12, Math.min(0.45, dist / 1100)),
+      melee: 0.2,
     }[kind];
     const rounds = w.fx?.burst || 1;
     for (let i = 0; i < rounds; i++) {

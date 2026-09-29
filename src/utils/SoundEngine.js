@@ -216,6 +216,11 @@ class SoundEngine {
         this._tone({ type: 'square', freq: 720, to: 240, dur: 0.1, vol: 0.12 * v });
         this._noise({ dur: 0.18, vol: 0.12 * v, filter: 'highpass', freq: 4000, at: 0.04 });
         break;
+      case 'melee': // swoosh, then a heavy thud as it connects
+        this._noise({ dur: 0.16, vol: 0.22 * v, filter: 'bandpass', freq: 600, to: 2400 });
+        this._tone({ type: 'sine', freq: 160, to: 45, dur: 0.18, vol: 0.55 * v, at: 0.17 });
+        this._noise({ dur: 0.08, vol: 0.3 * v, freq: 1200, to: 300, at: 0.17 });
+        break;
       case 'pulse': // low shove of air
         this._tone({ type: 'sine', freq: 220, to: 70, dur: 0.22, vol: 0.5 * v });
         this._noise({ dur: 0.15, vol: 0.15 * v, freq: 600, to: 150 });

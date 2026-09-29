@@ -16,7 +16,7 @@ import { getTerrain, groundAt } from '../core/Terrain.js';
 import { fitCanvas, clientToWorld } from './viewport.js';
 import { partCanvas, iconCanvas, iconSize } from './pixelIcons.js';
 import { showTip, hideTip, battlePartHtml } from '../ui/partCard.js';
-import { DTYPES, DTYPE_KEYS, dtypeOf, resistOf, legsLabel, reachLabel, LANE_SIZE, dmgLabel } from '../meta/Mech.js';
+import { DTYPES, DTYPE_KEYS, dtypeOf, resistOf, legsLabel, reachLabel, LANE_SIZE, dmgLabel, meleeOf } from '../meta/Mech.js';
 import { mechLook, torsoCanvas, legsCanvas } from './mechSprite.js';
 import { drawEffect } from './fxDraw.js';
 
@@ -34,6 +34,41 @@ const CROWN = [
 
 const C = CONFIG.colors;
 const W = CONFIG.world;
+
+// ---------- Melee (Game hits at 200 ms, mid-lunge) ----------
+const MELEE_MS = 460;
+const smooth = (t) => t * t * (3 - 2 * t);
+/** Piecewise curve through [t, v] keys, eased between them. */
+const curve = (pts, t) => {
+  for (let i = 1; i < pts.length; i++) {
+    if (t <= pts[i][0]) {
+      const [t0, v0] = pts[i - 1];
+      const [t1, v1] = pts[i];
+      return v0 + (v1 - v0) * smooth((t - t0) / (t1 - t0));
+    }
+  }
+  return pts[pts.length - 1][1];
+};
+/**
+ * How the weapon moves on the mech during a swing (t 0..1): `dx` pushes it
+ * out along its aim (negative pulls it back), `ang` tips it (negative lifts the tip).
+ *   slash  – lift the blade high, then carve down through the target
+ *   rake   – cock back, then drag the talons through with a twist
+ *   punch  – pull the fist in, then drive it straight out
+ *   thrust – draw the ram far back, then slam it forward
+ */
+function meleeSwing(style, t) {
+  switch (style) {
+    case 'slash':
+      return { dx: curve([[0, 0], [0.3, -4], [0.5, 14], [1, 0]], t), ang: curve([[0, 0], [0.3, -1.6], [0.52, 1.5], [0.75, 1.1], [1, 0]], t) };
+    case 'rake':
+      return { dx: curve([[0, 0], [0.28, -10], [0.46, 26], [1, 0]], t), ang: curve([[0, 0], [0.28, -0.6], [0.5, 0.7], [1, 0]], t) };
+    case 'punch':
+      return { dx: curve([[0, 0], [0.3, -16], [0.44, 36], [0.7, 30], [1, 0]], t), ang: 0 };
+    default: // thrust
+      return { dx: curve([[0, 0], [0.34, -24], [0.46, 44], [0.72, 38], [1, 0]], t), ang: 0 };
+  }
+}
 
 const FONT = '"Pixel Digits", "Pixelify Sans", monospace'; // clear digits: see styles.css
 const DISPLAY = '"Press Start 2P", monospace';
@@ -208,6 +243,9 @@ export class Renderer {
     for (const ball of [player, ...livingEnemies]) {
       if (ball && ball.hp > 0) this._drawBallShadow(ctx, ball);
     }
+    // A melee swing lunges the whole mech in and back: shift it just for drawing
+    const lunging = [player, ...livingEnemies].filter(Boolean).map((b) => [b, this._lunge(b, now)]).filter(([, d]) => d);
+    for (const [b, d] of lunging) b.x += d;
     // Legs first, so the ball sits on top of them
     for (const ball of [player, ...livingEnemies]) if (ball?.hp > 0) this._drawLegs(ctx, world, ball, now);
     // The gun on the far shoulder goes behind the torso, the near one in front
@@ -215,7 +253,9 @@ export class Renderer {
     if (player && player.hp > 0) this._drawBall(ctx, player, world, now);
     for (const enemy of livingEnemies) this._drawBall(ctx, enemy, world, now);
     this._drawGear(ctx, world, player, livingEnemies, 'front');
+    for (const [b, d] of lunging) b.x -= d;
     this._drawProjectiles(ctx, world, now);
+    this._drawMeleeFx(ctx, world, player, livingEnemies, now);
     this._drawMineMarkers(ctx, world.hazards || [], now);
     this._drawMechRanges(ctx, world);
     this._drawInspectCard(ctx, world);
@@ -752,11 +792,13 @@ export class Renderer {
         const { w: iw, h: ih } = iconSize(ic);
         const w = iw * S * k;
         const h = ih * S * k;
-        const recoil = since < 180 ? (1 - since / 180) * 10 * k : 0;
+        const swing = meleeOf(g) && since < MELEE_MS ? meleeSwing(meleeOf(g), since / MELEE_MS) : null;
+        const recoil = swing ? -swing.dx * k : since < 180 ? (1 - since / 180) * 10 * k : 0;
         ctx.save();
         ctx.translate(Math.round(mx), Math.round(my));
         ctx.rotate(g._ang);
         if (Math.cos(g._ang) < 0) ctx.scale(1, -1); // keep the sprite upright
+        if (swing) ctx.rotate(swing.ang);
         ctx.globalAlpha = alpha * (g.ammo && g.ammoLeft <= 0 ? 0.6 : 1);
         ctx.drawImage(ic, Math.round(-6 * k - recoil), Math.round(-h / 2), w, h);
         const hot = ball.heatCap ? ball.heat / ball.heatCap : 0;
@@ -768,7 +810,7 @@ export class Renderer {
           ctx.fillRect(Math.round(w - 10 - recoil), Math.round(-3), 4, 6);
         }
         ctx.globalAlpha = alpha;
-        if (since < 110) flash(w - 2 - recoil, 0, g.color || '#ffcd75');
+        if (since < 110 && !meleeOf(g)) flash(w - 2 - recoil, 0, g.color || '#ffcd75');
         ctx.restore();
         g._muzzle = { x: mx + Math.cos(g._ang) * (w - 6), y: my + Math.sin(g._ang) * (w - 6) };
         if (hot > 0.75) {
@@ -809,8 +851,89 @@ export class Renderer {
       });
       ctx.globalAlpha = 1;
     };
-    mount(player, world.playerWeapons || [], enemies, world.playerDrones || []);
-    for (const e of enemies) mount(e, e.weapons || [], player ? [player] : [], e.drones || []);
+    // Whoever is mid-swing goes last, so the weapon cuts across the target's own guns
+    const mounts = [[player, world.playerWeapons || [], enemies, world.playerDrones || []], ...enemies.map((e) => [e, e.weapons || [], player ? [player] : [], e.drones || []])];
+    const swinging = (b) => (b && now - (b.lungeAt || -1e9) < MELEE_MS ? 1 : 0);
+    for (const m of mounts.sort((a, b) => swinging(a[0]) - swinging(b[0]))) mount(...m);
+  }
+
+  /** How far a meleeing mech is drawn from its spot: a short wind-back, then a lunge at the target. */
+  _lunge(ball, now) {
+    const since = now - (ball.lungeAt || -1e9);
+    if (!ball.lungeTo || since < 0 || since > MELEE_MS || ball.hp <= 0) return 0;
+    const gap = ball.lungeTo.x - ball.x;
+    const reach = Math.min(90, Math.abs(gap) * 0.4);
+    return Math.sign(gap || 1) * reach * curve([[0, 0], [0.3, -0.15], [0.44, 1], [0.7, 0.85], [1, 0]], since / MELEE_MS);
+  }
+
+  /**
+   * The hit of a melee swing, drawn on the target as it connects:
+   *   slash – a crescent carved through it   rake  – three burning claw marks
+   *   punch – a molten starburst             thrust – a shockwave ring and speed lines
+   */
+  _drawMeleeFx(ctx, world, player, enemies, now) {
+    const sets = [[player, world.playerWeapons || []], ...enemies.map((e) => [e, e.weapons || []])];
+    for (const [ball, guns] of sets) {
+      if (!ball) continue;
+      for (const g of guns) {
+        const style = meleeOf(g);
+        const tgt = g.aimAt;
+        const since = now - (g.firedAt || -1e9);
+        if (!style || !tgt || since < MELEE_MS * 0.38 || since > MELEE_MS) continue;
+        const p = (since / MELEE_MS - 0.38) / 0.62; // 0 at contact, 1 when it's gone
+        const r = tgt.radius || 32;
+        const col = g.color || '#f4f4f4';
+        ctx.save();
+        ctx.translate(Math.round(tgt.x), Math.round(tgt.y));
+        ctx.scale(tgt.x < ball.x ? -1 : 1, 1); // strike from the attacker's side
+        ctx.globalAlpha = 1 - p * p;
+        ctx.lineCap = 'square';
+        if (style === 'slash') {
+          const a0 = -2.3;
+          const a1 = a0 + 3 * Math.min(1, p * 3);
+          for (const [lw, c] of [[16 * (1 - p) + 4, col], [5 * (1 - p) + 1, '#fff']]) {
+            ctx.strokeStyle = c;
+            ctx.lineWidth = lw;
+            ctx.beginPath();
+            ctx.arc(-r * 0.3, 0, r * 1.35, a0, a1);
+            ctx.stroke();
+          }
+        } else if (style === 'rake') {
+          const reach = Math.min(1, p * 3);
+          for (let i = -1; i <= 1; i++) {
+            const y0 = -r * 0.9 + i * 14;
+            for (const [lw, c] of [[9 * (1 - p) + 3, '#ef7d57'], [3, '#ffcd75']]) {
+              ctx.strokeStyle = c;
+              ctx.lineWidth = lw;
+              ctx.beginPath();
+              ctx.moveTo(-r * 0.9, y0);
+              ctx.lineTo(-r * 0.9 + r * 1.8 * reach, y0 + r * 1.4 * reach);
+              ctx.stroke();
+            }
+          }
+        } else if (style === 'punch') {
+          const len = r * (0.5 + 1.1 * p);
+          for (let i = 0; i < 10; i++) {
+            const a = (i / 10) * Math.PI * 2 + 0.3;
+            ctx.fillStyle = i % 2 ? '#ffcd75' : '#ef7d57';
+            const s = 12 * (1 - p) + 4;
+            ctx.fillRect(Math.round(Math.cos(a) * len - s / 2), Math.round(Math.sin(a) * len - s / 2), s, s);
+          }
+          ctx.fillStyle = '#fff';
+          const c = 26 * (1 - p);
+          ctx.fillRect(Math.round(-c / 2), Math.round(-c / 2), c, c);
+        } else {
+          ctx.strokeStyle = '#f4f4f4';
+          ctx.lineWidth = 8 * (1 - p) + 2;
+          ctx.beginPath();
+          ctx.arc(0, 0, r * (0.7 + 1.4 * p), 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.fillStyle = '#94b0c2';
+          for (let i = -1; i <= 1; i++) ctx.fillRect(Math.round(r * (0.9 + p * 1.5)), Math.round(i * 16 - 2), Math.round(40 * (1 - p) + 8), 4);
+        }
+        ctx.restore();
+      }
+    }
   }
 
   /**

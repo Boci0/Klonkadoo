@@ -516,6 +516,10 @@ export function legsLabel(p) {
   return parts.join(' · ') || 'NONE';
 }
 
+/** Close-quarters weapons: the mech lunges in and swings instead of shooting (Renderer._drawMeleeFx). */
+const MELEE = { wp_scythe: 'slash', wp_phoenix: 'rake', wp_magma: 'punch', wp_breaker: 'thrust' };
+export const meleeOf = (w) => MELEE[w?.id] || null;
+
 /** A gun's reach in positions: '3-7', or '1' for melee. */
 export const reachLabel = (r) => (r[0] === r[1] ? `${r[0]}` : `${r[0]}-${r[1]}`);
 
