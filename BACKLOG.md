@@ -1,29 +1,26 @@
 # Backlog
 
-## Next up (after v2.5.4, 2026-09-29)
+## Next up (after v2.5.5, 2026-09-29)
 
-1. **NEXT: part sprite overhaul.** Icons are small and many guns share a silhouette. Redraw in
-   batches, most-used guns first (Super Mechs: the tile art is the part itself, ~70px). Includes
-   Firefly's own icon (heat drones item) and the reused drone/gun icons (`icon:` borrowed from another part).
-2. **Abyss depth: OK for now.** On 2.5.3 the user reaches Abyss 6 (Risk XI, 2x ascended Phoenix, Leviathan,
+1. **Abyss depth: OK for now.** On 2.5.3 the user reaches Abyss 6 (Risk XI, 2x ascended Phoenix, Leviathan,
    Medic drone) and that's intended: one mech shouldn't make a joke of the Abyss, going deeper should take
    more mechs or other builds. Don't soften it; `rxOut` (enemy heat/drain grows with depth) stays.
-3. **Abyss mode for tools/balance-sim.mjs.** The sim stops at floor 5: no Abyss depth scaling, no insanity,
+2. **Abyss mode for tools/balance-sim.mjs.** The sim stops at floor 5: no Abyss depth scaling, no insanity,
    no reactor growth, so Abyss balance can't be checked headlessly. Add it before tuning the Abyss again.
-4. **Wishlist.** Star parts you're hunting (Almanac / Rig); a WISHLIST! badge and sound on the pod card,
+3. **Wishlist.** Star parts you're hunting (Almanac / Rig); a WISHLIST! badge and sound on the pod card,
    never auto/SMART-salvaged, an inventory filter.
-5. **Economy.** Deep Abyss runs on Risk XI pay thousands of Keys/scrap (user had 12k Keys) and raid T1 pays
+4. **Economy.** Deep Abyss runs on Risk XI pay thousands of Keys/scrap (user had 12k Keys) and raid T1 pays
    3000 Keys: trim payouts or add sinks.
-6. **Ideas not started:** real online raid leaderboard (tiny free backend) instead of the simulated field;
+5. **Ideas not started:** real online raid leaderboard (tiny free backend) instead of the simulated field;
    team fights (2v2 on the lane) for the endgame.
-7. **Untested live:** AUTO RUN through the Abyss, 1-action SWAP, UPGRADE / SCRAP badges on pod cards.
-8. **Weight balancing.** Some parts feel too heavy for what they give, others too light. Dump every part's
+6. **Untested live:** AUTO RUN through the Abyss, 1-action SWAP, UPGRADE / SCRAP badges on pod cards.
+7. **Weight balancing.** Some parts feel too heavy for what they give, others too light. Dump every part's
    weight vs. power (dmg/stat per kg, by slot and tier) with a script, flag the outliers, and retune so the
    1000 kg cap forces real trade-offs.
-9. **Heat drones.** Heat only has FIREFLY (common, borrows the Gnat icon); phys goes to rare, energy to
-   mythic. Add rare → mythic heat drones (heat-on-hit, maybe a shutdown/overheat angle) with their own art,
-   and give Firefly its own icon.
-10. **Torso (frame) variety.** 9 frames, mostly a stat ladder (Scout → Brawler → Titan → Colossus →
+8. **Heat drones.** Heat only has FIREFLY (common); phys goes to rare, energy to
+   mythic. Add rare → mythic heat drones (heat-on-hit, maybe a shutdown/overheat angle) with their own art
+   (24-wide HI_GRIDS in pixelIcons.js, like every part since 2.5.5).
+9. **Torso (frame) variety.** 9 frames, mostly a stat ladder (Scout → Brawler → Titan → Colossus →
     Leviathan). Only Furnace (heat) and Conduit (energy) are element-built, both rare; Phantom (free first
     shot) and Reclaimer (heal on kill) are the only ones with a perk. Add frames with a real identity per
     element and tier (e.g. an epic+ heat and energy frame, a phys frame), each with its own perk and art.

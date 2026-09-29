@@ -16,7 +16,7 @@ import { OPERATOR, skinColors } from '../meta/Balls.js';
 import { torsoCanvas, legsCanvas } from '../rendering/mechSprite.js';
 import { drawEffect } from '../rendering/fxDraw.js';
 import { EFFECTS } from '../meta/Raid.js';
-import { partIcon, partCanvas, ico, uiIcon } from '../rendering/pixelIcons.js';
+import { partIcon, partCanvas, ico, uiIcon, iconSize } from '../rendering/pixelIcons.js';
 import { CONFIG } from '../config.js';
 import {
   SLOTS, PARTS, CRATES, getPart, TYPE_LABEL, rarityColor, rarityName,
@@ -135,7 +135,7 @@ export class RigScreen {
         <div class="rig-col">${LEFT.map((id) => tile(id)).join('')}</div>
         <div class="rig-stage">
           <div class="rig-fx-slot">${fxTile}</div>
-          <canvas id="rig-canvas" width="80" height="56"></canvas>
+          <canvas id="rig-canvas" width="160" height="112"></canvas>
           <div class="rig-core-slots">${tile('frame')}${tile('legs')}</div>
         </div>
         <div class="rig-col">${RIGHT.map((id) => tile(id)).join('')}</div>
@@ -433,8 +433,11 @@ export class RigScreen {
     const canvas = document.getElementById('rig-canvas');
     if (!canvas) return;
     const g = canvas.getContext('2d');
-    const W = canvas.width;
-    const H = canvas.height;
+    // Drawn at 2x so hi-res part icons keep their detail; the layout stays in 80x56 units
+    const W = canvas.width / 2;
+    const H = canvas.height / 2;
+    g.setTransform(2, 0, 0, 2, 0, 0);
+    g.imageSmoothingEnabled = false;
 
     const ball = OPERATOR;
     let skin = 'default';
@@ -510,39 +513,42 @@ export class RigScreen {
       guns.forEach((gp, i) => {
         if (!gp) return;
         const ic = partCanvas(gp.id);
+        const { w: iw, h: ih } = iconSize(ic);
         const right = i % 2 === 1;
         const low = i >= 2; // the second gun on a flank hangs lower
-        const y = gy - ic.height / 2 + (low ? 6 : -1);
+        const y = gy - ih / 2 + (low ? 6 : -1);
         const x = gunX + (low ? 2 : 0);
         g.save();
         if (!right) {
           g.translate(cx - x, 0);
           g.scale(-1, 1);
-          g.drawImage(ic, 0, Math.round(y));
-        } else g.drawImage(ic, Math.round(cx + x), Math.round(y));
+          g.drawImage(ic, 0, Math.round(y), iw, ih);
+        } else g.drawImage(ic, Math.round(cx + x), Math.round(y), iw, ih);
         g.restore();
         // Muzzle blink every few seconds
-        if (((s + i * 1.3) % 3) < 0.08) px(right ? cx + x + ic.width : cx - x - 1 - ic.width, y + ic.height / 2, 2, 2, '#ffcd75');
+        if (((s + i * 1.3) % 3) < 0.08) px(right ? cx + x + iw : cx - x - 1 - iw, y + ih / 2, 2, 2, '#ffcd75');
       });
       // Top guns sit on the shoulders, pointing outward
       tops.forEach((gp, i) => {
         if (!gp) return;
         const ic = partCanvas(gp.id);
-        const y = torsoTop + bob - ic.height + 3;
+        const { w: iw, h: ih } = iconSize(ic);
+        const y = torsoTop + bob - ih + 3;
         g.save();
         if (i === 0) {
           g.translate(cx - 2, 0);
           g.scale(-1, 1);
-          g.drawImage(ic, 0, Math.round(y));
-        } else g.drawImage(ic, Math.round(cx + 2), Math.round(y));
+          g.drawImage(ic, 0, Math.round(y), iw, ih);
+        } else g.drawImage(ic, Math.round(cx + 2), Math.round(y), iw, ih);
         g.restore();
       });
       // Drone orbiting above
       if (drone) {
         const ic = partCanvas(drone.id);
+        const { w: iw, h: ih } = iconSize(ic);
         const dx = Math.cos(s * 1.4) * 16;
         const dy = Math.sin(s * 2.8) * 2;
-        g.drawImage(ic, Math.round(cx + dx - ic.width / 2), Math.round(3 + dy));
+        g.drawImage(ic, Math.round(cx + dx - iw / 2), Math.round(3 + dy), iw, ih);
       }
       // Overloaded: red flicker
       if (t.overweight && Math.sin(s * 8) > 0) {

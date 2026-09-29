@@ -14,7 +14,7 @@
 import { CONFIG } from '../config.js';
 import { getTerrain, groundAt } from '../core/Terrain.js';
 import { fitCanvas, clientToWorld } from './viewport.js';
-import { partCanvas, iconCanvas } from './pixelIcons.js';
+import { partCanvas, iconCanvas, iconSize } from './pixelIcons.js';
 import { showTip, hideTip, battlePartHtml } from '../ui/partCard.js';
 import { DTYPES, DTYPE_KEYS, dtypeOf, resistOf, legsLabel, reachLabel, LANE_SIZE, dmgLabel } from '../meta/Mech.js';
 import { mechLook, torsoCanvas, legsCanvas } from './mechSprite.js';
@@ -749,8 +749,9 @@ export class Renderer {
         const want = tgt ? Math.atan2(tgt.y - my, tgt.x - mx) : side < 0 ? Math.PI : 0;
         g._ang = g._ang === undefined ? want : turn(g._ang, want, since < 700 ? 0.5 : 0.12);
         const ic = partCanvas(g.id);
-        const w = ic.width * S * k;
-        const h = ic.height * S * k;
+        const { w: iw, h: ih } = iconSize(ic);
+        const w = iw * S * k;
+        const h = ih * S * k;
         const recoil = since < 180 ? (1 - since / 180) * 10 * k : 0;
         ctx.save();
         ctx.translate(Math.round(mx), Math.round(my));
@@ -797,8 +798,9 @@ export class Renderer {
         const dx = ball.x + ox * ease;
         const dy = ball.y + oy * ease;
         const ic = partCanvas(d.id);
-        const w = ic.width * S * (0.4 + 0.6 * ease);
-        const h = ic.height * S * (0.4 + 0.6 * ease);
+        const { w: iw, h: ih } = iconSize(ic);
+        const w = iw * S * (0.4 + 0.6 * ease);
+        const h = ih * S * (0.4 + 0.6 * ease);
         ctx.globalAlpha = alpha * (0.3 + 0.7 * ease);
         ctx.drawImage(ic, Math.round(dx - w / 2), Math.round(dy - h / 2), w, h);
         if (since < 120) flash(dx, dy + h / 2, d.color || '#ffcd75');
@@ -1095,9 +1097,10 @@ export class Renderer {
         ctx.fillRect(x + 10, ry, w - 20, 2);
       }
       const ic = partCanvas(g.id);
+      const { w: iw, h: ih } = iconSize(ic);
       const spent = g.ammo && g.ammoLeft <= 0;
       ctx.globalAlpha = spent ? 0.4 : 1;
-      ctx.drawImage(ic, x + 16, Math.round(cy - (ic.height * S) / 2), ic.width * S, ic.height * S);
+      ctx.drawImage(ic, x + 16, Math.round(cy - (ih * S) / 2), iw * S, ih * S);
       let cx = x + 100;
       ctx.font = `700 ${big}px ${FONT}`;
       if (g.specialRow) {
@@ -1134,7 +1137,7 @@ export class Renderer {
       ctx.fillStyle = '#f4f4f4';
       ctx.fillText(g.reach ? reachLabel(g.reach) : '-', cx + 40, cy);
       // Ammo only when the gun has a limit
-      if (g.mount === 'top') icon('top', x + 16 + ic.width * S + 4, cy - rowH / 4, 2);
+      if (g.mount === 'top') icon('top', x + 16 + iw * S + 4, cy - rowH / 4, 2);
       if (g.backfire) {
         icon('backfire', cx + 110, cy);
         ctx.fillStyle = '#ff5d73';
@@ -1512,11 +1515,12 @@ export class Renderer {
       ctx.fillStyle = inspected ? '#ffcd75' : g.color || '#566c86';
       ctx.fillRect(bx, panelY + 5 + size - 3, size, 3);
       const ic = partCanvas(g.id);
+      const { w: iw, h: ih } = iconSize(ic);
       const gear = !!this.worldRef?.gear;
       const spent = g.ammo && g.ammoLeft <= 0;
       ctx.globalAlpha = spent ? 0.45 : 1;
       const k = 2.5 * s;
-      ctx.drawImage(ic, Math.round(bx + (size - ic.width * k) / 2), Math.round(panelY + 5 + (size - 3 - ic.height * k) / 2), ic.width * k, ic.height * k);
+      ctx.drawImage(ic, Math.round(bx + (size - iw * k) / 2), Math.round(panelY + 5 + (size - 3 - ih * k) / 2), iw * k, ih * k);
       ctx.globalAlpha = 1;
       const left = g.ammo ? g.ammoLeft : g.uses ? g.usesLeft : null;
       if (left != null) {
