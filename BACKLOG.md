@@ -1,5 +1,22 @@
 # Backlog
 
+## Next up (after v2.5.3, 2026-09-29)
+
+1. **Check the Abyss after 2.5.3.** On 2.5.2 the user fell from Abyss 18 to Abyss 3 (Risk XI, Phoenix heat build).
+   2.5.3 stopped enemy cooling/regen growing with depth (only heat cap + battery, +4%/depth). Ask how deep
+   they get now; if still far off, look at what else 2.5.2 changed.
+2. **Abyss mode for tools/balance-sim.mjs.** The sim stops at floor 5: no Abyss depth scaling, no insanity,
+   no reactor growth, so Abyss balance can't be checked headlessly. Add it before tuning the Abyss again.
+3. **Wishlist.** Star parts you're hunting (Almanac / Rig); a WISHLIST! badge and sound on the pod card,
+   never auto/SMART-salvaged, an inventory filter.
+4. **Bigger, more distinct part art.** Icons are small and many guns share a silhouette. Redraw in
+   batches, most-used guns first (Super Mechs: the tile art is the part itself, ~70px).
+5. **Economy.** Deep Abyss runs on Risk XI pay thousands of Keys/scrap (user had 12k Keys) and raid T1 pays
+   3000 Keys: trim payouts or add sinks.
+6. **Ideas not started:** real online raid leaderboard (tiny free backend) instead of the simulated field;
+   team fights (2v2 on the lane) for the endgame.
+7. **Untested live:** AUTO RUN through the Abyss, 1-action SWAP, UPGRADE / SCRAP badges on pod cards.
+
 ## Play Console recommendations (from release 1 / 1.0.0, 2026-09-26)
 
 Not blocking publishing; fix in a later release.
