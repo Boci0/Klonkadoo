@@ -1,12 +1,12 @@
 # Backlog
 
-## NEXT: the numbers rework (decided 2026-09-29, after v2.5.9)
+## DONE: the numbers rework (decided 2026-09-29, released as v2.6.0 the same day)
 
-**Status (2026-09-29): steps 1-5 done in the working tree, not released.** rxScale 3, gun costs by damage
+**Status: released in v2.6.0.** Watch real runs (Abyss depth, Risk ramp) and retune from play. rxScale 3, gun costs by damage
 type, costs and frame regen/cooling x tierStep per tier, frame reactors on a x1.28-per-rarity ladder,
 dtypeLoad per type, breakHp, gearComp.rx, enemyGunShare, enemy HP cut, Risk curve refit (skill 1, mid
 gear: 97% R0 -> ~10% XI), Abyss strength x1.5 (a real Risk XI kit goes as deep as on 2.5.9 in the sim),
-run save flag v26. Left: a look in the browser, release notes, version bump.
+run save flag v26.
 
 Re-derive the game's core numbers from SuperMechs Reloaded's ratios instead of "the old numbers x10"
 (CONFIG.gear hpScale 10 / rxScale 10 / dmgScale 13). Its own release. The user's calls:
