@@ -1,16 +1,17 @@
 # Backlog
 
-## Next up (after v2.5.3, 2026-09-29)
+## Next up (after v2.5.4, 2026-09-29)
 
-1. **Abyss depth: OK for now.** On 2.5.3 the user reaches Abyss 6 (Risk XI, 2x ascended Phoenix, Leviathan,
+1. **NEXT: part sprite overhaul.** Icons are small and many guns share a silhouette. Redraw in
+   batches, most-used guns first (Super Mechs: the tile art is the part itself, ~70px). Includes
+   Firefly's own icon (heat drones item) and the reused drone/gun icons (`icon:` borrowed from another part).
+2. **Abyss depth: OK for now.** On 2.5.3 the user reaches Abyss 6 (Risk XI, 2x ascended Phoenix, Leviathan,
    Medic drone) and that's intended: one mech shouldn't make a joke of the Abyss, going deeper should take
    more mechs or other builds. Don't soften it; `rxOut` (enemy heat/drain grows with depth) stays.
-2. **Abyss mode for tools/balance-sim.mjs.** The sim stops at floor 5: no Abyss depth scaling, no insanity,
+3. **Abyss mode for tools/balance-sim.mjs.** The sim stops at floor 5: no Abyss depth scaling, no insanity,
    no reactor growth, so Abyss balance can't be checked headlessly. Add it before tuning the Abyss again.
-3. **Wishlist.** Star parts you're hunting (Almanac / Rig); a WISHLIST! badge and sound on the pod card,
+4. **Wishlist.** Star parts you're hunting (Almanac / Rig); a WISHLIST! badge and sound on the pod card,
    never auto/SMART-salvaged, an inventory filter.
-4. **Bigger, more distinct part art.** Icons are small and many guns share a silhouette. Redraw in
-   batches, most-used guns first (Super Mechs: the tile art is the part itself, ~70px).
 5. **Economy.** Deep Abyss runs on Risk XI pay thousands of Keys/scrap (user had 12k Keys) and raid T1 pays
    3000 Keys: trim payouts or add sinks.
 6. **Ideas not started:** real online raid leaderboard (tiny free backend) instead of the simulated field;
