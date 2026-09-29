@@ -81,6 +81,10 @@ tools/supermechs/load.cjs loads every item; docs/supermechs-research.md has the 
 8. **Heat drones.** Heat only has FIREFLY (common); phys goes to rare, energy to
    mythic. Add rare → mythic heat drones (heat-on-hit, maybe a shutdown/overheat angle) with their own art
    (24-wide HI_GRIDS in pixelIcons.js, like every part since 2.5.5).
+10. **Tips & tricks.** Optional, discoverable hints (e.g. an Almanac page or a rotating tip on the DEPLOY / loading
+    screen), never pushed at the player. First entry: Risk 10 is the Abyss Shard farm (deep dives, Klonkadoo Prime),
+    Risk XI the Keys / scrap / pods farm (double rewards, shallow Abyss). The user wants players to find this out
+    themselves first, so tips stay opt-in.
 9. **Torso (frame) variety.** 9 frames, mostly a stat ladder (Scout → Brawler → Titan → Colossus →
     Leviathan). Only Furnace (heat) and Conduit (energy) are element-built, both rare; Phantom (free first
     shot) and Reclaimer (heal on kill) are the only ones with a perk. Add frames with a real identity per
