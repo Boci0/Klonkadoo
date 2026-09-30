@@ -110,6 +110,11 @@ export const PARTS = [
   { id: 'fr_conduit', type: 'frame', name: 'CONDUIT FRAME', rarity: 'rare', weight: 309, hp: 22, energy: 48, regen: 19, heatCap: 26, cool: 10, color: '#73eff7', desc: 'A big battery that runs hot fast: built for Electric guns.' },
   { id: 'fr_reclaimer', type: 'frame', name: 'RECLAIMER FRAME', rarity: 'legendary', weight: 351, hp: 56, energy: 55, regen: 24, heatCap: 67, cool: 24, killHeal: 0.07, color: '#a7f070', desc: 'Strips every mech it destroys for parts: repairs 7% of max HP per kill.' },
   { id: 'fr_leviathan', type: 'frame', name: 'LEVIATHAN FRAME', rarity: 'mythic', weight: 370, hp: 87, energy: 72, regen: 31, heatCap: 84, cool: 30, color: '#ff5d73' },
+  // Experimental frames: lopsided reactors that reward a build built around the flaw
+  { id: 'fr_kiln', type: 'frame', name: 'KILN FRAME', rarity: 'epic', weight: 336, hp: 36, energy: 22, regen: 6, heatCap: 96, cool: 6, color: '#ffcd75', desc: 'A huge heat bank that barely cools: fire hot early, and it carries the heat for the whole fight.' },
+  { id: 'fr_capacitor', type: 'frame', name: 'CAPACITOR FRAME', rarity: 'epic', weight: 318, hp: 24, energy: 90, regen: 4, heatCap: 28, cool: 12, color: '#41a6f6', desc: 'A huge battery that hardly recharges: a big opening, then you sip.' },
+  { id: 'fr_rampart', type: 'frame', name: 'RAMPART FRAME', rarity: 'legendary', weight: 385, hp: 84, energy: 20, regen: 8, heatCap: 34, cool: 12, color: '#94b0c2', desc: 'Enormous HP on a tiny reactor: only cheap guns fit its battery.' },
+  { id: 'fr_revenant', type: 'frame', name: 'REVENANT FRAME', rarity: 'mythic', weight: 358, hp: 62, energy: 50, regen: 22, heatCap: 56, cool: 22, killHeal: 0.05, freeFirstShot: true, color: '#c46fd6', desc: 'Repairs a little with every kill and the first gun each battle is free: built to chain fights.' },
 
   // Legs decide how you move on the lane and how you STOMP (range 1, knocks back 1):
   // walk = up to N positions along the ground (not through mechs);
@@ -170,6 +175,9 @@ export const PARTS = [
   { id: 'wp_recoil', type: 'weapon', name: 'RECOIL CANNON', rarity: 'rare', dtype: 'phys', weight: 60, reach: [1, 3], dmg: 12, en: 0, heat: 8, color: '#94b0c2', icon: 'wp_blaster', desc: 'Spring-loaded: costs no energy, but it runs hot. Heavy.' },
   { id: 'wp_gauss', type: 'weapon', name: 'GAUSS RIFLE', rarity: 'epic', dtype: 'phys', weight: 86, reach: [3, 6], dmg: 15, en: 12, heat: 0, color: '#41a6f6', icon: 'wp_rifle', desc: 'Magnetic rails: makes no heat, but it drinks energy. Heavy.' },
   { id: 'wp_chem', type: 'weapon', name: 'CHEM THROWER', rarity: 'rare', dtype: 'heat', weight: 73, reach: [1, 3], dmg: 10, en: 0, heat: 11, fx: { heat: 10 }, color: '#ef7d57', icon: 'wp_flamer', desc: 'Pressure-fed: costs no energy and pumps heat into the target, but it runs hot. Heavy.' },
+  // Experimental guns
+  { id: 'wp_piledriver', type: 'weapon', name: 'PILEDRIVER', rarity: 'epic', dtype: 'phys', weight: 70, reach: [1, 2], dmg: 19, foeDmg: 16, en: 11, heat: 8, fx: { push: 2 }, color: '#f4f4f4', icon: 'wp_breaker', desc: 'A heavy close-range hammer that shoves the target back. Big hits fill the stagger bar fast.' },
+  { id: 'wp_arclash', type: 'weapon', name: 'ARC LASH', rarity: 'epic', dtype: 'energy', weight: 47, reach: [1, 3], dmg: 13, en: 8, heat: 3, fx: { line: true, drain: 14 }, color: '#73eff7', icon: 'wp_beam', desc: 'A beam that drains as it cuts.' },
   { id: 'wp_dynamo', type: 'weapon', name: 'DYNAMO GUN', rarity: 'rare', dtype: 'energy', weight: 54, reach: [1, 3], dmg: 9, en: 0, heat: 11, fx: { drain: 3 }, color: '#73eff7', icon: 'wp_spark', desc: 'Runs on its own dynamo: costs no energy and drains theirs, but it runs hot. Heavy.' },
 
   // TOP guns: the heavy and lobbed ones
@@ -193,6 +201,8 @@ export const PARTS = [
   { id: 'wp_arcturret', type: 'weapon', mount: 'top', name: 'ARC TURRET', rarity: 'epic', dtype: 'energy', weight: 42, reach: [1, 2], dmg: 14, en: 9, heat: 4, fx: { drain: 6, lowEnBonus: true }, color: '#73eff7', desc: 'Double damage against a target under 25% of its max energy.' },
   { id: 'wp_inferno', type: 'weapon', mount: 'top', name: 'INFERNO CANNON', rarity: 'legendary', dtype: 'heat', weight: 62, reach: [1, 3], dmg: 14, en: 4, heat: 11, fx: { heat: 10, burn: 3 }, color: '#ff5d73', desc: 'Floods the space in front of you: the target burns for 3 turns.' },
   { id: 'wp_thermite', type: 'weapon', mount: 'top', name: 'THERMITE LAUNCHER', rarity: 'epic', dtype: 'heat', weight: 75, reach: [3, 6], dmg: 12, en: 8, heat: 0, arc: true, fx: { heat: 11 }, color: '#ffcd75', icon: 'wp_napalm', desc: 'Sealed charges: makes no heat for you (the target gets it all), but it drinks energy. Heavy.' },
+  { id: 'wp_faultline', type: 'weapon', mount: 'top', name: 'FAULT LINE MORTAR', rarity: 'legendary', dtype: 'phys', weight: 60, reach: [3, 6], dmg: 30, foeDmg: 22, en: 11, heat: 9, ammo: 2, arc: true, fx: { splash: 1, push: 1 }, color: '#ffcd75', icon: 'wp_howitzer', desc: 'A shell that cracks the ground: it splashes and shoves the target back.' },
+  { id: 'wp_stormcaller', type: 'weapon', mount: 'top', name: 'STORMCALLER', rarity: 'legendary', dtype: 'energy', weight: 55, reach: [3, 6], dmg: 14, foeDmg: 12, en: 10, heat: 5, fx: { drain: 16, pierce: true }, color: '#c46fd6', icon: 'wp_rail', desc: 'Chain lightning: ignores resists and drains hard.' },
   { id: 'wp_supercon', type: 'weapon', mount: 'top', name: 'SUPERCONDUCTOR', rarity: 'epic', dtype: 'energy', weight: 72, reach: [2, 5], dmg: 15, en: 10, heat: 0, fx: { line: true }, color: '#c46fd6', icon: 'wp_beam', desc: 'Supercooled coil: makes no heat at all, but it drinks energy. Heavy.' },
 
   // Specials: one slot each (CHARGE / TELEPORT / HOOK), an action each, a few uses per battle

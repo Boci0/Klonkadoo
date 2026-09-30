@@ -14,7 +14,7 @@
 
 import { CONFIG } from '../src/config.js';
 import { planTurn, applyAction } from '../src/ai/LaneAI.js';
-import { PARTS, gearComp, enemyMech, enemyRig, enemyTier, pickEnemyElement, elementLean, roleElements, riskShred, withMech, getPart, legsRules, riskEase, tierRange, maxLevel, RARITY_ORDER, ELEMENT_DMG } from '../src/meta/Mech.js';
+import { PARTS, gearComp, enemyMech, enemyRig, enemyTier, pickEnemyElement, elementLean, roleElements, riskShred, withMech, getPart, legsRules, riskEase, tierRange, maxLevel, RARITY_ORDER, ELEMENT_DMG, GUN_TYPE_DMG } from '../src/meta/Mech.js';
 import { withMastery } from '../src/meta/Mastery.js';
 import { raidBoss } from '../src/meta/Raid.js';
 
@@ -37,6 +37,9 @@ if (args.abyssHp != null || args.abyssAtk != null) CONFIG.abyss.strength = { hp:
 // --heatLoad=0.2 --drainLoad=0.1: heat / drain per point of damage (CONFIG.gear.dtypeLoad);
 // --fxHeat=1.5 --fxDrain=1: every part's own heat-in / drain x this
 if (args.heatLoad != null) G.dtypeLoad.heat = Number(args.heatLoad);
+if (args.gunDmg) for (const kv of args.gunDmg.split(',')) { const [k, v] = kv.split(':'); GUN_TYPE_DMG[k] = Number(v); } // --gunDmg=energy:1.0: player gun damage by type
+if (args.stagger != null) G.stagger.frac = Number(args.stagger); // --stagger=0.3: share of max HP in physical damage that staggers (9 = off)
+if (args.breakHp != null) G.breakHp = Number(args.breakHp); // --breakHp=2.5: HP per point of drain an empty battery can't cover
 if (args.drainLoad != null) G.dtypeLoad.energy = Number(args.drainLoad);
 for (const [flag, k] of [['fxHeat', 'heat'], ['fxDrain', 'drain']]) if (args[flag] != null) for (const p of PARTS) if (typeof p.fx?.[k] === 'number') p.fx[k] = Math.round(p.fx[k] * Number(args[flag]));
 if (args.rx) CONFIG.risk.gearComp.rx = CONFIG.risk.gearComp.rx.map(() => Number(args.rx)); // --rx=1.4: one enemy heat / drain multiplier at every Risk
@@ -67,6 +70,8 @@ const LOADOUTS = {
   resMixed: ['fr_brawler', 'lg_strider', 'wp_blaster', 'wp_scatter', 'wp_rifle', 'wp_mortar', 'dr_hornet', 'md_physres', 'md_physres', 'md_heatres', 'md_heatres', 'md_elecres', 'md_elecres', 'md_plating', 'md_plating'],
   // ...and one damage type on offense (mixed defense), to see which guns carry and which get walled
   gunsHeat: ['fr_brawler', 'lg_strider', 'wp_flamer', 'wp_heatray', 'wp_scorcher', 'wp_napalm', 'dr_hornet', 'md_physres', 'md_physres', 'md_heatres', 'md_heatres', 'md_elecres', 'md_elecres', 'md_plating', 'md_plating'],
+  gunsPhys: ['fr_brawler', 'lg_strider', 'wp_gauss', 'wp_rifle', 'wp_missiles', 'wp_rocket', 'dr_hornet', 'md_physres', 'md_physres', 'md_heatres', 'md_heatres', 'md_elecres', 'md_elecres', 'md_plating', 'md_plating'],
+  newKit: ['fr_rampart', 'lg_strider', 'wp_piledriver', 'wp_arclash', 'wp_faultline', 'wp_stormcaller', 'dr_hornet', 'md_physres', 'md_physres', 'md_heatres', 'md_elecres', 'md_plating', 'md_plating'],
   gunsElec: ['fr_brawler', 'lg_strider', 'wp_emp', 'wp_beam', 'wp_ionizer', 'wp_arcmortar', 'dr_hornet', 'md_physres', 'md_physres', 'md_heatres', 'md_heatres', 'md_elecres', 'md_elecres', 'md_plating', 'md_plating'],
 };
 // --kit=file.json: a real loadout ([{ id, tier, level }], e.g. decoded from a save export) as gear "kit"
@@ -217,6 +222,12 @@ function upkeep(u) {
   u.jammed = !!u.jamNext;
   u.jamNext = false;
   for (const g of u.guns) g.used = false;
+  u.stagger = (u.stagger || 0) * (1 - G.stagger.decay);
+  if (u.staggered) {
+    u.staggered = false;
+    u.heat = Math.max(0, u.heat - u.cool);
+    return false;
+  }
   const over = u.heat > u.heatCap;
   u.heat = Math.max(0, u.heat - u.cool);
   return !over;

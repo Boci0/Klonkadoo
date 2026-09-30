@@ -66,7 +66,7 @@ const stompGun = (legs) => ({ ...STOMP_GUN, dtype: legs?.stompType || 'phys' });
 
 /** On-screen size by frame: heavier frames stand bigger on the lane. */
 const MECH_R = 32;
-const FRAME_SIZE = { fr_scout: 0.9, fr_phantom: 0.95, fr_conduit: 0.95, fr_brawler: 1, fr_furnace: 1.05, fr_titan: 1.1, fr_reclaimer: 1.15, fr_colossus: 1.2, fr_leviathan: 1.28 };
+const FRAME_SIZE = { fr_scout: 0.9, fr_phantom: 0.95, fr_conduit: 0.95, fr_brawler: 1, fr_furnace: 1.05, fr_titan: 1.1, fr_reclaimer: 1.15, fr_colossus: 1.2, fr_leviathan: 1.28, fr_kiln: 1.05, fr_capacitor: 0.95, fr_rampart: 1.25, fr_revenant: 1.15 };
 const GIANT_SCALE = 2.4; // the weekly raid boss (meta/Raid.js)
 export const mechRadius = (parts) => Math.round(MECH_R * (FRAME_SIZE[(parts || []).find((id) => FRAME_SIZE[id])] || 1));
 
@@ -571,6 +571,16 @@ export class Game {
     u.jammed = !!u.jamNext; // Blackout Cannon: guns jam for this turn
     u.jamNext = false;
     if (u.jammed) this._callout(u, 'GUNS JAMMED', DTYPES.energy.color);
+    u.stagger = (u.stagger || 0) * (1 - G.stagger.decay);
+    if (u.staggered) {
+      u.staggered = false;
+      u.actionsLeft = 0;
+      u.heat = Math.max(0, u.heat - u.cool);
+      this._callout(u, 'STAGGERED: TURN LOST', '#f4f4f4');
+      this.addHitStop(0.12);
+      soundEngine.playOverheat();
+      return false;
+    }
     const over = u.heat > u.heatCap;
     u.heat = Math.max(0, u.heat - u.cool);
     if (this.hazards.some((h) => h.type === 'fire' && h.pos === u.pos)) this._burnPlate(u);
@@ -582,6 +592,15 @@ export class Game {
     soundEngine.playOverheat();
     if (u === this.player) haptics.impact('heavy');
     return false;
+  }
+
+  /** STAGGER: physical damage fills a bar; when it passes a share of max HP the target loses its next turn. */
+  _stagger(target, dmg) {
+    target.stagger = (target.stagger || 0) + dmg;
+    if (target.stagger < target.maxHp * G.stagger.frac) return;
+    target.stagger = 0;
+    target.staggered = true;
+    this._callout(target, 'STAGGERED', '#f4f4f4');
   }
 
   /** An enemy's damage multiplier: the raid boss's enrage, times the Abyss's insanity. */
@@ -1226,6 +1245,7 @@ export class Game {
       if (!w.fx?.pierce) dmg *= 1 - Math.min(CONFIG.run.maxDefCap || 15, resistOf(target, type)) * CONFIG.damage.defensePerPoint;
       dmg = Math.max(1, Math.round(dmg)) + this._reactorFx(target, w, w.dmg ?? rawDmg, owner); // heat / drain from the base hit, not specialist bonuses
       const killed = target.takeDamage(dmg);
+      if (yours && !killed && type === 'phys' && !target.giant) this._stagger(target, dmg);
       if (w.fx?.burn) {
         target.burnTicks = Math.max(target.burnTicks || 0, w.fx.burn);
         target.burnDmg = Math.max(target.burnDmg || 0, 6 * G.hpScale);

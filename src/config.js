@@ -88,6 +88,9 @@ export const CONFIG = {
     // Damage types (Mech.DTYPES): Explosive hits add heat and Electric hits drain energy,
     // dtypeLoad x the hit (or the gun's own amount); drain past an empty battery comes off HP (breakHp)
     dtypeLoad: { heat: 0.2, energy: 0.1 }, // heat / drain per point of battle damage, by damage type
+    // STAGGER (Physical): your physical hits fill a bar on the target (their HP damage); past frac x its max HP the bar
+    // empties and the target loses its next turn, like an overheat. It bleeds off by decay every turn of its own; giants are immune.
+    stagger: { frac: 0.3, decay: 0.5 },
     breakHp: 1.5, // ENERGY BREAK: HP per point of drain the target's empty battery can't cover (Reloaded: about the drain itself)
     ramSpeed: 380, // impact speed (px/s) that counts as a ram
     shotGap: 0.45, // seconds between an enemy's actions, so you can follow them
@@ -245,8 +248,8 @@ export const CONFIG = {
     shardMinRisk: 10,
     // chance per kill and how many drop: Risk 10 a little lower than Risk XI
     shards: {
-      warden: { 10: 0.25, 11: 0.35, amount: [1, 1] },
-      prime: { 10: 0.6, 11: 0.75, amount: [1, 3] },
+      warden: { 10: 0.4, 11: 0.55, amount: [1, 1] },
+      prime: { 10: 0.8, 11: 1, amount: [2, 4] },
     },
     // Abyss enemies skip the Risk curve (gear compensation only), then x this: fitted in 2.6 so a maxed
     // team goes as deep as on 2.5.9 (tools/balance-sim.mjs --abyss=20 with a real kit, against the old numbers)

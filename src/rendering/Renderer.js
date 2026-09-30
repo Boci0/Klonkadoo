@@ -105,6 +105,10 @@ export class Renderer {
     this._view = null;
     this._bgCache = null;
     this._sprites = new Map();
+    // A long time in the background can blank the cached canvases: rebuild them on return
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) this._bgCache = null;
+    });
     this._floaters = []; // floating damage / heal numbers
     this._callouts = []; // short labels above balls (hits, status)
     this._ambient = []; // status-effect particles (flames, frost, acid)
@@ -1845,6 +1849,8 @@ export class Renderer {
       tags.push({ label: 'EXPOSED', color: '#ffcd75', desc: 'Rammed! Takes +25% gun damage until its next turn.' });
     if (ball.heatCap && ball.heat > ball.heatCap)
       tags.push({ label: 'OVERHEATED', color: '#ff5d73', desc: 'Over its heat cap: its next turn is lost while it cools (and the one after, if it is still over the cap).' });
+    if (ball.staggered)
+      tags.push({ label: 'STAGGERED', color: '#f4f4f4', desc: 'Battered by physical hits: its next turn is lost. Heavy physical damage fills a stagger bar; the bar bleeds off each turn.' });
     if (ball.jammed || ball.jamNext)
       tags.push({ label: 'JAMMED', color: DTYPES.energy.color, desc: `Drained to 0 energy: its guns can't fire ${ball.jammed ? 'this' : 'next'} turn (it can still move, stomp and vent).` });
     if (ball.coolLost)

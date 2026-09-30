@@ -106,6 +106,62 @@ const TORSOS = {
     '...kddddddddddddk...',
     '....kkkkkkkkkkkk....',
   ],
+  fr_kiln: [
+    '..kk...kkkkkk...kk..',
+    '.kmlk.khhhhhhk.kmlk.',
+    '.kmmkkhbbbbbbdkkmmk.',
+    '..kkhbbkkkkkkbbdkk..',
+    '...khbkvvvvvvkbdk...',
+    '...khbkvvvvvvkbdk...',
+    '...khbbkkkkkkbbdk...',
+    '..khbmkmkmkmkmkbdk..',
+    '..khbmkmkmkmkmkbdk..',
+    '...kbbbbbbbbbbbddk..',
+    '....kddddddddddddk..',
+    '.....kkkkkkkkkkkk...',
+  ],
+  fr_capacitor: [
+    '.......kkkkkkkk.......',
+    '..kk..khhhhhhhhk..kk..',
+    '.kllk.khbbbbbbdk.kllk.',
+    '.kmlk.khbkkkkbdk.klmk.',
+    '.kllk.khkvvvvkdk.kllk.',
+    '.kmlk.khkvvvvkdk.klmk.',
+    '.kllk.khbkkkkbdk.kllk.',
+    '.kmlk.khbbbbbbdk.klmk.',
+    '..kk..kbbbbbbbdk..kk..',
+    '.......kddddddk.......',
+    '........kkkkkk........',
+  ],
+  fr_rampart: [
+    '..kkkkkkkkkkkkkkkkkkkk..',
+    '.khhhhhhhhhhhhhhhhhhhhk.',
+    'khhbbbbbbbbbbbbbbbbbbddk',
+    'khbmmbbbbbbbbbbbbbbmmbdk',
+    'khbmmbbbbkkkkkkbbbbmmbdk',
+    'khbmmbbbkvvvvvvkbbbmmbdk',
+    'khbmmbbbkvvvvvvkbbbmmbdk',
+    'khbmmbbbbkkkkkkbbbbmmbdk',
+    'khbbbbbbbbbbbbbbbbbbbbdk',
+    'khbllbbbbbbbbbbbbbbllbdk',
+    '.kbbbbbbbbbbbbbbbbbbbddk',
+    '..kddddddddddddddddddk..',
+    '...kkkkkkkkkkkkkkkkkk...',
+  ],
+  fr_revenant: [
+    '.k....kkkkkkkkkkkk....k.',
+    '.kk..kkhhhhhhhhhhkk..kk.',
+    '.khkkhbbbbbbbbbbbbdkkhk.',
+    '..khbbbbbbbbbbbbbbbbdk..',
+    '.khbbbbbkkkkkkkkbbbbbdk.',
+    '.khbbbbkvvvvvvvvkbbbbdk.',
+    '.khbbbbkvvvvvvvvkbbbbdk.',
+    '.khbbbbbkkkkkkkkbbbbbdk.',
+    '.khbbmmbbbbbbbbbbmmbbdk.',
+    '..kbbbbbbbbbbbbbbbbbdk..',
+    '...kddddddddddddddddk...',
+    '....kkkkkkkkkkkkkkkk....',
+  ],
   fr_conduit: [
     '......kkkkkkkk......',
     '.....khhhhhhhhk.....',
@@ -382,6 +438,11 @@ function paintArmor(g, armorId, w, h, flash) {
 }
 
 const cache = new Map();
+
+/** Drop the cached canvases (the browser may blank them after a long time in the background). */
+export function clearMechSpriteCache() {
+  cache.clear();
+}
 
 /** The frame / armor a ball carries (parts list from Mech.withMech / enemyMech). */
 export function mechLook(ball) {

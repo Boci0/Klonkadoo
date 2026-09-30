@@ -163,6 +163,14 @@ function apply(s, a) {
     dmg = soak(foe, dmg);
     foe.hp -= dmg;
     s.dealt += dmg;
+    // STAGGER (Game._stagger): your physical hits fill a bar; past a share of max HP it loses its next turn
+    if (me.team === 'player' && g.dtype === 'phys' && foe.hp > 0 && dmg > 0) {
+      foe.stagger = (foe.stagger || 0) + dmg;
+      if (foe.stagger >= foe.maxHp * CONFIG.gear.stagger.frac) {
+        foe.stagger = 0;
+        foe.staggered = true;
+      }
+    }
     if (g.freeze) foe.frozen = true;
     for (const [t, n] of Object.entries(g.resDrain || {})) foe.res[t] = (foe.res[t] || 0) - n;
     if (g.push || g.pull) {
@@ -290,7 +298,7 @@ function sequences(s, prefix = [], out = []) {
  * Returns 0 if it would start over its heat cap (turn lost).
  */
 function threat(u, target, size) {
-  if (u.heat > u.heatCap || u.jamNext) return 0; // overheated or jammed: no shots next turn
+  if (u.heat > u.heatCap || u.jamNext || u.staggered) return 0; // overheated or jammed: no shots next turn
   const v = clone(u);
   v.energy = Math.min(v.energyMax, v.energy + v.regen);
   v.heat = Math.max(0, v.heat - v.cool);
