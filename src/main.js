@@ -26,7 +26,7 @@ import { checkMedals } from './meta/Medals.js';
 import './platform/native.js';
 import './platform/desktop.js';
 import { withMech, tokenReward, riskEase, gearComp, enemyTier, CRATES, enemyMech, enemyRig, pickEnemyElement, elementLean, roleElements, riskShred, CLEAN_WIN_KEYS, DTYPES, dtypeOf, droneUpkeep } from './meta/Mech.js';
-import { partIcon, ico } from './rendering/pixelIcons.js';
+import { partIcon, ico, resetSpriteCaches } from './rendering/pixelIcons.js';
 import { pickNode, pickChoice, pickBuys, supplyValue } from './rogue/AutoRun.js';
 import { withMastery, masteryLevel, runXp } from './meta/Mastery.js';
 import { writeRun, readRun, clearRun, hasSavedRun, savedRunInfo, patchRunQuests } from './rogue/RunSave.js';
@@ -2247,6 +2247,14 @@ const ENCOUNTERS = ENCOUNTERS_RAW.map((e) => ({
 // ---------- Main loop ----------
 
 let lastTime = performance.now();
+
+// Back after a long time away: the browser may have dropped cached canvases, so redraw them
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    resetSpriteCaches();
+    lastTime = performance.now();
+  }
+});
 
 function loop(now) {
   const dt = Math.min((now - lastTime) / 1000, 0.1);

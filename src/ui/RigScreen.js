@@ -18,12 +18,20 @@ import { drawEffect } from '../rendering/fxDraw.js';
 import { EFFECTS } from '../meta/Raid.js';
 import { partIcon, partCanvas, ico, uiIcon, iconSize } from '../rendering/pixelIcons.js';
 import { CONFIG } from '../config.js';
+import { masteryLevel, masteryStats } from '../meta/Mastery.js';
 import {
   SLOTS, PARTS, CRATES, getPart, TYPE_LABEL, rarityColor, rarityName,
   upgradeCost, salvageValue, loadoutTotals, INVENTORY_CAP, slotAccepts, maxLevel, tierOf, transformInfo,
   PACK_SIZE, packCost,
 } from '../meta/Mech.js';
 import { partCardHtml, statBarHtml, bindHoverTips, hideTip, iconKeyHtml } from './partCard.js';
+
+/** Loadout totals plus the pilot's mastery (what withMastery adds in battle), so the Rig shows what a run will really have. */
+function pilotTotals(parts) {
+  const t = loadoutTotals(parts);
+  const m = masteryStats(masteryLevel(saveSystem.getMasteryXp(OPERATOR.id)).level);
+  return { ...t, hp: t.hp + m.hpBonus, def: t.def + m.defBonus, atkPct: t.atkPct + m.atkBonus, crit: t.crit + m.critChance };
+}
 
 const RANK = { common: 0, rare: 1, epic: 2, legendary: 3, mythic: 4, ascended: 5 };
 // Tile background by damage type (guns and drones that deal one), so a part reads at a glance
@@ -98,7 +106,7 @@ export class RigScreen {
   _renderLoadout() {
     const m = saveSystem.getMech();
     const parts = saveSystem.getLoadoutParts();
-    const t = loadoutTotals(parts);
+    const t = pilotTotals(parts);
     const bySlot = Object.fromEntries(SLOTS.map((s, i) => [s.id, parts[i]]));
 
     const tile = (slotId, cls = '') => {
@@ -168,7 +176,7 @@ export class RigScreen {
     const next = { ...bySlot };
     for (const k of Object.keys(next)) if (next[k]?.uid === uid) next[k] = null;
     next[this.slot] = saveSystem.getOwnedPart(uid);
-    return loadoutTotals(SLOTS.map((s) => next[s.id]));
+    return pilotTotals(SLOTS.map((s) => next[s.id]));
   }
 
   _renderStats(bySlot, t) {
@@ -373,6 +381,10 @@ export class RigScreen {
     const p = getPart(owned.id);
     const pool = saveSystem.transformPool(owned.uid);
     const picked = new Set(pool.slice(0, tf.parts).map((o) => o.uid));
+    // Pages, not scrolling: a big spare pile would push the buttons off screen
+    const PAGE = 33;
+    const pages = Math.max(1, Math.ceil(pool.length / PAGE));
+    let page = 0;
     const box = document.createElement('div');
     box.className = 'rig-key';
     this.body.appendChild(box);
@@ -386,9 +398,16 @@ export class RigScreen {
             <span class="tf-part"><img src="${partIcon(p.id)}" alt=""><i class="tdot" style="--c:${rarityColor(tf.to)}"></i> ${rarityName(tf.to)} LV 1</span>
           </div>
           <p class="rig-note">Pick ${tf.parts} spare ${rarityName(tierOf(owned))} parts to melt <b class="tf-count ${ok ? 'ok' : ''}">${picked.size}/${tf.parts}</b> · ${ico('scrap')}${tf.scrap}</p>
-          <div class="tf-fodder">${pool.map((o) => `<button class="rig-item ${picked.has(o.uid) ? 'picked' : ''}" data-pick="${o.uid}" data-tip-uid="${o.uid}" style="--rar:${rarityColor(tierOf(o))}"><img src="${partIcon(o.id)}" alt=""><i class="rig-lv">${o.level}</i>${picked.has(o.uid) ? '<i class="rig-badge here">&#10003;</i>' : ''}</button>`).join('')}</div>
+          <div class="tf-fodder">${pool.slice(page * PAGE, (page + 1) * PAGE).map((o) => `<button class="rig-item ${picked.has(o.uid) ? 'picked' : ''}" data-pick="${o.uid}" data-tip-uid="${o.uid}" style="--rar:${rarityColor(tierOf(o))}"><img src="${partIcon(o.id)}" alt=""><i class="rig-lv">${o.level}</i>${picked.has(o.uid) ? '<i class="rig-badge here">&#10003;</i>' : ''}</button>`).join('')}</div>
+          ${pages > 1 ? `<div class="tf-pager"><button class="btn btn-outline" data-page="-1" ${page === 0 ? 'disabled' : ''}>&#9664;</button><span>${page + 1}/${pages} · ${pool.length} spares</span><button class="btn btn-outline" data-page="1" ${page >= pages - 1 ? 'disabled' : ''}>&#9654;</button></div>` : ''}
           <div class="rig-actions"><button class="btn btn-outline" data-act="no">CANCEL</button><button class="btn ${ok ? 'btn-accent' : 'btn-disabled'}" data-act="yes" ${ok ? '' : 'disabled'}>&#9650; TRANSFORM</button></div>
         </div>`;
+      box.querySelectorAll('[data-page]').forEach((b) => b.addEventListener('click', () => {
+        page = Math.min(pages - 1, Math.max(0, page + Number(b.dataset.page)));
+        soundEngine.playUI();
+        hideTip();
+        draw();
+      }));
       box.querySelectorAll('[data-pick]').forEach((el) => el.addEventListener('click', () => {
         const uid = el.dataset.pick;
         if (picked.has(uid)) picked.delete(uid);

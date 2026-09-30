@@ -4813,6 +4813,8 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 .tf-row { display: flex; align-items: center; justify-content: center; gap: 14px; font-size: 12px; color: var(--p-silver); }
 .tf-part { display: inline-flex; align-items: center; gap: 6px; }
 .tf-part img { width: 40px; image-rendering: pixelated; }
+.tf-pager { display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 12px; color: var(--p-silver); }
+.tf-pager .btn { min-height: 28px; padding: 4px 12px calc(4px + var(--px)); }
 .tf-fodder { display: flex; flex-wrap: wrap; gap: 5px; }
 .tf-fodder .rig-item { width: 48px; height: 48px; }
 

@@ -14,7 +14,7 @@
 // ============================================================
 
 import { getPart, rarityColor } from '../meta/Mech.js';
-import { torsoCanvas, legsCanvas } from './mechSprite.js';
+import { torsoCanvas, legsCanvas, clearMechSpriteCache } from './mechSprite.js';
 
 const PAL = {
   k: '#1a1c2c', w: '#f4f4f4', y: '#ffcd75', o: '#ef7d57', r: '#b13e53', R: '#ff5d73',
@@ -1917,6 +1917,12 @@ const PLATING = new Set(['md_plating', 'md_heavyplate', 'md_composite', 'md_insu
 
 const canvasCache = new Map();
 const urlCache = new Map();
+
+/** Rebuild every cached sprite/icon canvas on next use (they can go blank after a long background). */
+export function resetSpriteCaches() {
+  canvasCache.clear();
+  clearMechSpriteCache();
+}
 
 /** Canvas with a part's icon (for drawing into other canvases). */
 export function partCanvas(id, colorOverride) {
