@@ -1881,6 +1881,12 @@ export class Game {
       soundEngine.play('lose');
       return this._endBattle();
     }
+    if (!this.activeEnemy && this.enemyReserve.length) {
+      // Knocked out: the next enemy drops in on the same position right now, so what's left of your turn has a target
+      this.waitTimer = Math.max(this.waitTimer || 0, 0.5);
+      this._intent = null; // INTENT: a different enemy, forecast it again
+      return this._dropIn();
+    }
     if (this.allEnemiesDead) {
       this.winner = 'player';
       soundEngine.playVictory();
