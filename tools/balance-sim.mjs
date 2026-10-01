@@ -13,7 +13,7 @@
 // ============================================================
 
 import { CONFIG } from '../src/config.js';
-import { planTurn, applyAction } from '../src/ai/LaneAI.js';
+import { planTurn, planDeep, applyAction, TUNE } from '../src/ai/LaneAI.js';
 import { boonFx, getBoon, draftBoons, pickBoon } from '../src/rogue/Boons.js';
 import { flatResist, PARTS, gearComp, enemyMech, enemyRig, enemyTier, pickEnemyElement, elementLean, roleElements, riskShred, withMech, getPart, legsRules, riskEase, tierRange, maxLevel, RARITY_ORDER, ELEMENT_DMG, GUN_TYPE_DMG } from '../src/meta/Mech.js';
 import { withMastery } from '../src/meta/Mastery.js';
@@ -50,6 +50,10 @@ if (args.rx) CONFIG.risk.gearComp.rx = CONFIG.risk.gearComp.rx.map(() => Number(
 // --elemDmg=phys:1.3,energy:0.6 : enemy damage by type (Mech.ELEMENT_DMG)
 if (args.elemDmg) for (const kv of args.elemDmg.split(',')) { const [k, v] = kv.split(':'); ELEMENT_DMG[k] = Number(v); }
 const SIZE = CONFIG.lane?.size || 12;
+// AUTO variants (the player's side only; enemies keep the shipped planner):
+// --spec=0.2 (special cost x), --reply=1.5 (fear of the enemy's answer x), --deep=4 (look at the enemy's real reply for the top N lines)
+const DEEP = Number(args.deep || 0);
+const PLAYER_TUNE = { spec: Number(args.spec ?? 1), reply: Number(args.reply ?? 1) };
 
 // ---------- Loadouts ----------
 const LOADOUTS = {
@@ -264,13 +268,18 @@ function drones(me, foe, turn, heal) {
   if (me.hp > 0) me.energy = Math.min(me.energyMax, me.energy + me.regen);
 }
 
+const deepPlan = (s, stall) => planDeep(s, { stall, top: DEEP });
+
 /** Plays one side's turn with the planner, one action at a time (it re-plans after each, like Game). */
 function playTurn(me, foe, mines, difficulty, rnd) {
   const hp0 = foe.hp;
   me.idle = (me.idle || 0) + 1;
   for (let guard = 0; guard < 8 && me.actions > 0 && me.hp > 0 && foe.hp > 0; guard++) {
     const s = { size: SIZE, me, foe, mines, stompHeat: G.stompHeat };
-    const plan = planTurn(s, { difficulty, rnd, stall: me.idle || 0 });
+    const mine = me.team === 'player';
+    if (mine) Object.assign(TUNE, PLAYER_TUNE);
+    const plan = mine && DEEP ? deepPlan(s, me.idle || 0) : planTurn(s, { difficulty, rnd, stall: me.idle || 0 });
+    Object.assign(TUNE, { spec: 1, reply: 1 });
     const a = plan[0] || { type: 'end' };
     const st = { size: SIZE, me, foe, mines, stompHeat: G.stompHeat, dealt: 0 };
     if (!applyAction(st, a)) break;

@@ -23,7 +23,7 @@ import { Ball } from '../entities/Ball.js';
 import { CollisionSystem } from '../systems/CollisionSystem.js';
 import { TurnSystem, TurnPhase } from '../systems/TurnSystem.js';
 import { Renderer } from '../rendering/Renderer.js';
-import { planTurn, applyAction } from '../ai/LaneAI.js';
+import { planTurn, planDeep, applyAction } from '../ai/LaneAI.js';
 import { soundEngine } from '../utils/SoundEngine.js';
 import { saveSystem } from '../meta/SaveSystem.js';
 import { haptics } from '../platform/haptics.js';
@@ -1738,8 +1738,8 @@ export class Game {
   }
 
   /**
-   * AUTO: the same planner the enemies use plays your turn, always taking
-   * its best line. Docked drones launch first (while there's energy to run
+   * AUTO: the enemies' planner plays your turn, but looks a turn further: the top
+   * lines are each followed by the enemy's real answer and your next turn. Docked drones launch first (while there's energy to run
    * them). One action at a time; it re-plans after each.
    */
   _autoAct() {
@@ -1749,7 +1749,7 @@ export class Game {
     if (!e) return this.endPlayerTurn(); // the next enemy drops in on their turn
     const docked = (this.playerDrones || []).findIndex((d) => d.off && p.energy >= droneUpkeep(d).en * 2);
     if (docked >= 0 && this.toggleDrone(docked).ok) return;
-    const plan = planTurn(
+    const plan = planDeep(
       {
         size: L.size,
         me: this._aiUnit(p, this.playerWeapons || []),
@@ -1757,7 +1757,7 @@ export class Game {
         mines: this.hazards.filter((h) => h.type === 'mine').map((h) => ({ pos: h.pos, owner: h.owner, dmg: h.dmg })),
         stompHeat: G.stompHeat,
       },
-      { difficulty: 1, aggression: this.aggression, stall: p.idleTurns || 0 },
+      { aggression: this.aggression, stall: p.idleTurns || 0 },
     );
     const a = plan[0] || { type: 'end' };
     let ok = false;

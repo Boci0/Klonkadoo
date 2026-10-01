@@ -20,6 +20,9 @@
 import { CONFIG } from '../config.js';
 import { flatResist } from '../meta/Mech.js';
 
+/** Multipliers on the scoring weights (default 1 = as tuned). Only tools/balance-sim.mjs changes them, to test AUTO variants. */
+export const TUNE = { spec: 1, reply: 1 };
+
 const clone = (u) => ({ ...u, res: { ...u.res }, guns: u.guns.map((g) => ({ ...g })), specials: (u.specials || []).map((x) => ({ ...x })) });
 
 /** A hit on `foe` after its SHIELD bubble soaks what it can. */
@@ -377,7 +380,7 @@ function score(start, end, aggression, stall = 0) {
   let s = end.dealt * 1.2;
   // Their answer next turn (shorter if they start it over their heat cap)
   const reply = Math.max(0, threat(foe, me, end.size) - (me.bubble || 0)); // a SHIELD soaks their answer
-  s -= reply * (0.5 - 0.3 * aggression) * (1 - 0.8 * commit);
+  s -= reply * (0.5 - 0.3 * aggression) * (1 - 0.8 * commit) * TUNE.reply;
   s += heatLoss(foe) * 6 * U; // each action they'll spend on a forced cooldown
   // Our own next turn (our battery refills as this turn ends). What heat takes from it counts in full:
   // a forced cooldown costs an action, a shutdown the whole turn
@@ -406,7 +409,7 @@ function score(start, end, aggression, stall = 0) {
   // Energy for next turn matters a little; wasted steps cost a little
   s += Math.min(me.energy, me.energyMax) * 0.02 * (U / CONFIG.gear.rxScale);
   s -= (end.moves || 0) * 1.5 * U;
-  s -= (end.specialsUsed || 0) * 4 * U * (1 - commit); // uses are limited: spend them when they matter (or when stuck)
+  s -= (end.specialsUsed || 0) * 4 * U * (1 - commit) * TUNE.spec; // uses are limited: spend them when they matter (or when stuck)
   return s;
 }
 
@@ -417,6 +420,65 @@ function score(start, end, aggression, stall = 0) {
  * [{ dmg, burst, en, heat, reach, ammo, ammoLeft, used, dtype, pierce,
  * heatFx, drain, push, pull, freeze, mine }] }. Returns the action list.
  */
+export function planLines(state, { aggression = 0, stall = 0 } = {}) {
+  const start = { ...cloneState(state), dealt: 0 };
+  return sequences(start).map((l) => ({ ...l, score: score(start, l.state, aggression, stall) })).sort((a, b) => b.score - a.score);
+}
+
+/** The start of a mech's next turn on a snapshot (Game._upkeep): fresh actions and guns, then heat's toll. False = shutdown, the turn is lost. */
+function upkeepSnap(u) {
+  u.actions = u.maxActions;
+  u.freeUsed = false;
+  u.stomped = false;
+  u.bubble = 0;
+  for (const g of u.guns) g.used = false;
+  u.lockNow = u.heatLock || 0;
+  u.heatLock = 0;
+  if (!(u.heat > u.heatCap)) return true;
+  const cool = Math.round(u.cool * (1 - u.lockNow));
+  const shut = u.heat - u.heatCap > cool;
+  u.heat = Math.max(0, u.heat - cool * (shut ? 2 : 1));
+  if (shut) return false;
+  u.actions = 1;
+  return true;
+}
+
+/** `me`'s whole turn against `foe` (snapshots, changed in place), one best action at a time like the game. */
+function playOut(me, foe, state) {
+  for (let g = 0; g < 8 && me.actions > 0 && me.hp > 0 && foe.hp > 0; g++) {
+    const a = planTurn({ ...state, me, foe }, { difficulty: 1, rnd: () => 0 })[0] || { type: 'end' };
+    if (a.type === 'end' || !apply({ ...state, me, foe, dealt: 0 }, a)) break;
+  }
+}
+
+/**
+ * AUTO's planner: the best few lines of this turn, each followed by the enemy's
+ * real answer and our own next turn, and the line with the best total wins
+ * (balance-sim: ~3x the clears at Risk X over the one-turn planTurn).
+ */
+export function planDeep(state, { aggression = 0, stall = 0, top = 4 } = {}) {
+  const lines = planLines(state, { aggression, stall });
+  if (!lines.length) return [{ type: 'end' }];
+  if (lines[0].score >= 10000) return lines[0].seq;
+  let best = null;
+  for (const l of lines.slice(0, top)) {
+    const m = clone(l.state.me);
+    const f = clone(l.state.foe);
+    m.energy = Math.min(m.energyMax, m.energy + m.regen); // our battery refills as this turn ends
+    const rest = { size: state.size, mines: l.state.mines, stompHeat: state.stompHeat };
+    const hp0 = m.hp;
+    if (upkeepSnap(f)) playOut(f, m, rest);
+    let v = (state.foe.hp - f.hp) - (hp0 - m.hp);
+    if (m.hp <= 0) v = -1e6;
+    else if (upkeepSnap(m)) {
+      const next = planLines({ ...rest, me: m, foe: f }, {})[0];
+      if (next) v += next.state.dealt * 0.8 + (next.state.foe.hp <= 0 ? 1e4 : 0);
+    }
+    if (!best || v > best.v) best = { v, seq: l.seq };
+  }
+  return best.seq;
+}
+
 export function planTurn(state, { difficulty = 0.5, aggression = 0, rnd = Math.random, stall = 0 } = {}) {
   const start = { ...cloneState(state), dealt: 0 };
   const lines = sequences(start).map((l) => ({ ...l, score: score(start, l.state, aggression, stall) }));
