@@ -16,6 +16,7 @@ import { Minigame } from './minigame/Minigame.js';
 import { UIManager } from './ui/UIManager.js';
 import { BattleTips } from './ui/battleTips.js';
 import { rollSupplies, grantSupply, getSupply } from './rogue/Supplies.js';
+import { draftBoons, getBoon, pickBoon } from './rogue/Boons.js';
 import { pickArena } from './core/Arenas.js';
 import { OPERATOR, skinColors } from './meta/Balls.js';
 import { MenuBackground } from './rendering/MenuBackground.js';
@@ -54,7 +55,7 @@ let map = null;
 let questSystem = null;
 let runSeed = 1;
 let currentFloorView = 0;
-let pendingBoon = null;
+let pendingDraft = null; // boons offered after the last win (pick one)
 let lostAnyCombat = false;
 let activeNode = null; // node currently being resolved
 let battleNode = null; // the node of the fight on screen (bosses a floor forces on you too)
@@ -541,7 +542,13 @@ function autoModal() {
   // The sector-clear / Abyss screen: always DESCEND (dying down there still counts as a win, and shards wait deeper)
   const down = ui.modalActions.querySelector('[data-act="descend"]');
   if (down) return down.click();
-  // Anything else (a boon, a result card, a notice): take its main button
+  // A boon draft: the pick that fits the team's guns
+  const picks = [...ui.modalBody.querySelectorAll('[data-pick]')];
+  if (picks.length && ui.modalTitle.textContent === 'BOON DRAFT') {
+    const id = pickBoon(picks.map((b) => b.dataset.pick), run);
+    return picks.find((b) => b.dataset.pick === id)?.click();
+  }
+  // Anything else (a result card, a notice): take its main button
   const btn = ui.modalActions.querySelector('.btn-primary:not(:disabled), .btn-accent:not(:disabled)') || ui.modalActions.querySelector('button:not(:disabled)');
   btn?.click();
 }
@@ -760,7 +767,7 @@ function startNewRun(skin = 'default') {
   questSystem = new QuestSystem(saveSystem, runSeed);
   run.questSystem = questSystem; // the Status drawer lists these
   currentFloorView = 0;
-  pendingBoon = null;
+  pendingDraft = null;
   lostAnyCombat = false;
   activeNode = null;
   prevPosition = null;
@@ -827,7 +834,7 @@ function resumeSavedRun() {
   run.questSystem = questSystem;
   saveSystem.setSelectedBall(run.ballType);
   saveSystem.setDifficultyLevel(run.risk || 0, run.ballType);
-  pendingBoon = null;
+  pendingDraft = null;
   activeNode = null;
   prevPosition = null;
   mapRenderer?.resetZoom?.();
@@ -848,7 +855,9 @@ function resumeSavedRun() {
       startCombat(s.node);
       return;
     case 'combat':
-      pendingBoon = CONFIG.boons.find((b) => b.id === s.pendingBoonId) || null;
+      // (saves from before the draft hold one boon id)
+      pendingDraft = (s.pendingBoonIds || (s.pendingBoonId ? [s.pendingBoonId] : [])).map(getBoon).filter(Boolean);
+      if (!pendingDraft.length) pendingDraft = null;
       continueAfterCombatReport();
       return;
     case 'minigame':
@@ -1335,6 +1344,7 @@ function startCombat(node) {
     floor: run.floor + 1,
     walkBonus: run.walkBonus,
     reachBonus: run.reachBonus,
+    boons: [...run.boons], // battle effects (Boons.boonFx)
     condition: run.condition,
     // Abyss floors: enemies go insane (+1% damage every turn, -1% max HP every turn)
     insanity: run.floor >= CONFIG.map.floors ? CONFIG.abyss.insanity : null,
@@ -1559,7 +1569,7 @@ function onBattleEnd(won, node) {
   }
 
   const damageTaken = game.battleStats.playerDamageTaken;
-  pendingBoon = null;
+  pendingDraft = null;
 
   // Write battle HP back into the run (roguelike persistence): every team
   // mech keeps its own, and a knocked-out one stays down until a Safe Zone
@@ -1629,23 +1639,20 @@ function onBattleEnd(won, node) {
       run.earnKeys(tokens);
     }
 
-    // Chance for a boon drop on combat wins only
-    pendingBoon = rollBoon(node.type);
-    if (pendingBoon) {
-      addFeedEntry(`<span class="feed-boon">BOON DROP: ${pendingBoon.name}</span>`);
-    }
+    // Elite and miniboss wins (and some normal ones) offer a pick of 3 boons
+    pendingDraft = rollDraft(node.type);
 
     ui.updateRunHud(run);
     // Final boss (or an Abyss keeper): let the VICTORY splash land, then the descend choice
     if (node.type === 'boss' || (node.type === 'miniboss' && run.floor >= CONFIG.map.floors)) {
       run.floor5BossCleared = true;
-      pendingBoon = null;
+      pendingDraft = null;
       persistRun('sector');
       setTimeout(() => sectorCleared(), 1400);
       return;
     }
     // Rewards are paid: a reload must continue from here, not replay the fight
-    persistRun('combat', { pendingBoonId: pendingBoon?.id });
+    persistRun('combat', { pendingBoonIds: pendingDraft?.map((b) => b.id) });
     // Let the finishing blow and the VICTORY splash land, then the report
     const rewardsWon = { gold, scrap, heal, tokens, clean };
     setTimeout(() => ui.showCombatResult(true, rewardsWon, run, battleReport(node, damageTaken)), 900);
@@ -1698,10 +1705,10 @@ function continueAfterCombatReport() {
   run.spendFloorAction();
   ui.updateRunHud(run);
 
-  if (pendingBoon) {
-    const boon = pendingBoon;
-    pendingBoon = null;
-    ui.showBoon(boon);
+  if (pendingDraft) {
+    const offer = pendingDraft;
+    pendingDraft = null;
+    ui.showBoonDraft(offer);
     return;
   }
 
@@ -1710,12 +1717,14 @@ function continueAfterCombatReport() {
   }
 }
 
-function rollBoon(nodeType) {
-  const chance = nodeType === 'boss' ? 0.6 : nodeType === 'elite' ? 0.35 : 0.18;
-  if (Math.random() > chance) return null;
-  const available = CONFIG.boons.filter((b) => !run.boons.includes(b.id));
-  if (available.length === 0) return null;
-  return available[Math.floor(Math.random() * available.length)];
+/** A boon draft after a win: one per floor (the first elite or miniboss, or a lucky normal win). */
+function rollDraft(nodeType) {
+  if (run.draftFloor === run.floor) return null;
+  const chance = CONFIG.run.boonDraftChance?.[nodeType] ?? 0;
+  if (Math.random() >= chance) return null;
+  run.draftFloor = run.floor;
+  const offer = draftBoons(run, 3);
+  return offer.length ? offer : null;
 }
 
 // ---------- Encounter ----------

@@ -28,11 +28,23 @@ function soak(foe, dmg) {
   foe.bubble = (foe.bubble || 0) - s;
   return dmg - s;
 }
+/**
+ * SLAMMED (Game._shove): a knockback that runs into the lane's edge or the
+ * other mech does flat damage. Only when the state asks for it (`slam`: the
+ * damage before defenses): Game's INTENT forecast counts it, the planner's own
+ * choices don't (its play stays as tuned).
+ */
+function slam(s, foe) {
+  if (!s.slam || foe.hp <= 0) return;
+  const dmg = soak(foe, hitDamage({ dmg: s.slam, burst: 1, dtype: 'phys' }, foe));
+  foe.hp -= dmg;
+  s.dealt += dmg;
+}
 const cloneState = (s) => ({ ...s, me: clone(s.me), foe: clone(s.foe), mines: s.mines.map((m) => ({ ...m })) });
 
-/** HP damage one gun hit would do to `target` (burst included), before crits. */
-function hitDamage(g, target) {
-  const resist = g.pierce ? 0 : Math.min(DEF_CAP, (target.def || 0) + (target.res?.[g.dtype] || 0));
+/** HP damage one gun hit would do to `target` (burst included), before crits. `apCut`: share of resist left (AP Rounds). */
+function hitDamage(g, target, apCut = 1) {
+  const resist = g.pierce ? 0 : Math.min(DEF_CAP, ((target.def || 0) + (target.res?.[g.dtype] || 0)) * apCut);
   return Math.max(0.1, g.dmg * g.burst * (1 - resist * DEF_PER_POINT)); // fractional, like the game
 }
 
@@ -142,20 +154,36 @@ function apply(s, a) {
       shot = { ...shot, dmg: shot.dmg + (Math.max(0, me.energy) / 2) * g.dumpScale };
       me.energy = 0;
     }
-    let dmg = hitDamage(shot, foe) * (me.enrage || 1); // raid boss enrage (Game._weaponHit)
+    // Run boons on your hits (Game._boonDmgMult, _weaponHit, _reactorFx)
+    const b = me.bfx || {};
+    let boost = 1;
+    if (b.closeDmg && Math.abs(me.pos - foe.pos) <= 2) boost += b.closeDmg;
+    if (b.lowHpDmg && foe.hp < (foe.maxHp || foe.hp) * 0.3) boost += b.lowHpDmg;
+    let dmg = hitDamage(shot, foe, g.dtype === 'phys' ? 1 - (b.physPierce || 0) : 1) * (me.enrage || 1) * boost; // raid boss enrage (Game._weaponHit)
     // Resists cut heat and drain too (Game._reactorKeep)
     const keep = (type) => 1 - Math.min(DEF_CAP, (foe.def || 0) + (foe.res?.[type] || 0)) * DEF_PER_POINT;
-    if ((g.dtype === 'heat' || g.heatFx) && !g.meltdown) foe.heat += Math.round((g.heatFx ?? g.dmg * CONFIG.gear.dtypeLoad.heat * (g.load || 1)) * keep('heat'));
+    if ((g.dtype === 'heat' || g.heatFx) && !g.meltdown) {
+      foe.heat += Math.round((g.heatFx ?? g.dmg * CONFIG.gear.dtypeLoad.heat * (g.load || 1)) * keep('heat') * (1 + (b.heatOut || 0)));
+      if (b.heatLock) foe.heatLock = b.heatLock; // Thermal Lock (Game._upkeep)
+      if (b.capCut && !foe.capCut) {
+        foe.capCut = true; // Flashpoint (Game._reactorFx)
+        foe.heatCap = Math.round(foe.heatCap * (1 - b.capCut));
+      }
+    }
     if (g.dtype === 'energy' || g.drain) {
-      const want = Math.round((g.drain ?? g.dmg * CONFIG.gear.dtypeLoad.energy * (g.load || 1)) * keep('energy'));
+      const want = Math.round((g.drain ?? g.dmg * CONFIG.gear.dtypeLoad.energy * (g.load || 1)) * keep('energy') * (1 + (b.drainOut || 0)));
       const took = Math.min(foe.energy, want);
       foe.energy -= took;
       dmg += (want - took) * CONFIG.gear.breakHp; // energy break
       if (g.steal) me.energy = Math.min(me.energyMax, me.energy + took);
+      if (b.siphon) me.energy = Math.min(me.energyMax, me.energy + Math.round(took * b.siphon));
     }
     if (g.coolDmg) foe.cool = Math.max(2 * CONFIG.gear.rxScale, foe.cool - g.coolDmg);
     if (g.regenDmg) foe.regen = Math.max(3 * CONFIG.gear.rxScale, foe.regen - g.regenDmg);
-    if ((g.jam || (CONFIG.gear.blackoutAll && (g.dtype === 'energy' || g.drain))) && foe.energy <= 0) foe.jamNext = true;
+    if ((g.jam || (CONFIG.gear.blackoutAll && (g.dtype === 'energy' || g.drain))) && foe.energy <= 0) {
+      foe.jamNext = true;
+      if (b.regenLock) foe.noRegen = true; // Short Circuit (Game._upkeep)
+    }
     if (foe.shield) {
       foe.shield = false; // forcefield eats the hit
       dmg = 0;
@@ -165,7 +193,7 @@ function apply(s, a) {
     s.dealt += dmg;
     // STAGGER (Game._stagger): your physical hits fill a bar; past a share of max HP it loses its next turn
     if (me.team === 'player' && g.dtype === 'phys' && foe.hp > 0 && dmg > 0) {
-      foe.stagger = (foe.stagger || 0) + dmg;
+      foe.stagger = (foe.stagger || 0) + dmg * (1 + (b.staggerMult || 0));
       if (foe.stagger >= foe.maxHp * CONFIG.gear.stagger.frac) {
         foe.stagger = 0;
         foe.staggered = true;
@@ -177,12 +205,18 @@ function apply(s, a) {
       const dir = Math.sign(foe.pos - me.pos) || 1;
       const step = g.push ? dir : -dir;
       let to = foe.pos;
+      let blocked = false;
       for (let i = 0; i < (g.push || g.pull); i++) {
         const next = to + step;
-        if (next < 1 || next > s.size || next === me.pos) break;
+        if (next < 1 || next > s.size || next === me.pos) {
+          blocked = true;
+          break;
+        }
         to = next;
       }
-      foe.pos = slide(s, foe, to, true);
+      const end = slide(s, foe, to, true);
+      foe.pos = end;
+      if (blocked && g.push && end === to) slam(s, foe); // (a mine stop isn't a wall)
     }
     if (g.drag) {
       const next = me.pos + (Math.sign(foe.pos - me.pos) || 1);
@@ -223,6 +257,7 @@ function apply(s, a) {
         s.dealt += dmg;
         const next = foe.pos + dir;
         if (next >= 1 && next <= s.size) foe.pos = slide(s, foe, next, true); // rammed back
+        else slam(s, foe);
       }
     } else if (sp.kind === 'teleport') me.pos = a.pos;
     else if (sp.kind === 'shield') me.bubble = sp.absorb;
@@ -241,6 +276,7 @@ function apply(s, a) {
     s.dealt += dmg;
     const next = foe.pos + (Math.sign(foe.pos - me.pos) || 1);
     if (next >= 1 && next <= s.size) foe.pos = slide(s, foe, next, true); // stomped back
+    else slam(s, foe);
     return true;
   }
   if (a.type === 'vent') {

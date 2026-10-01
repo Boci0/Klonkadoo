@@ -271,6 +271,7 @@ export class Renderer {
     this._gearZones = [];
     this._drawHpPanels(ctx, view, player, livingEnemies);
     this._drawOffscreenMarkers(ctx, view, [player, ...livingEnemies]);
+    this._drawIntent(ctx, view, world);
     this._drawCallouts(ctx, view, dt);
     this._drawFloaters(ctx, view, dt);
     this._drawTurnHint(ctx, view, turnSystem, world);
@@ -1978,6 +1979,58 @@ export class Renderer {
     });
     ctx.globalAlpha = 1;
     ctx.textBaseline = 'alphabetic';
+  }
+
+  /**
+   * INTENT (Game.intent): the enemy's forecast next turn as a row of icons over
+   * its head (moves, the guns it fires, stomp, vent, drones) and the damage it
+   * would deal you, red when it would knock you out. Hover / tap for the words.
+   */
+  _drawIntent(ctx, view, world) {
+    const it = world.intent;
+    const e = world.fireTarget;
+    if (!it || !e || e.hp <= 0) return;
+    const ICON = { move: 'move', stomp: 'stomp', vent: 'cool', jammed: 'lock' };
+    const cell = 30;
+    const pad = 5;
+    ctx.font = `700 13px ${FONT}`;
+    const color = it.lost ? '#a7f070' : it.lethal ? '#ff5d73' : DTYPES[e.element]?.color || '#ff5d73';
+    const label = it.lost ? `${it.lost}: TURN LOST` : it.dmg > 0 ? `${it.dmg}` : '';
+    const icons = it.lost ? [iconCanvas('lock')] : it.steps.map((st) => (st.part ? partCanvas(st.part.id) : iconCanvas(ICON[st.kind] || 'star', st.kind === 'jammed' ? DTYPES.energy.color : undefined)));
+    if (!it.lost && !icons.length) icons.push(iconCanvas('cd')); // holding
+    if (it.lethal) icons.push(iconCanvas('skull'));
+    const textW = label ? Math.ceil(ctx.measureText(label).width) + 6 : 0;
+    const w = pad * 2 + icons.length * cell + textW;
+    const h = cell;
+    const head = this._worldToCss(view, e.x, e.y - e.radius);
+    const x = Math.round(Math.max(4, Math.min(view.cssW - w - 4, head.x - w / 2)));
+    let y = head.y - 34 - h; // over its top guns
+    // Team fights: the enemy roster (an HTML bar over the canvas) sits above it; stay under the bar
+    const bar = document.getElementById('enemy-team-bar');
+    const cr = this.canvas.getBoundingClientRect();
+    const br = bar && bar.offsetParent ? bar.getBoundingClientRect() : null;
+    if (br && br.height && x + w > br.left - cr.left && x < br.right - cr.left && y < br.bottom - cr.top + 4) y = Math.min(br.bottom - cr.top + 4, head.y - h - 6);
+    y = Math.round(Math.max(4, y));
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x + 2, y + 2, w, h);
+    ctx.fillStyle = 'rgba(16, 17, 28, 0.94)';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, w, 2);
+    // A notch pointing down at the mech
+    ctx.fillRect(Math.round(head.x) - 3, y + h, 6, 3);
+    icons.forEach((ic, i) => {
+      const { w: iw, h: ih } = iconSize(ic);
+      const k = Math.max(1, Math.min((cell - 4) / iw, (cell - 8) / ih)); // fill the cell (wide guns too)
+      ctx.drawImage(ic, Math.round(x + pad + i * cell + (cell - iw * k) / 2), Math.round(y + 1 + (h - ih * k) / 2), Math.round(iw * k), Math.round(ih * k));
+    });
+    if (label) {
+      ctx.textAlign = 'left';
+      ctx.fillStyle = color;
+      ctx.fillText(label, x + pad + icons.length * cell + 3, y + h / 2 + 5);
+    }
+    const rect = this.canvas.getBoundingClientRect();
+    this._hoverZones.push({ x: rect.left + x, y: rect.top + y, w, h, desc: it.desc, color });
   }
 
   _drawCallouts(ctx, view, dt) {

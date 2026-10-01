@@ -14,6 +14,7 @@
 
 import { CONFIG } from '../src/config.js';
 import { planTurn, applyAction } from '../src/ai/LaneAI.js';
+import { boonFx, getBoon, draftBoons, pickBoon } from '../src/rogue/Boons.js';
 import { PARTS, gearComp, enemyMech, enemyRig, enemyTier, pickEnemyElement, elementLean, roleElements, riskShred, withMech, getPart, legsRules, riskEase, tierRange, maxLevel, RARITY_ORDER, ELEMENT_DMG, GUN_TYPE_DMG } from '../src/meta/Mech.js';
 import { withMastery } from '../src/meta/Mastery.js';
 import { raidBoss } from '../src/meta/Raid.js';
@@ -97,13 +98,14 @@ function mulberry(seed) {
 // ---------- Units ----------
 function playerUnit(perm, hp, maxHp) {
   const m = perm.mech;
+  const bfx = boonFx(perm.boonIds); // run boons (Game.bfx)
   const atk = 1 + (perm.atkBonus || 0);
   const legs = legsRules(getPart(m.legs?.id) || null);
   legs.stomp = m.legs.stomp;
   return {
     team: 'player', pos: 3, hp, maxHp,
-    heat: 0, heatCap: m.rig.heatCap, cool: m.rig.cool, energy: m.rig.energy, energyMax: m.rig.energy, regen: m.rig.regen,
-    actions: G.actions, maxActions: G.actions, legs,
+    heat: 0, heatCap: m.rig.heatCap, cool: Math.round(m.rig.cool * (1 + (bfx.cool || 0))), energy: m.rig.energy, energyMax: m.rig.energy, regen: Math.round(m.rig.regen * (1 + (bfx.regen || 0))),
+    actions: G.actions, maxActions: G.actions, legs, bfx,
     def: (perm.defBonus || 0) * (1 - riskData().defPierce), res: Object.fromEntries(Object.entries({ phys: 0, heat: 0, energy: 0, ...(perm.res || {}) }).map(([k, v]) => [k, v * (1 - riskData().defPierce)])),
     stompDmg: (legs.stomp || 0) * G.dmgScale * atk,
     shield: !!m.startForcefield, specials: m.specials.map((sp) => ({ kind: sp.special, uses: sp.uses, en: sp.en || 0, heat: sp.heat || 0, range: sp.range || 0, dist: sp.dist || 0, ram: (sp.ram || 0) * G.dmgScale * atk, away: !!sp.away, drain: sp.drain || 0 })),
@@ -216,7 +218,8 @@ const DEF_PER_POINT = 0.04;
 
 /** Start of a unit's turn (Game._upkeep). Returns false when the turn is lost. */
 function upkeep(u) {
-  u.energy = Math.min(u.energyMax, u.energy + u.regen);
+  if (!u.noRegen) u.energy = Math.min(u.energyMax, u.energy + u.regen); // Short Circuit
+  u.noRegen = false;
   u.actions = u.maxActions;
   u.freeUsed = false;
   u.stomped = false;
@@ -224,13 +227,15 @@ function upkeep(u) {
   u.jamNext = false;
   for (const g of u.guns) g.used = false;
   u.stagger = (u.stagger || 0) * (1 - G.stagger.decay);
+  const cool = Math.round(u.cool * (1 - (u.heatLock || 0))); // Thermal Lock
+  u.heatLock = 0;
   if (u.staggered) {
     u.staggered = false;
-    u.heat = Math.max(0, u.heat - u.cool);
+    u.heat = Math.max(0, u.heat - cool);
     return false;
   }
   const over = u.heat > u.heatCap;
-  u.heat = Math.max(0, u.heat - u.cool);
+  u.heat = Math.max(0, u.heat - cool);
   return !over;
 }
 
@@ -265,6 +270,11 @@ function playTurn(me, foe, mines, difficulty, rnd) {
     const a = plan[0] || { type: 'end' };
     const st = { size: SIZE, me, foe, mines, stompHeat: G.stompHeat, dealt: 0 };
     if (!applyAction(st, a)) break;
+    // Second Wind (Game._secondWind): your mech's first drop under 30% HP gives it a forcefield
+    if (foe.bfx?.secondWind && !foe.windUsed && foe.hp > 0 && foe.hp < foe.maxHp * 0.3) {
+      foe.windUsed = true;
+      foe.shield = true;
+    }
     if (args.trace) (me.trace ||= []).push(a.type === 'fire' ? `fire${a.gun}` : a.type === 'move' ? `move${a.pos}` : a.type);
     if (a.type === 'end') break;
   }
@@ -420,20 +430,57 @@ function raidAttempt(team, boss, rnd) {
 }
 
 /** Your team for a run: --team=N copies of the loadout (garage mechs 2 and 3), each with its own HP. */
-// --boons=def,atk,hp,swift,power,regen: run boons (RunState.applyBoon; one of each counts)
+// --boons=def,atk,hp,swift,power,regen,glass,close,incin,...: run boons by id without 'boon_' (CONFIG.boons; one of each counts)
 const BOONS = (args.boons || '').split(',').filter(Boolean);
+/** One boon (id without 'boon_') on a mech's perm (RunState.applyBoon); returns its max HP change. */
+function addBoon(p, b) {
+  if (!getBoon('boon_' + b)) throw new Error('unknown boon ' + b);
+  if (p.boonIds.includes('boon_' + b)) return 0;
+  p.boonIds.push('boon_' + b); // battle effects: Boons.boonFx (playerUnit)
+  let hp = 0;
+  if (b === 'atk') p.atkBonus = (p.atkBonus || 0) + 0.1;
+  else if (b === 'swift') p.atkBonus = (p.atkBonus || 0) + 0.08; // (+1 walk not modelled)
+  else if (b === 'def') p.defBonus = (p.defBonus || 0) + 2;
+  else if (b === 'hp') hp = 400;
+  else if (b === 'greed') hp = -50; // (gold not modelled)
+  else if (b === 'glass') {
+    p.atkBonus = (p.atkBonus || 0) + 0.2;
+    hp = -300;
+  } else if (b === 'power') p.mech.weapons = p.mech.weapons.map((w) => ({ ...w, reach: [w.reach[0], Math.min(SIZE - 1, w.reach[1] + 1)] }));
+  else if (b === 'regen') p.boonRegen = (p.boonRegen || 0) + 0.06;
+  p.hpBonus = (p.hpBonus || 0) + hp;
+  return hp;
+}
 function withBoons(perm) {
-  const p = { ...perm, mech: { ...perm.mech } };
-  for (const b of new Set(BOONS)) {
-    if (b === 'atk') p.atkBonus = (p.atkBonus || 0) + 0.1;
-    else if (b === 'swift') p.atkBonus = (p.atkBonus || 0) + 0.08; // (+1 walk not modelled)
-    else if (b === 'def') p.defBonus = (p.defBonus || 0) + 2;
-    else if (b === 'hp') p.hpBonus = (p.hpBonus || 0) + 400;
-    else if (b === 'power') p.mech.weapons = p.mech.weapons.map((w) => ({ ...w, reach: [w.reach[0], Math.min(SIZE - 1, w.reach[1] + 1)] }));
-    else if (b === 'regen') p.boonRegen = (p.boonRegen || 0) + 0.06;
-    else throw new Error('unknown boon ' + b);
-  }
+  const p = { ...perm, mech: { ...perm.mech }, boonIds: [] };
+  for (const b of new Set(BOONS)) addBoon(p, b);
   return p;
+}
+
+// --draft=new: wins hand out boons mid-run like main.js (CONFIG.run.boonDraftChance, a pick of 3 taken by
+// AutoRun.pickBoon); --draft=old: the pre-draft drops (one random boon of the first 7, 18% / 35% elite / 60% boss)
+const OLD_BOONS = ['boon_atk', 'boon_def', 'boon_hp', 'boon_greed', 'boon_swift', 'boon_power', 'boon_regen'];
+function draftAfterWin(team, type, rnd, log, floor) {
+  const held = team[0].perm.boonIds;
+  let id = null;
+  if (args.draft === 'old') {
+    if (rnd() >= ({ boss: 0.6, elite: 0.35 }[type] ?? 0.18)) return;
+    const left = OLD_BOONS.filter((b) => !held.includes(b));
+    id = left.length ? left[Math.floor(rnd() * left.length)] : null;
+  } else if (args.draft === 'new') {
+    if (log.draftFloor === floor) return; // one per floor (main.js rollDraft)
+    if (rnd() >= (CONFIG.run.boonDraftChance[type] ?? 0)) return;
+    log.draftFloor = floor;
+    const run = { permanent: team[0].perm, team: team.slice(1).map((m) => ({ perm: m.perm })), boons: held };
+    const offer = draftBoons(run, 3, rnd).map((b) => b.id);
+    id = offer.length ? pickBoon(offer, run) : null;
+  }
+  if (!id) return;
+  for (const m of team) {
+    const hp = addBoon(m.perm, id.slice(5));
+    m.maxHp = Math.max(1, m.maxHp + hp);
+    if (m.hp > 0) m.hp = Math.max(1, Math.min(m.maxHp, m.hp + Math.max(0, hp)));
+  }
 }
 
 function makeTeam(parts) {
@@ -513,6 +560,8 @@ function simRun(seed, rules, parts) {
         const postHeal = rules.postWinHeal[type] || 0;
         if (postHeal) healAll((max) => max * postHeal);
         if (depth && i === steps) log.depth = depth; // this Abyss floor is cleared
+        if (!(type === 'boss' && !depth) && !(depth && i === steps)) draftAfterWin(team, type, rnd, log, f);
+        log.boons = team[0].perm.boonIds.length;
       } else if (type === 'rest') {
         log.rests += 1;
         healAll(rules.rest, true);
@@ -614,6 +663,7 @@ for (const g of gear) {
     let fights = 0;
     let bossHp = [];
     let lowest = 0;
+    let boons = 0;
     const deaths = {};
     const depths = [];
     const abyssDeaths = {};
@@ -621,6 +671,7 @@ for (const g of gear) {
       const r = simRun(1000 + i, rules, parts);
       fights += r.fights;
       lowest += r.lowest;
+      boons += r.boons || 0;
       if (r.hpAtBoss != null) bossHp.push(r.hpAtBoss);
       if (!r.died) depths.push(r.depth);
       if (r.abyssDied) abyssDeaths[r.abyssDied.type] = (abyssDeaths[r.abyssDied.type] || 0) + 1;
@@ -632,7 +683,7 @@ for (const g of gear) {
     const pct = (n) => `${Math.round((n / RUNS) * 100)}%`;
     const avg = (a) => (a.length ? `${Math.round((a.reduce((s, x) => s + x, 0) / a.length) * 100)}%` : '-');
     const topDeaths = Object.entries(deaths).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k}: ${pct(v)}`).join(', ');
-    console.log(`${rules.name}\n  win ${pct(wins)} | fights/run ${(fights / RUNS).toFixed(1)} | reached boss ${pct(bossHp.length)} at ${avg(bossHp)} HP | lowest HP avg ${Math.round((lowest / RUNS) * 100)}%\n  deaths: ${topDeaths || 'none'}`);
+    console.log(`${rules.name}\n  win ${pct(wins)} | fights/run ${(fights / RUNS).toFixed(1)} | reached boss ${pct(bossHp.length)} at ${avg(bossHp)} HP | lowest HP avg ${Math.round((lowest / RUNS) * 100)}%${args.draft ? ` | boons/run ${(boons / RUNS).toFixed(1)}` : ''}\n  deaths: ${topDeaths || 'none'}`);
     // --abyss: how deep the winning runs got (floors cleared below floor 5)
     if (args.abyss && depths.length) {
       depths.sort((x, y) => x - y);

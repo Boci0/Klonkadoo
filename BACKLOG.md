@@ -1,5 +1,42 @@
 # Backlog
 
+## Enemy intent (2026-10-01, built, not released)
+
+During your turn a badge over the enemy shows its next turn if you ended yours now: icons for each action
+(move, the gun it fires, stomp, vent, drone launch / shots, jammed) and the damage you'd take before you act
+again; a red skull when a high roll (+-dmgSpread) could knock you out; green "OVERHEATED / STAGGERED: TURN
+LOST". Hover / tap for the words. Game.intent / _forecast, Renderer._drawIntent.
+- **It's a commitment, not a guess:** the enemy's random choices for its turn are rolled at the start of yours
+  (Game._enemySeed, seededRng) and _enemyAct plans with them, so the forecast runs the same planner with the
+  same rolls, action by action. It changes only when you change the situation.
+- Covers your drones at your turn end (upkeep heat, their hits can stagger / jam / overheat it), its burn,
+  overheat, stagger, regen, cooling, Thermal Lock, Short Circuit, its drones, edge slams (LaneAI `slam`, only
+  on in the forecast so the planner's own play is unchanged) and your next burn tick.
+- **Measured in the dev server** (scripted fights F2-F5, random moves / shots / drones, ~250-400 turns):
+  guns it fires match 97-99%, damage within 20% on 93-96%, lost turns 100% (the misses: a real damage roll
+  shifts a later re-plan). `_aiUnit` now passes the stagger bar to the planner (AUTO sees it too).
+
+## Boon draft (2026-10-01, built, not released)
+
+Runs gave few choices (7 boons, random single drops), so wins now offer a **pick of 3** (UIManager.showBoonDraft),
+**one draft per floor**: the first elite or miniboss win, or a 12% normal win (CONFIG.run.boonDraftChance,
+main.js rollDraft). 21 boons (CONFIG.boons), 14 new, built around each element's identity, all run-only:
+- General: Glass Cannon, Executioner, Point Blank, Second Wind.
+- Physical: AP Rounds (ignore half phys resist), Sledge Rounds (stagger bar fills 50% faster).
+- Explosive: Incinerator (+30% heat in), Flashpoint (first heat hit: heat cap -15%), Thermal Lock (mechs you
+  heat cool 40% less next turn), Coolant Loop.
+- Electric: Overdrain (+30% drain), Siphon, Short Circuit (a mech you black out skips its next regen), Spare Cells.
+
+Drafts lean toward your guns' damage types and always hold one card of your main type (rogue/Boons.js);
+AUTO RUN picks with Boons.pickBoon. Effects live in `fx` (Boons.boonFx), applied in Game (_weaponHit,
+_reactorFx, _upkeep, _secondWind) and mirrored in LaneAI so AUTO and the sim see them.
+
+**Measured** (`--draft=old|new` in tools/balance-sim.mjs, mid gear max level tierUp 3, skill 1, 400 runs):
+each element's boons are worth +10 to +26 pts alone at Risk XI on their kit. Whole runs vs the old drops:
+Risk 5 unchanged (96-100%), Risk 10 +7 to +15, Risk XI +10 to +35 (Explosive kit 27% -> 62%, mid 43% -> 62%).
+**Open:** Risk XI got easier. Note the Risk curve refit (v2.6.0) was calibrated without boons, and the old
+drops already moved mid gear R XI from ~24% to 43%. Decide from real runs whether to tighten Risk X-XI.
+
 ## DONE: the numbers rework (decided 2026-09-29, released as v2.6.0 the same day)
 
 **Status: released in v2.6.0.** Watch real runs (Abyss depth, Risk ramp) and retune from play. rxScale 3, gun costs by damage

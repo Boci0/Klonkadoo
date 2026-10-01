@@ -327,6 +327,9 @@ export const CONFIG = {
     atkBase: 1,
     defBase: 0,
     maxDefCap: 15, // DEF cap = 60% damage reduction
+    // Odds that a win offers a boon draft (pick 1 of 3), at most one per floor (main.js rollDraft).
+    // The final boss ends the sector instead.
+    boonDraftChance: { combat: 0.12, elite: 1, miniboss: 1 },
     hpRegenRestPct: 0.5, // Safe Zone restores 50% of max HP (winning battles no longer heals)
     hpRegenMaxPct: 0.5, // ... but capped at 50% of max HP
     shopFloorMarkup: 0.12, // shop prices +12% per floor past the first (Abyss included)
@@ -404,14 +407,39 @@ export const CONFIG = {
   ],
 
   // --- Roguelike boons (collected as map rewards; one of each per run, they don't stack) ---
+  // Elite / miniboss wins (and some normal wins) offer a pick of 3 (rogue/Boons.js draftBoons).
+  // `tag`: the damage type a boon builds around (drafts lean toward your guns' types).
+  // `fx`: battle effects for the whole team, summed by Boons.boonFx and read by Game and LaneAI:
+  //   closeDmg (gun damage at range <= 2), physPierce (share of phys resist ignored), staggerMult,
+  //   heatOut / drainOut (heat / drain your hits put in), capCut (your first heat hit cuts the target's
+  //   heat cap by this share), heatLock (a mech you heat loses this share of its next cooling), siphon
+  //   (share of drained energy you get), regenLock (a mech you black out skips its next regen), lowHpDmg (vs a mech under 30% HP),
+  //   cool / regen (your reactor), secondWind (a forcefield the first time you drop under 30% HP).
   boons: [
-    { id: 'boon_atk', name: 'Overcharge', desc: '+10% ATK.', color: '#ffcd75' },
-    { id: 'boon_def', name: 'Hardened Shell', desc: '+2 DEF.', color: '#41a6f6' },
-    { id: 'boon_hp', name: 'Colossus', desc: '+400 max HP.', color: '#a7f070' },
-    { id: 'boon_greed', name: 'Greed', desc: '+25% gold, but -50 max HP.', color: '#ffcd75' },
-    { id: 'boon_swift', name: 'Swift Loader', desc: '+8% ATK, +1 walk.', color: '#c46fd6' },
-    { id: 'boon_power', name: 'Long Barrel', desc: '+1 max range on every gun.', color: '#ef7d57' },
-    { id: 'boon_regen', name: 'Regeneration', desc: 'Repair 6% of max HP after each battle won.', color: '#a7f070' },
+    { id: 'boon_atk', name: 'Overcharge', desc: '+10% ATK.', color: '#ffcd75', icon: 'dmg' },
+    { id: 'boon_def', name: 'Hardened Shell', desc: '+2 DEF.', color: '#41a6f6', icon: 'def' },
+    { id: 'boon_hp', name: 'Colossus', desc: '+400 max HP.', color: '#a7f070', icon: 'hp' },
+    { id: 'boon_greed', name: 'Greed', desc: '+25% gold, but -50 max HP.', color: '#ffcd75', icon: 'gold' },
+    { id: 'boon_swift', name: 'Swift Loader', desc: '+8% ATK, +1 walk.', color: '#c46fd6', icon: 'move' },
+    { id: 'boon_power', name: 'Long Barrel', desc: '+1 max range on every gun.', color: '#ef7d57', icon: 'range' },
+    { id: 'boon_regen', name: 'Regeneration', desc: 'Repair 6% of max HP after each battle won.', color: '#a7f070', icon: 'heal' },
+    { id: 'boon_glass', name: 'Glass Cannon', desc: '+20% ATK, but -300 max HP.', color: '#ff5d73', icon: 'skull' },
+    { id: 'boon_execute', name: 'Executioner', desc: '+40% damage to mechs under 30% HP.', color: '#ff5d73', icon: 'skull', fx: { lowHpDmg: 0.4 } },
+    { id: 'boon_close', name: 'Point Blank', desc: '+25% gun damage at range 1-2.', color: '#ffcd75', icon: 'dmg', fx: { closeDmg: 0.25 } },
+    { id: 'boon_wind', name: 'Second Wind', desc: 'The first time each of your mechs drops under 30% HP in a battle, it gets a forcefield.', color: '#a7f070', icon: 'def', fx: { secondWind: 1 } },
+    // Physical: raw damage
+    { id: 'boon_ap', name: 'AP Rounds', desc: 'Physical hits ignore half of the target\'s physical resist.', color: '#f4f4f4', icon: 'pierce', tag: 'phys', fx: { physPierce: 0.5 } },
+    { id: 'boon_sledge', name: 'Sledge Rounds', desc: 'Physical hits fill the STAGGER bar 50% faster.', color: '#f4f4f4', icon: 'stomp', tag: 'phys', fx: { staggerMult: 0.5 } },
+    // Explosive: heat and shutdowns
+    { id: 'boon_incin', name: 'Incinerator', desc: 'Your hits put in 30% more heat.', color: '#ef7d57', icon: 'heatin', tag: 'heat', fx: { heatOut: 0.3 } },
+    { id: 'boon_flash', name: 'Flashpoint', desc: 'The first time you heat a mech in a battle, its heat cap drops by 15%.', color: '#ef7d57', icon: 'heat', tag: 'heat', fx: { capCut: 0.15 } },
+    { id: 'boon_lock', name: 'Thermal Lock', desc: 'Mechs you heat cool 40% less on their next turn.', color: '#ef7d57', icon: 'lock', tag: 'heat', fx: { heatLock: 0.4 } },
+    { id: 'boon_coolant', name: 'Coolant Loop', desc: '+40% cooling.', color: '#ef7d57', icon: 'cool', tag: 'heat', fx: { cool: 0.4 } },
+    // Electric: drain, blackouts and energy break
+    { id: 'boon_overdrain', name: 'Overdrain', desc: 'Your hits drain 30% more energy.', color: '#73eff7', icon: 'drain', tag: 'energy', fx: { drainOut: 0.3 } },
+    { id: 'boon_siphon', name: 'Siphon', desc: 'Half the energy you drain flows into your battery.', color: '#73eff7', icon: 'energy', tag: 'energy', fx: { siphon: 0.5 } },
+    { id: 'boon_short', name: 'Short Circuit', desc: 'A mech you BLACKOUT gets no energy regen on its next turn.', color: '#73eff7', icon: 'arc', tag: 'energy', fx: { regenLock: 1 } },
+    { id: 'boon_cells', name: 'Spare Cells', desc: '+40% energy regen.', color: '#73eff7', icon: 'regen', tag: 'energy', fx: { regen: 0.4 } },
   ],
 
 

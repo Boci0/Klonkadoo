@@ -46,6 +46,7 @@ export class Ball {
     }
     this.hp = Math.max(0, this.hp - amount);
     this.flashTimer = 0.15;
+    if (this.hp > 0) this.onHurt?.(); // the battle's hook (Game: Second Wind)
     return this.hp <= 0;
   }
 

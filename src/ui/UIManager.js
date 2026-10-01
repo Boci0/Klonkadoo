@@ -1517,16 +1517,21 @@ export class UIManager {
     });
   }
 
-  showBoon(boon) {
-    this.openModal(
-      boon.name,
-      `<p style="color:${boon.color}">${boon.desc}</p>`,
-      `<div class="btn-row"><button class="btn btn-accent" data-act="ok">ACCEPT</button></div>`
-    );
-    this.modalActions.querySelector('button[data-act="ok"]').addEventListener('click', () => {
+  /** Boon draft after a win: pick one of up to 3 (Boons.draftBoons). Cards built around a damage type say which. */
+  showBoonDraft(boons) {
+    const cards = boons.map((b) => {
+      const t = b.tag && DTYPES[b.tag];
+      const tag = t ? `<span class="tag-pill boon-tag" style="color:${t.color};border-color:${t.color}">${ico(t.icon, t.color)} ${t.name}</span>` : '';
+      return this._supplyCard(
+        { icon: b.icon || 'star', color: b.color, name: b.name.toUpperCase(), desc: `${b.desc}${tag ? `<div>${tag}</div>` : ''}` },
+        `<button class="btn btn-accent" data-pick="${b.id}">TAKE</button>`,
+      );
+    }).join('');
+    this.openModal('BOON DRAFT', `<p>Pick one. It lasts for the rest of this run.</p><div class="shop-grid">${cards}</div>`, '');
+    this.modalBody.querySelectorAll('[data-pick]').forEach((btn) => btn.addEventListener('click', () => {
       this.closeModal();
-      this.cb.onBoonAccepted(boon.id);
-    });
+      this.cb.onBoonAccepted(btn.dataset.pick);
+    }));
   }
 
   showMinigameIntro() {

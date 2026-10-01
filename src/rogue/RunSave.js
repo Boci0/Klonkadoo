@@ -27,7 +27,7 @@ function findNode(floors, id) {
 }
 
 /**
- * @param {object} s - { run, map, quests, runSeed, currentFloorView, lostAnyCombat, resume, node?, prevId?, pendingBoonId?, descend? }
+ * @param {object} s - { run, map, quests, runSeed, currentFloorView, lostAnyCombat, resume, node?, prevId?, pendingBoonIds?, descend? }
  */
 export function writeRun(s) {
   try {
@@ -48,7 +48,7 @@ export function writeRun(s) {
       resume: s.resume || 'map',
       node: s.node || null,
       prevId: s.prevId ?? null,
-      pendingBoonId: s.pendingBoonId || null,
+      pendingBoonIds: s.pendingBoonIds || null,
       descend: s.descend || null,
     };
     localStorage.setItem(KEY, JSON.stringify(snap));
@@ -97,7 +97,7 @@ export function clearRun() {
 
 /**
  * Rebuild live objects from the stored run.
- * @returns {null | { run, map, quests, runSeed, currentFloorView, lostAnyCombat, resume, node, prevNode, pendingBoonId, descend }}
+ * @returns {null | { run, map, quests, runSeed, currentFloorView, lostAnyCombat, resume, node, prevNode, pendingBoonId, pendingBoonIds, descend }}
  */
 export function readRun() {
   let snap;
@@ -142,7 +142,8 @@ export function readRun() {
     node,
     prevNode: snap.prevId ? findNode(map.floors, snap.prevId) : null,
     prevId: snap.prevId,
-    pendingBoonId: snap.pendingBoonId,
+    pendingBoonId: snap.pendingBoonId, // (saves from before the boon draft)
+    pendingBoonIds: snap.pendingBoonIds,
     descend: snap.descend,
   };
 }

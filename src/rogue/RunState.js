@@ -140,12 +140,18 @@ export class RunState {
       case 'boon_swift':
         this.atkMult += 0.08;
         break;
+      case 'boon_glass':
+        this.atkMult += 0.2;
+        this.maxHp = Math.max(1, this.maxHp - 300);
+        if (this.hp > this.maxHp) this.hp = this.maxHp;
+        break;
       case 'boon_power':
         // handled per stack in combat launch power
         break;
       case 'boon_regen':
         // handled per stack in combat victory
         break;
+      // The rest act in battle (Boons.boonFx, read by Game and LaneAI)
       default:
         break;
     }
