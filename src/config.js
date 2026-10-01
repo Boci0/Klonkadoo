@@ -82,27 +82,38 @@ export const CONFIG = {
     // By fight tier: a normal fight ~15% of your HP in 3-5 turns, an elite pair ~40% in 5-8,
     // a mini-boss ~50%, the boss and its escorts ~60% in 10-12 (at the gear Risk expects; tools/balance-sim.mjs --fights)
     enemyGunShare: { combat: 0.675, elite: 0.445, miniboss: 0.45, boss: 0.36 },
-    droneHealCap: 0.2, // repair drones fix at most this share of max HP per battle
+    droneHealCap: 0.14, // repair drones fix at most this share of max HP per battle (2.10: was 0.2, a must-pick)
     enemyHpScale: 4.46, // every enemy's HP (2.6: normal fights 3-5 of your turns, elites 5-8, bosses 10-12; tools/balance-sim.mjs --fights)
     exposedMult: 1.25, // rammed targets take +25% gun damage until their next turn
-    // Damage types (Mech.DTYPES): Explosive hits add heat and Electric hits drain energy,
-    // dtypeLoad x the hit (or the gun's own amount); drain past an empty battery comes off HP (breakHp)
-    dtypeLoad: { heat: 0.2, energy: 0.3 }, // heat / drain per point of battle damage, by damage type
-    // STAGGER (Physical): your physical hits fill a bar on the target (their HP damage); past frac x its max HP the bar
-    // empties and the target loses its next turn, like an overheat. It bleeds off by decay every turn of its own; giants are immune.
-    stagger: { frac: 0.3, decay: 0.5 },
-    blackoutAll: true, // BLACKOUT for every Electric hit that leaves the target at 0 energy (else only guns with fx.jam)
-    breakHp: 1.5, // ENERGY BREAK: HP per point of drain the target's empty battery can't cover (Reloaded: about the drain itself)
+    // SuperMechs rules (2.10). Heat never cools on its own: COOLDOWN is an action (heat - your cooling).
+    // A turn that starts over the heat cap opens with a forced cooldown (1 action left), or, when it's over
+    // by more than the cooling, a double cooldown that skips the turn. Energy refills at the END of your turn.
+    // Heat never stops you firing; energy does (a gun needs its cost).
+    // Damage types (Mech.DTYPES): Explosive hits add heat to the target, Electric hits drain its energy:
+    // the gun's own number, else dtypeLoad x the hit. Neither is cut by resists. Drain past an empty
+    // battery comes off HP (breakHp per point: SuperMechs 1:1).
+    dtypeLoad: { heat: 0.2, energy: 0.45 }, // heat / drain per point of battle damage, by damage type (SuperMechs: drain ~half the hit)
+    breakHp: 1,
+    // Resists are flat (SuperMechs): every round loses resScale x the target's resist points of its type
+    // (DEF counts for every type), but at least resFloor of the round always gets through (Mech.flatResist)
+    resScale: 7,
+    resFloor: 0.4,
+    // Gun costs by damage type, on the catalog's en / heat (SuperMechs Reloaded, Mythic medians:
+    // Physical 31 heat / 13 energy, Explosive 44 / 13, Electric 13 / 47): Physical runs on heat
+    gunCost: { phys: { en: 0.4, heat: 1 }, heat: { en: 1, heat: 1 }, energy: { en: 1, heat: 1 } },
+    // Frames and reactor modules: regen (refill per turn) and cooling (per COOLDOWN) x these
+    rigScale: { regen: 1, cool: 1 },
+    // Heat and drain ENEMY guns push into you: their gun's full numbers (not their softer hits) x floor x Risk x this
+    enemyRx: { heat: 1, energy: 0.33 },
     ramSpeed: 380, // impact speed (px/s) that counts as a ram
     shotGap: 0.45, // seconds between an enemy's actions, so you can follow them
-    actions: 2, // actions per turn: WALK / JUMP, FIRE a gun (each gun once per turn), DEPLOY a drone; VENT takes the rest of the turn
-    vent: { coolMult: 2, energyPct: 0 }, // VENT (cooldown): cools 2x your cooling; energy only comes from regen
+    actions: 2, // actions per turn: WALK / JUMP, FIRE a gun (each gun once per turn), DEPLOY a drone, COOLDOWN, STOMP...
     stompHeat: 12, // STOMP heat for legs that don't set their own (stompHeat on the legs part)
     // Build: one load cap for every mech; up to overweightMax kg over costs HP per kg, past that you can't deploy
     loadCap: 1000,
     overweightMax: 10,
     overweightHp: 20,
-    dmgSpread: 0.15, // every hit rolls mean ±15%
+    dmgSpread: 0.2, // every hit rolls mean ±20% (SuperMechs Reloaded: min-max is about ±21-25%)
     // Tiers: max level per tier (common..mythic); each tier up multiplies stats, levels add up to one more step
     tierLevelCap: [5, 10, 15, 20, 25, 30], // ... mythic, ascended
     tierStep: 1.25, // +25% per tier, and a tier's levels add up to one more step (a transformed common lands near a native legendary)
@@ -186,7 +197,7 @@ export const CONFIG = {
     // Elites: that floor's hostile, made clearly tougher (they used to be one fixed line, weaker than a
     // floor 5 hostile once split into a pair). Mech.enemyTier builds them.
     elite: { hpMult: 0.69, atkMult: 1.05, def: 1, ai: 0.04 },
-    miniboss: { hp: 345, atk: 1.02, def: 4, aiDifficulty: 0.62 },
+    miniboss: { hp: 240, atk: 1.02, def: 4, aiDifficulty: 0.62 }, // one mech, but below the whole boss fight (2.10: was 345, a wall on floor 3)
     boss: { hp: 145, atk: 1.08, def: 5, aiDifficulty: 0.70 },
   },
 
@@ -216,7 +227,10 @@ export const CONFIG = {
     gearComp: { hp: [1, 1.12, 1.12, 1.12, 1.12, 1.27, 1.27, 1.41, 1.41, 1.41, 1.41, 1.41], atk: [1, 1.04, 1.04, 1.04, 1.04, 1.2, 1.2, 1.25, 1.25, 1.25, 1.25, 1.25],
       // 2.6: frame cooling / regen grow x tierStep per tier, so the heat / drain enemies push grows with the tiers expected
       rx: [1, 1, 1, 1, 1, 1.25, 1.25, 1.5, 1.5, 1.5, 1.95, 1.95] },
-    ease: { hp: 0.5, atk: 0.5, ai: -0.2, fullAt: 12, curve: [0.5, 0.77, 0.845, 0.86, 0.85, 0.895, 0.93, 1, 0.975, 0.87, 0.97, 0.63] }, // XI: low since OBLIVION doubles every earlier rule
+    // 2.10 (SuperMechs rules): Risk 9 is mid gear's ceiling, 10 bites a maxed single mech (~40-55%), XI is
+    // brutal for a maxed TEAM of three (~35%: the user's real save, tools/balance-sim.mjs --kit, skill 1,
+    // draft boons; OBLIVION doubles the earlier rules). A lone mech hardly survives XI.
+    ease: { hp: 0.5, atk: 0.5, ai: -0.2, fullAt: 12, curve: [0.5, 0.77, 0.845, 0.86, 0.85, 0.895, 0.93, 1, 0.975, 1.1, 1.6, 2.45] },
     levels: [
       { name: 'HARDENED', desc: 'Enemies +15% HP.', hpPct: 15 },
       { name: 'RANGEFINDERS', desc: 'Enemy guns reach 1 position further.', enemyReach: 1 },
@@ -253,8 +267,10 @@ export const CONFIG = {
       prime: { 10: 0.8, 11: 1, amount: [2, 4] },
     },
     // Abyss enemies skip the Risk curve (gear compensation only), then x this: fitted in 2.6 so a maxed
-    // team goes as deep as on 2.5.9 (tools/balance-sim.mjs --abyss=20 with a real kit, against the old numbers)
-    strength: { hp: 1.5, atk: 1.5 },
+    // team goes as deep as on 2.5.9 (tools/balance-sim.mjs --abyss=20 with a real kit, against the old numbers).
+    // Raised in 2.10: the SuperMechs rules (no stagger/blackout) made it easier; x2.4 puts a real 3-mech Risk X
+    // team back at 2.9.0's depth (median floor ~14, 1 in 4 past floor 16)
+    strength: { hp: 2.4, atk: 2.4 },
     reactorPerDepth: 0.04, // enemy heat cap + battery per Abyss depth (their cooling and regen stay)
     ascend: { shards: 5, scrap: 800 }, // one Mythic LV 25 part (any type) -> ASCENDED LV 1
     insanity: { dmgPerTurn: 0.01, hpPerTurn: 0.01 }, // every turn (yours and theirs): enemies +1% damage, the one on the lane -1% max HP
@@ -361,7 +377,7 @@ export const CONFIG = {
   runConditions: [
     { id: 'gold_rush', name: 'GOLD RUSH', desc: '+30% gold, but enemies +10% HP.' },
     { id: 'overcharged', name: 'OVERCHARGED GRID', desc: 'Every mech refills +50 energy per turn.' },
-    { id: 'heatwave', name: 'HEATWAVE', desc: 'Every mech cools 50 less heat per turn.' },
+    { id: 'heatwave', name: 'HEATWAVE', desc: 'Every COOLDOWN removes 15 less heat.' },
     { id: 'supplied', name: 'WELL SUPPLIED', desc: 'Start with a random boon.' },
     { id: 'glass_war', name: 'GLASS WAR', desc: 'Everyone deals +30% damage.' },
     { id: 'scouted', name: 'SCOUTED', desc: '+1 move on every floor.' },
@@ -410,35 +426,36 @@ export const CONFIG = {
   // Elite / miniboss wins (and some normal wins) offer a pick of 3 (rogue/Boons.js draftBoons).
   // `tag`: the damage type a boon builds around (drafts lean toward your guns' types).
   // `fx`: battle effects for the whole team, summed by Boons.boonFx and read by Game and LaneAI:
-  //   closeDmg (gun damage at range <= 2), physPierce (share of phys resist ignored), staggerMult,
+  //   closeDmg (gun damage at range <= 2), physPierce (share of phys resist ignored), physStrip (PHY resist points
+  //   each of your physical hits strips for the fight),
   //   heatOut / drainOut (heat / drain your hits put in), capCut (your first heat hit cuts the target's
-  //   heat cap by this share), heatLock (a mech you heat loses this share of its next cooling), siphon
-  //   (share of drained energy you get), regenLock (a mech you black out skips its next regen), lowHpDmg (vs a mech under 30% HP),
+  //   heat cap by this share), heatLock (a mech you heat loses this share of its cooldowns next turn), siphon
+  //   (share of drained energy you get), elecCost (share off your Electric guns' energy cost), farDmg (gun damage at range >= 4), lowHpDmg (vs a mech under half HP),
   //   cool / regen (your reactor), secondWind (a forcefield the first time you drop under 30% HP).
   boons: [
-    { id: 'boon_atk', name: 'Overcharge', desc: '+10% ATK.', color: '#ffcd75', icon: 'dmg' },
-    { id: 'boon_def', name: 'Hardened Shell', desc: '+2 DEF.', color: '#41a6f6', icon: 'def' },
+    { id: 'boon_atk', name: 'Overcharge', desc: '+6% ATK.', color: '#ffcd75', icon: 'dmg' },
+    { id: 'boon_def', name: 'Hardened Shell', desc: '+1.5 DEF.', color: '#41a6f6', icon: 'def' },
     { id: 'boon_hp', name: 'Colossus', desc: '+400 max HP.', color: '#a7f070', icon: 'hp' },
     { id: 'boon_greed', name: 'Greed', desc: '+25% gold, but -50 max HP.', color: '#ffcd75', icon: 'gold' },
-    { id: 'boon_swift', name: 'Swift Loader', desc: '+8% ATK, +1 walk.', color: '#c46fd6', icon: 'move' },
-    { id: 'boon_power', name: 'Long Barrel', desc: '+1 max range on every gun.', color: '#ef7d57', icon: 'range' },
-    { id: 'boon_regen', name: 'Regeneration', desc: 'Repair 6% of max HP after each battle won.', color: '#a7f070', icon: 'heal' },
-    { id: 'boon_glass', name: 'Glass Cannon', desc: '+20% ATK, but -300 max HP.', color: '#ff5d73', icon: 'skull' },
-    { id: 'boon_execute', name: 'Executioner', desc: '+40% damage to mechs under 30% HP.', color: '#ff5d73', icon: 'skull', fx: { lowHpDmg: 0.4 } },
-    { id: 'boon_close', name: 'Point Blank', desc: '+25% gun damage at range 1-2.', color: '#ffcd75', icon: 'dmg', fx: { closeDmg: 0.25 } },
+    { id: 'boon_swift', name: 'Swift Loader', desc: '+4% ATK, +1 walk.', color: '#c46fd6', icon: 'move' },
+    { id: 'boon_power', name: 'Long Barrel', desc: '+1 max range on every gun, and +15% gun damage at range 4 or more.', color: '#ef7d57', icon: 'range', fx: { farDmg: 0.15 } },
+    { id: 'boon_regen', name: 'Regeneration', desc: 'Repair 10% of max HP after each battle won.', color: '#a7f070', icon: 'heal' },
+    { id: 'boon_glass', name: 'Glass Cannon', desc: '+15% ATK, but -300 max HP.', color: '#ff5d73', icon: 'skull' },
+    { id: 'boon_execute', name: 'Executioner', desc: '+35% damage to mechs under half HP.', color: '#ff5d73', icon: 'skull', fx: { lowHpDmg: 0.35 } },
+    { id: 'boon_close', name: 'Point Blank', desc: '+30% gun damage at range 1-2.', color: '#ffcd75', icon: 'dmg', fx: { closeDmg: 0.3 } },
     { id: 'boon_wind', name: 'Second Wind', desc: 'The first time each of your mechs drops under 30% HP in a battle, it gets a forcefield.', color: '#a7f070', icon: 'def', fx: { secondWind: 1 } },
-    // Physical: raw damage
-    { id: 'boon_ap', name: 'AP Rounds', desc: 'Physical hits ignore half of the target\'s physical resist.', color: '#f4f4f4', icon: 'pierce', tag: 'phys', fx: { physPierce: 0.5 } },
-    { id: 'boon_sledge', name: 'Sledge Rounds', desc: 'Physical hits fill the STAGGER bar 50% faster.', color: '#f4f4f4', icon: 'stomp', tag: 'phys', fx: { staggerMult: 0.5 } },
-    // Explosive: heat and shutdowns
+    // Physical: raw damage and stripped resists
+    { id: 'boon_ap', name: 'AP Rounds', desc: 'Physical hits ignore three quarters of the target\'s physical resist.', color: '#f4f4f4', icon: 'pierce', tag: 'phys', fx: { physPierce: 0.75 } },
+    { id: 'boon_sledge', name: 'Sledge Rounds', desc: 'Each of your Physical hits strips half a point of PHY resist, for the rest of the fight.', color: '#f4f4f4', icon: 'resdrain', tag: 'phys', fx: { physStrip: 0.5 } },
+    // Explosive: heat, forced cooldowns and shutdowns
     { id: 'boon_incin', name: 'Incinerator', desc: 'Your hits put in 30% more heat.', color: '#ef7d57', icon: 'heatin', tag: 'heat', fx: { heatOut: 0.3 } },
-    { id: 'boon_flash', name: 'Flashpoint', desc: 'The first time you heat a mech in a battle, its heat cap drops by 15%.', color: '#ef7d57', icon: 'heat', tag: 'heat', fx: { capCut: 0.15 } },
-    { id: 'boon_lock', name: 'Thermal Lock', desc: 'Mechs you heat cool 40% less on their next turn.', color: '#ef7d57', icon: 'lock', tag: 'heat', fx: { heatLock: 0.4 } },
-    { id: 'boon_coolant', name: 'Coolant Loop', desc: '+40% cooling.', color: '#ef7d57', icon: 'cool', tag: 'heat', fx: { cool: 0.4 } },
-    // Electric: drain, blackouts and energy break
+    { id: 'boon_flash', name: 'Flashpoint', desc: 'The first time you heat a mech in a battle, its heat cap drops by 25%.', color: '#ef7d57', icon: 'heat', tag: 'heat', fx: { capCut: 0.25 } },
+    { id: 'boon_lock', name: 'Thermal Lock', desc: 'Mechs you heat lose 40% of their cooling on their next turn (forced cooldowns too).', color: '#ef7d57', icon: 'lock', tag: 'heat', fx: { heatLock: 0.4 } },
+    { id: 'boon_coolant', name: 'Coolant Loop', desc: '+60% cooling.', color: '#ef7d57', icon: 'cool', tag: 'heat', fx: { cool: 0.6 } },
+    // Electric: drain, starved guns and energy break
     { id: 'boon_overdrain', name: 'Overdrain', desc: 'Your hits drain 30% more energy.', color: '#73eff7', icon: 'drain', tag: 'energy', fx: { drainOut: 0.3 } },
     { id: 'boon_siphon', name: 'Siphon', desc: 'Half the energy you drain flows into your battery.', color: '#73eff7', icon: 'energy', tag: 'energy', fx: { siphon: 0.5 } },
-    { id: 'boon_short', name: 'Short Circuit', desc: 'A mech you BLACKOUT gets no energy regen on its next turn.', color: '#73eff7', icon: 'arc', tag: 'energy', fx: { regenLock: 1 } },
+    { id: 'boon_short', name: 'Short Circuit', desc: 'Your Electric guns cost 40% less energy.', color: '#73eff7', icon: 'arc', tag: 'energy', fx: { elecCost: 0.4 } },
     { id: 'boon_cells', name: 'Spare Cells', desc: '+40% energy regen.', color: '#73eff7', icon: 'regen', tag: 'energy', fx: { regen: 0.4 } },
   ],
 

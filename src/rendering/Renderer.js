@@ -1351,11 +1351,10 @@ export class Renderer {
       }
     }
 
-    // Reactor damage and jams, in red: they last the rest of the fight
+    // Reactor damage, in red: it lasts the rest of the fight
     const hurt = [
       ball.coolLost ? `COOLING -${ball.coolLost}` : '',
       ball.regenLost ? `REGEN -${ball.regenLost}` : '',
-      ball.jammed || ball.jamNext ? 'GUNS JAMMED' : '',
     ].filter(Boolean);
     if (hurt.length) {
       ctx.fillStyle = '#ff5d73';
@@ -1848,12 +1847,12 @@ export class Renderer {
       tags.push({ label: 'CHILLED', color: '#73eff7', desc: 'Chilled: its next move is 1 position shorter.' });
     if (ball.exposed)
       tags.push({ label: 'EXPOSED', color: '#ffcd75', desc: 'Rammed! Takes +25% gun damage until its next turn.' });
-    if (ball.heatCap && ball.heat > ball.heatCap)
-      tags.push({ label: 'OVERHEATED', color: '#ff5d73', desc: 'Over its heat cap: its next turn is lost while it cools (and the one after, if it is still over the cap).' });
-    if (ball.staggered)
-      tags.push({ label: 'STAGGERED', color: '#f4f4f4', desc: 'Battered by physical hits: its next turn is lost. Heavy physical damage fills a stagger bar; the bar bleeds off each turn.' });
-    if (ball.jammed || ball.jamNext)
-      tags.push({ label: 'JAMMED', color: DTYPES.energy.color, desc: `Drained to 0 energy: its guns can't fire ${ball.jammed ? 'this' : 'next'} turn (it can still move, stomp and vent).` });
+    if (ball.heatCap && ball.heat > ball.heatCap) {
+      const shut = ball.heat - ball.heatCap > ball.cool * (1 - (ball.heatLock || ball.lockNow || 0));
+      tags.push(shut
+        ? { label: 'SHUTDOWN', color: '#ff5d73', desc: 'Over its heat cap by more than its cooling: its next turn is a double cooldown, and it loses the whole turn.' }
+        : { label: 'OVERHEATED', color: '#ff5d73', desc: 'Over its heat cap: its next turn opens with a forced cooldown, which uses one of its two actions.' });
+    }
     if (ball.coolLost)
       tags.push({ label: `COOL -${Math.round(ball.coolLost)}`, color: '#ff5d73', desc: `Coolant cracked: cools ${Math.round(ball.coolLost)} less heat per turn for the rest of the fight.` });
     if (ball.regenLost)
@@ -1990,13 +1989,13 @@ export class Renderer {
     const it = world.intent;
     const e = world.fireTarget;
     if (!it || !e || e.hp <= 0) return;
-    const ICON = { move: 'move', stomp: 'stomp', vent: 'cool', jammed: 'lock' };
+    const ICON = { move: 'move', stomp: 'stomp', vent: 'cool' };
     const cell = 30;
     const pad = 5;
     ctx.font = `700 13px ${FONT}`;
     const color = it.lost ? '#a7f070' : it.lethal ? '#ff5d73' : DTYPES[e.element]?.color || '#ff5d73';
     const label = it.lost ? `${it.lost}: TURN LOST` : it.dmg > 0 ? `${it.dmg}` : '';
-    const icons = it.lost ? [iconCanvas('lock')] : it.steps.map((st) => (st.part ? partCanvas(st.part.id) : iconCanvas(ICON[st.kind] || 'star', st.kind === 'jammed' ? DTYPES.energy.color : undefined)));
+    const icons = it.lost ? [iconCanvas('lock')] : it.steps.map((st) => (st.part ? partCanvas(st.part.id) : iconCanvas(ICON[st.kind] || 'star')));
     if (!it.lost && !icons.length) icons.push(iconCanvas('cd')); // holding
     if (it.lethal) icons.push(iconCanvas('skull'));
     const textW = label ? Math.ceil(ctx.measureText(label).width) + 6 : 0;
@@ -2083,7 +2082,7 @@ export class Renderer {
     if (!world.showHints || (world.battleStats?.turns || 0) > 1) return;
     if (turnSystem?.phase !== 'PLAYER_AIM') return;
     if (world.gear && !(world.player?.actionsLeft > 0)) return;
-    this._centerNotice(ctx, view, 'TAP A LIT PLATE TO MOVE, TAP A GUN TO FIRE, OR VENT', '#f4f4f4', view.cssH * 0.66);
+    this._centerNotice(ctx, view, 'TAP A LIT PLATE TO MOVE, TAP A GUN TO FIRE, OR COOL DOWN', '#f4f4f4', view.cssH * 0.66);
   }
 
   /**

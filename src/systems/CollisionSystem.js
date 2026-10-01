@@ -6,6 +6,7 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
+import { flatResist } from '../meta/Mech.js';
 
 const D = CONFIG.damage;
 
@@ -46,15 +47,13 @@ export class CollisionSystem {
   }
 
   /** `dtype`: phys / heat / energy (Mech.DTYPES); its resist adds to DEF. */
-  calculatePlayerDamage(rawDamage, { bypassDef = false, dtype = 'phys' } = {}) {
+  calculatePlayerDamage(rawDamage, { bypassDef = false, dtype = 'phys', rounds = 1 } = {}) {
     let damage = rawDamage;
 
-    // 1. DEF + the resist for this type: the same rule enemies get (defensePerPoint
-    //    per point, capped at maxDefCap points = 60%). Risk XI pierces part of it.
+    // 1. DEF + the resist for this type, flat like enemies get it (Mech.flatResist). Risk XI pierces part of it.
     if (!bypassDef) {
       const def = (this.stats.playerTotalDef || this.stats.playerDef || 0) + (this.stats.playerRes?.[dtype] || 0);
-      const effective = Math.max(0, Math.min(CONFIG.run.maxDefCap || 15, def) * (1 - (this.stats.riskDefPierce || 0)));
-      damage *= 1 - effective * D.defensePerPoint;
+      damage = flatResist(damage, def * (1 - (this.stats.riskDefPierce || 0)), rounds);
     }
 
     // 2. Percentage damage reduction (mastery VETERAN; negative = extra damage taken)

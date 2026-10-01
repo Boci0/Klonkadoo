@@ -74,7 +74,7 @@ export function statBarHtml(t, next = null) {
     ['energy', 'Energy pool', (x) => x.energy, DTYPES.energy.color],
     ['regen', 'Energy regen per turn', (x) => x.regen, DTYPES.energy.color],
     ['heat', 'Heat cap', (x) => x.heatCap, DTYPES.heat.color],
-    ['cool', 'Cooling per turn', (x) => x.cool, '#73eff7'],
+    ['cool', 'Cooling: heat each COOLDOWN removes', (x) => x.cool, '#73eff7'],
     ...DTYPE_KEYS.map((k) => ['def', `${DTYPES[k].name} resist`, (x) => Math.round((x.def + x.res[k]) * 10) / 10, DTYPES[k].color]),
   ];
   const delta = (a, b) => {
@@ -96,7 +96,7 @@ export function statBarHtml(t, next = null) {
     ['dmg', 'Damage while below 35% HP', pc('lowHpAtk'), '#ff5d73', plus],
     ['heal', 'Repair (share of max HP) per enemy mech destroyed', pc('killHeal'), '#a7f070', (v) => `+${v}%/KILL`],
     ['heal', 'Heal after each win', pc('healAfterWin'), '#a7f070', (v) => `+${v}%/WIN`],
-    ['energy', 'VENT refills energy: this share of the heat it cools', pc('ventEnergy'), DTYPES.energy.color, (v) => `VENT ${v}%`],
+    ['energy', 'COOLDOWN refills energy: this share of the heat it cools', pc('ventEnergy'), DTYPES.energy.color, (v) => `COOL ${v}%`],
     ['gold', 'Gold', pc('goldPct'), '#ffcd75', plus],
   ].filter(([, , f]) => f(t) || (next && f(next)));
   const flags = [
@@ -175,12 +175,12 @@ export const ICON_KEY = [
   ['range', 'RANGE', 'How far a gun reaches, in lane positions (1 = right next to you)'],
   ['dmg', 'DAMAGE', 'Damage per hit, coloured by type: white Physical, orange Explosive, cyan Electric (the hit rolls between the two numbers)'],
   ['heat', 'HEAT', 'The heat a shot adds to YOU, or your heat cap'],
-  ['heatin', 'HEAT IN', 'Heat it pumps into the TARGET per hit: over its cap, it loses its next turn'],
+  ['heatin', 'HEAT IN', 'Heat it pumps into the TARGET per hit: over its cap, its next turn opens with a forced cooldown (or a shutdown)'],
   ['energy', 'ENERGY', 'The energy a shot costs YOU, or your energy pool'],
   ['regen', 'REGEN', 'Energy you get back each turn'],
-  ['cool', 'COOLING', 'Heat you lose each turn (VENT cools twice as much)'],
+  ['cool', 'COOLING', 'Heat each COOLDOWN removes (heat never drops by itself)'],
   ['hp', 'HP', 'Health. Going over the weight cap costs some'],
-  ['def', 'RESIST', 'Cuts damage of its colour\'s type (white = all types)'],
+  ['def', 'RESIST', `Each point takes ${CONFIG.gear.resScale} damage off every shot of its colour's type (white = all types)`],
   ['load', 'WEIGHT', 'Kilograms. Every mech carries up to 1000'],
   ['side', 'SIDE GUN', 'Fits the 4 side slots'],
   ['top', 'TOP GUN', 'Heavy or lobbed: fits the 2 top slots'],

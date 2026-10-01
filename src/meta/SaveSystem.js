@@ -8,7 +8,7 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
-import { masteryLevel } from './Mastery.js';
+import { masteryLevel, oldXpToNext, xpToNext, xpForLevel } from './Mastery.js';
 import { weekIndex, weekElement, effectFor, fieldTop, raidTier } from './Raid.js';
 import { INVENTORY_CAP, RARITY_ORDER, salvageValue, upgradeCost, maxLevel, tierOf, transformInfo, slotAccepts, RETIRED, RETIRED_REFUND, STARTER_PARTS, STARTER_LOADOUT, SLOTS, getPart, newUid, openCrate, CRATES, PACK_SIZE, packCost } from './Mech.js';
 
@@ -36,6 +36,20 @@ export class SaveSystem {
    */
   _migrate() {
     const d = this.data;
+    // 2.10 mastery (max 50, a slower curve): keep each pilot's level and progress into it, not the raw XP
+    if (!d.masteryV2) {
+      for (const [ball, xp] of Object.entries(d.mastery || {})) {
+        let level = 1;
+        let left = Math.max(0, xp);
+        while (level < 20 && left >= oldXpToNext(level)) {
+          left -= oldXpToNext(level);
+          level += 1;
+        }
+        const into = level >= 20 ? 0 : left / oldXpToNext(level);
+        d.mastery[ball] = xpForLevel(level) + Math.floor(into * xpToNext(level));
+      }
+      d.masteryV2 = true;
+    }
     if ((d.techVersion || 1) < 2) {
       const A = [6, 10, 14, 18, 22, 28, 34, 40, 48, 56];
       const B = [8, 12, 16, 20, 26, 32, 40, 48, 58, 70];

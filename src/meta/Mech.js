@@ -66,7 +66,7 @@ export const DTYPE_KEYS = Object.keys(DTYPES);
 /**
  * Your gun damage by type, by role (Super Mechs): Physical hits hardest and does
  * nothing else; Electric drains, and past empty the drain comes off HP; Explosive
- * hits softest but overheats the target into lost turns (enemies: ELEMENT_DMG).
+ * hits softest but overheats the target into forced cooldowns (enemies: ELEMENT_DMG).
  * (Reloaded at Mythic: Explosive and Electric hit ~85% of Physical.)
  */
 export const GUN_TYPE_DMG = { phys: 1, energy: 0.9, heat: 0.85 };
@@ -83,6 +83,17 @@ export const reachMult = (p) => (REACH_DMG[p.mount === 'top' ? 'top' : 'side'].f
 export const dtypeOf = (w) => (DTYPES[w?.dtype] ? w.dtype : 'phys');
 /** A ball's resistance to one damage type, in DEF points. */
 export const resistOf = (ball, type) => (ball.def || 0) + (ball.res?.[type] || 0);
+/** Resist points as the flat damage they take off each round (CONFIG.gear.resScale). */
+export const resistFlat = (pts) => pts * CONFIG.gear.resScale;
+/**
+ * One round after `pts` resist points (SuperMechs: damage minus resist). The resist counts once per
+ * shot, so a burst gun's `rounds` share it. Stripped resist below 0 adds damage; at least resFloor of
+ * the round always gets through.
+ */
+export function flatResist(dmg, pts, rounds = 1) {
+  if (!(dmg > 0)) return 0;
+  return Math.max(dmg * CONFIG.gear.resFloor, dmg - resistFlat(pts) / Math.max(1, rounds), 0.1);
+}
 
 // ---------- Catalog ----------
 // Weight in kg (CONFIG.gear.loadCap for the whole mech).
@@ -96,7 +107,7 @@ export const resistOf = (ball, type) => (ball.def || 0) + (ball.res?.[type] || 0
 //     resDrain { type: n } (strips that resist for the fight) / mine (plants a mine instead)
 //     execute (x1.8 damage below that share of the target's HP) / steal (what it drains goes to you). No gun heals: repairs
 //     come from drones, frames and modules only
-// Frames and some modules set the reactor: energy (pool), regen (per turn), heatCap, cool (per turn).
+// Frames and some modules set the reactor: energy (pool), regen (refill at the end of each turn), heatCap, cool (per COOLDOWN).
 // `unique` modules fit once per mech. `tiers` [lowest, highest] defaults to [rarity, rarity + 3].
 export const PARTS = [
   // Frames: the main HP and the reactor
@@ -176,9 +187,9 @@ export const PARTS = [
   { id: 'wp_gauss', type: 'weapon', name: 'GAUSS RIFLE', rarity: 'epic', dtype: 'phys', weight: 86, reach: [3, 6], dmg: 15, en: 12, heat: 0, color: '#41a6f6', icon: 'wp_rifle', desc: 'Magnetic rails: makes no heat, but it drinks energy. Heavy.' },
   { id: 'wp_chem', type: 'weapon', name: 'CHEM THROWER', rarity: 'rare', dtype: 'heat', weight: 73, reach: [1, 3], dmg: 10, en: 0, heat: 11, fx: { heat: 10 }, color: '#ef7d57', icon: 'wp_flamer', desc: 'Pressure-fed: costs no energy and pumps heat into the target, but it runs hot. Heavy.' },
   // Experimental guns
-  { id: 'wp_piledriver', type: 'weapon', name: 'PILEDRIVER', rarity: 'epic', dtype: 'phys', weight: 70, reach: [1, 2], dmg: 19, foeDmg: 16, en: 11, heat: 8, fx: { push: 2 }, color: '#f4f4f4', desc: 'A heavy close-range hammer that shoves the target back. Big hits fill the stagger bar fast.' },
+  { id: 'wp_piledriver', type: 'weapon', name: 'PILEDRIVER', rarity: 'epic', dtype: 'phys', weight: 70, reach: [1, 2], dmg: 19, foeDmg: 16, en: 11, heat: 8, fx: { push: 2 }, color: '#f4f4f4', desc: 'A heavy close-range hammer that shoves the target back.' },
   { id: 'wp_arclash', type: 'weapon', name: 'ARC LASH', rarity: 'epic', dtype: 'energy', weight: 47, reach: [1, 3], dmg: 13, en: 8, heat: 3, fx: { line: true, drain: 14 }, color: '#73eff7', desc: 'A beam that drains as it cuts.' },
-  { id: 'wp_singularity', type: 'weapon', name: 'SINGULARITY BEAM', rarity: 'mythic', dtype: 'energy', weight: 62, reach: [1, 4], dmg: 22, foeDmg: 15, en: 14, heat: 5, fx: { line: true, drain: 24, jam: true }, color: '#ff5d73', desc: 'A beam that drains as it cuts, and blacks out their guns if it empties them.' },
+  { id: 'wp_singularity', type: 'weapon', name: 'SINGULARITY BEAM', rarity: 'mythic', dtype: 'energy', weight: 62, reach: [1, 4], dmg: 22, foeDmg: 15, en: 14, heat: 5, fx: { line: true, drain: 24, regenDmg: 3 }, color: '#ff5d73', desc: 'A beam that drains as it cuts and breaks their generator: less regen for the rest of the fight (stacks, down to a floor).' },
   { id: 'wp_dynamo', type: 'weapon', name: 'DYNAMO GUN', rarity: 'rare', dtype: 'energy', weight: 54, reach: [1, 3], dmg: 9, en: 0, heat: 11, fx: { drain: 3 }, color: '#73eff7', icon: 'wp_spark', desc: 'Runs on its own dynamo: costs no energy and drains theirs, but it runs hot. Heavy.' },
 
   // TOP guns: the heavy and lobbed ones
@@ -194,7 +205,7 @@ export const PARTS = [
   { id: 'wp_howitzer', type: 'weapon', mount: 'top', name: 'SIEGE HOWITZER', rarity: 'legendary', dtype: 'phys', weight: 59, reach: [6, 9], dmg: 32, foeDmg: 24, en: 10, heat: 10, ammo: 2, backfire: 5, arc: true, fx: { splash: 1 }, color: '#ffcd75' },
   { id: 'wp_sniper', type: 'weapon', mount: 'top', name: 'SNIPER CANNON', rarity: 'legendary', dtype: 'phys', weight: 42, reach: [7, 10], dmg: 32, foeDmg: 23, en: 8, heat: 8, ammo: 3, color: '#f4f4f4' },
   { id: 'wp_meltdown', type: 'weapon', mount: 'top', name: 'MELTDOWN CANNON', rarity: 'legendary', dtype: 'heat', weight: 52, reach: [3, 6], dmg: 12, en: 4, heat: 9, fx: { meltdown: true }, color: '#ffcd75', desc: 'Against an overheating target: its heat over the cap blasts out as 2x damage, and it drops back to its cap (so it keeps its turn).' },
-  { id: 'wp_blackout', type: 'weapon', mount: 'top', name: 'BLACKOUT CANNON', rarity: 'legendary', dtype: 'energy', weight: 52, reach: [3, 6], dmg: 12, en: 14, heat: 6, fx: { drain: 11, jam: true }, color: '#29366f', desc: "If its drain leaves them at 0 energy, their guns jam next turn (they can still move, stomp and vent)." },
+  { id: 'wp_blackout', type: 'weapon', mount: 'top', name: 'BLACKOUT CANNON', rarity: 'legendary', dtype: 'energy', weight: 52, reach: [3, 6], dmg: 12, en: 14, heat: 6, fx: { drain: 14, regenDmg: 3 }, color: '#29366f', desc: 'Drains hard and breaks their generator: less regen for the rest of the fight (stacks, down to a floor). Starve them and their guns go quiet.' },
   { id: 'wp_cluster', type: 'weapon', mount: 'top', name: 'CLUSTER BOMB', rarity: 'legendary', dtype: 'heat', weight: 42, reach: [4, 8], dmg: 8, en: 4, heat: 9, ammo: 3, arc: true, fx: { burst: 3 }, color: '#ef7d57', icon: 'wp_rocket' },
   { id: 'wp_nova', type: 'weapon', mount: 'top', name: 'NOVA LANCE', rarity: 'mythic', dtype: 'energy', weight: 52, reach: [3, 5], dmg: 34, foeDmg: 24, en: 12, heat: 4, ammo: 2, backfire: 5, fx: { pierce: true }, color: '#ff5d73' },
   // Close-range top guns: a big gun that works right next to the enemy
@@ -217,15 +228,15 @@ export const PARTS = [
   { id: 'sp_winch', type: 'special', name: 'HARPOON WINCH', rarity: 'epic', weight: 21, special: 'hook', range: 8, uses: 2, en: 7, heat: 6, color: '#ffcd75', icon: 'sp_hook', desc: 'Yanks the enemy right next to you from up to 8 away (a mine in the way stops it there, and goes off). No damage.' },
 
   // Drones: act every turn, any range, once deployed
-  { id: 'dr_gnat', type: 'drone', name: 'GNAT DRONE', rarity: 'common', dtype: 'phys', weight: 20, upkeep: { en: 3, heat: 1 }, dmg: 4, color: '#94b0c2' },
-  { id: 'dr_firefly', type: 'drone', name: 'FIREFLY DRONE', rarity: 'common', dtype: 'heat', weight: 20, upkeep: { en: 3, heat: 1 }, dmg: 3, fx: { heat: 5 }, color: '#ef7d57', icon: 'dr_gnat', desc: 'Small Explosive hits that heat the target every turn.' },
-  { id: 'dr_hornet', type: 'drone', name: 'HORNET DRONE', rarity: 'rare', dtype: 'phys', weight: 36, upkeep: { en: 4, heat: 2 }, dmg: 5, color: '#ffcd75' },
-  { id: 'dr_medic', type: 'drone', name: 'MEDIC DRONE', rarity: 'rare', weight: 31, upkeep: { en: 6, heat: 0 }, heal: 6, color: '#a7f070', desc: 'Repairs you every turn it is deployed, up to 30% of your max HP per battle (grows with level; the Risk heal penalty applies). It never attacks.' },
-  { id: 'dr_static', type: 'drone', name: 'STATIC DRONE', rarity: 'rare', dtype: 'energy', weight: 31, upkeep: { en: 3, heat: 2 }, dmg: 4, fx: { drain: 3 }, color: '#73eff7', icon: 'dr_hornet', desc: 'Electric zaps that drain energy every turn.' },
+  { id: 'dr_gnat', type: 'drone', name: 'GNAT DRONE', rarity: 'common', dtype: 'phys', weight: 20, upkeep: { en: 3, heat: 1 }, dmg: 7, foeDmg: 4, color: '#94b0c2' },
+  { id: 'dr_firefly', type: 'drone', name: 'FIREFLY DRONE', rarity: 'common', dtype: 'heat', weight: 20, upkeep: { en: 3, heat: 1 }, dmg: 5, foeDmg: 3, fx: { heat: 5 }, color: '#ef7d57', icon: 'dr_gnat', desc: 'Small Explosive hits that heat the target every turn.' },
+  { id: 'dr_hornet', type: 'drone', name: 'HORNET DRONE', rarity: 'rare', dtype: 'phys', weight: 36, upkeep: { en: 4, heat: 2 }, dmg: 8, foeDmg: 5, color: '#ffcd75' },
+  { id: 'dr_medic', type: 'drone', name: 'MEDIC DRONE', rarity: 'rare', weight: 31, upkeep: { en: 6, heat: 0 }, heal: 6, color: '#a7f070', desc: 'Repairs you every turn it is deployed, up to a share of your max HP per battle (grows with level; the Risk heal penalty applies). It never attacks.' },
+  { id: 'dr_static', type: 'drone', name: 'STATIC DRONE', rarity: 'rare', dtype: 'energy', weight: 31, upkeep: { en: 3, heat: 2 }, dmg: 6, foeDmg: 4, fx: { drain: 3 }, color: '#73eff7', icon: 'dr_hornet', desc: 'Electric zaps that drain energy every turn.' },
   { id: 'dr_coolant', type: 'drone', name: 'COOLANT DRONE', rarity: 'rare', weight: 31, upkeep: { en: 5, heat: 0 }, chill: 8, color: '#73eff7', icon: 'dr_medic', desc: 'Pulls heat out of you every turn it is deployed (grows with level). It never attacks.' },
   { id: 'dr_guardian', type: 'drone', name: 'GUARDIAN DRONE', rarity: 'epic', weight: 41, upkeep: { en: 7, heat: 0 }, forcefieldEvery: 3, color: '#a7f070', desc: 'Forcefield every 3rd turn.' },
-  { id: 'dr_reaper', type: 'drone', name: 'REAPER DRONE', rarity: 'legendary', dtype: 'energy', weight: 52, upkeep: { en: 6, heat: 2 }, dmg: 8, foeDmg: 7, fx: { crit: 0.2 }, color: '#ffcd75', desc: '20% crit chance.' },
-  { id: 'dr_seraph', type: 'drone', name: 'SERAPH DRONE', rarity: 'mythic', dtype: 'energy', weight: 57, upkeep: { en: 7, heat: 2 }, dmg: 11, foeDmg: 8, fx: { crit: 0.25 }, color: '#ff5d73', desc: '25% crit chance.' },
+  { id: 'dr_reaper', type: 'drone', name: 'REAPER DRONE', rarity: 'legendary', dtype: 'energy', weight: 52, upkeep: { en: 6, heat: 2 }, dmg: 13, foeDmg: 7, fx: { crit: 0.2 }, color: '#ffcd75', desc: '20% crit chance.' },
+  { id: 'dr_seraph', type: 'drone', name: 'SERAPH DRONE', rarity: 'mythic', dtype: 'energy', weight: 57, upkeep: { en: 7, heat: 2 }, dmg: 18, foeDmg: 8, fx: { crit: 0.25 }, color: '#ff5d73', desc: '25% crit chance.' },
 
   // Modules: stat modules stack; `unique` ones fit once per mech
   { id: 'md_plating', type: 'module', name: 'PLATING', rarity: 'common', weight: 26, hp: 10 },
@@ -233,7 +244,7 @@ export const PARTS = [
   { id: 'md_heatres', type: 'module', name: 'BLAST LINER', rarity: 'common', weight: 24, res: { heat: 2 } },
   { id: 'md_elecres', type: 'module', name: 'GROUNDING MESH', rarity: 'common', weight: 24, res: { energy: 2 } },
   { id: 'md_battery', type: 'module', name: 'BATTERY PACK', rarity: 'common', weight: 18, energy: 14, desc: 'A bigger energy pool (grows with level).' },
-  { id: 'md_coolant', type: 'module', name: 'COOLANT LOOP', rarity: 'common', weight: 14, cool: 6, desc: 'Cools more heat per turn (grows with level).' },
+  { id: 'md_coolant', type: 'module', name: 'COOLANT LOOP', rarity: 'common', weight: 14, cool: 6, desc: 'Each COOLDOWN removes more heat (grows with level).' },
   { id: 'md_target', type: 'module', name: 'TARGETING CPU', rarity: 'common', weight: 16, crit: 0.03, unique: true },
   { id: 'md_servo', type: 'module', name: 'STOMP SERVO', rarity: 'common', weight: 16, stompPct: 0.5, unique: true, desc: '+50% STOMP damage.' },
   { id: 'md_bounty', type: 'module', name: 'BOUNTY CHIP', rarity: 'common', weight: 12, goldPct: 0.15, unique: true },
@@ -253,7 +264,7 @@ export const PARTS = [
   { id: 'md_amp', type: 'module', name: 'DAMAGE AMP', rarity: 'rare', weight: 24, atkPct: 0.08, unique: true },
   { id: 'md_repair', type: 'module', name: 'NANO REPAIR', rarity: 'rare', weight: 24, healAfterWin: 0.05, unique: true, desc: 'Heal after every won battle.' },
   { id: 'md_aegis', type: 'module', name: 'AEGIS EMITTER', rarity: 'epic', weight: 30, res: { phys: 1, energy: 2 }, startForcefield: true, unique: true, desc: 'Start each battle with a Forcefield.' },
-  { id: 'md_exchanger', type: 'module', name: 'HEAT EXCHANGER', rarity: 'epic', weight: 22, ventEnergy: 0.6, unique: true, desc: 'VENT also refills energy: 60% of the heat it cools.' },
+  { id: 'md_exchanger', type: 'module', name: 'HEAT EXCHANGER', rarity: 'epic', weight: 22, ventEnergy: 0.6, unique: true, desc: 'COOLDOWN also refills energy: 60% of the heat it cools.' },
   { id: 'md_laststand', type: 'module', name: 'LAST STAND', rarity: 'epic', weight: 18, lowHpAtk: 0.25, unique: true, desc: '+25% damage while you are below 35% HP.' },
   { id: 'md_range', type: 'module', name: 'RANGE EXTENDER', rarity: 'epic', weight: 20, reachBonus: 1, unique: true, desc: '+1 max range on every gun.' },
   { id: 'md_titanplate', type: 'module', name: 'TITAN PLATE', rarity: 'legendary', weight: 46, hp: 28, res: { phys: 2, heat: 2 } },
@@ -267,8 +278,13 @@ export const PARTS = [
 {
   const R = CONFIG.gear.rxScale || 1;
   const REACTOR_FIELDS = ['en', 'heat', 'energy', 'regen', 'heatCap', 'cool', 'moveEn', 'stompEn', 'stompHeat', 'chill', 'drain'];
+  const cost = CONFIG.gear.gunCost || {};
+  const rig = CONFIG.gear.rigScale || {};
   for (const p of PARTS) {
     for (const f of REACTOR_FIELDS) if (typeof p[f] === 'number') p[f] *= R;
+    // Gun costs by damage type (Physical runs on heat), reactor rates (regen, cooling)
+    if (p.type === 'weapon') for (const f of ['en', 'heat']) if (typeof p[f] === 'number') p[f] = Math.round(p[f] * (cost[p.dtype || 'phys']?.[f] ?? 1));
+    if (p.type === 'frame' || p.type === 'module') for (const f of ['regen', 'cool']) if (typeof p[f] === 'number') p[f] = Math.round(p[f] * (rig[f] ?? 1));
     if (p.upkeep) p.upkeep = Object.fromEntries(Object.entries(p.upkeep).map(([k, v]) => [k, v * R]));
     if (p.fx) for (const f of ['heat', 'drain', 'coolDmg', 'regenDmg']) if (typeof p.fx[f] === 'number') p.fx[f] *= R;
   }
@@ -471,7 +487,7 @@ export function describePart(owned) {
   if (p.killHeal) L.push(`+${pct(p.killHeal)}% HP/KILL`);
   if (p.hotAtk) L.push(`DMG +${pct(p.hotAtk)}% WHEN HOT`);
   if (p.lowHpAtk) L.push(`DMG +${pct(p.lowHpAtk)}% BELOW 35% HP`);
-  if (p.ventEnergy) L.push(`VENT REFILLS ${pct(p.ventEnergy)}% AS EN`);
+  if (p.ventEnergy) L.push(`COOLDOWN REFILLS ${pct(p.ventEnergy)}% AS EN`);
   if (p.unique) L.push('ONE PER MECH');
   if (p.desc) L.push(p.desc);
   return L;
@@ -539,7 +555,7 @@ export function partChips(owned) {
   add(p.killHeal, 'heal', `+${pct(p.killHeal || 0)}%/KILL`, 'Repair (share of max HP) per enemy mech destroyed');
   add(p.hotAtk, 'heat', `+${pct(p.hotAtk || 0)}%`, 'Damage while above half your heat cap', DTYPES.heat.color);
   add(p.lowHpAtk, 'dmg', `+${pct(p.lowHpAtk || 0)}%`, 'Damage while below 35% HP', '#ff5d73');
-  add(p.ventEnergy, 'energy', `VENT ${pct(p.ventEnergy || 0)}%`, 'VENT refills energy: this share of the heat it cools', DTYPES.energy.color);
+  add(p.ventEnergy, 'energy', `COOL ${pct(p.ventEnergy || 0)}%`, 'COOLDOWN refills energy: this share of the heat it cools', DTYPES.energy.color);
   add(p.healAfterWin, 'heal', `+${Math.round(p.healAfterWin * 100)}%/WIN`, 'Heal after each win');
   add(p.startForcefield, 'def', 'FIELD', 'Start each battle with a Forcefield');
   add(p.unique, 'lock', '1x', 'One per mech');
@@ -740,12 +756,14 @@ export function riskEase(level = 0) {
   const g = gearComp(level);
   const t = Math.max(0, Math.min(1, level / E.fullAt));
   const ai = E.ai * (1 - t);
-  // A tuned per-level curve (enemy HP and damage) wins over the straight line
+  // A tuned per-level curve (enemy HP and damage) wins over the straight line. `rx`: the heat and
+  // drain their guns push, softened the same way their damage is
   if (E.curve) {
     const k = E.curve[Math.max(0, Math.min(E.curve.length - 1, level))];
-    return { hp: k * g.hp, atk: k * g.atk, ai };
+    return { hp: k * g.hp, atk: k * g.atk, ai, rx: k * g.rx };
   }
-  return { hp: (E.hp + (1 - E.hp) * t) * g.hp, atk: (E.atk + (1 - E.atk) * t) * g.atk, ai };
+  const k = E.atk + (1 - E.atk) * t;
+  return { hp: (E.hp + (1 - E.hp) * t) * g.hp, atk: k * g.atk, ai, rx: k * g.rx };
 }
 
 // ---------- Enemy mechs ----------
@@ -860,7 +878,7 @@ const ELEMENT_FRAME = { heat: 'fr_furnace', energy: 'fr_conduit' };
 /**
  * Damage by type, by role (Super Mechs): Physical hits hardest and does
  * nothing else; Electric drains, and past empty the drain comes off HP;
- * Explosive hits softest but overheats you into lost turns. Your resists
+ * Explosive hits softest but overheats you into forced cooldowns. Your resists
  * decide the rest.
  */
 export const ELEMENT_DMG = { phys: 1, heat: 0.7, energy: 0.75 };
@@ -874,11 +892,13 @@ function legsInfo(id) {
 /**
  * Reactor for one enemy: by fight tier, shaped by its type (Explosive runs
  * hot and cools fast, Electric carries a big battery); Risk XI (gunCdCut)
- * makes them cool faster.
+ * makes them cool faster. It grows +5% per floor and with Risk (`rx`,
+ * gearComp.rx: the reactor your tiers bring), like the heat and drain they push.
  */
-export function enemyRig(nodeType, { cdCut = 0, element = null } = {}) {
+export function enemyRig(nodeType, { cdCut = 0, element = null, floor = 1, rx = 1 } = {}) {
   const tier = ['elite', 'miniboss', 'boss'].includes(nodeType) ? nodeType : 'combat';
-  const r = { ...CONFIG.gear.enemyRig[tier] };
+  const grow = (1 + 0.05 * (Math.max(1, Math.min(5, floor)) - 1)) * rx;
+  const r = Object.fromEntries(Object.entries(CONFIG.gear.enemyRig[tier]).map(([k, v]) => [k, Math.round(v * grow)]));
   if (element === 'heat') Object.assign(r, { heatCap: Math.round(r.heatCap * 1.35), cool: Math.round(r.cool * 1.35), energy: Math.round(r.energy * 0.9) });
   if (element === 'energy') Object.assign(r, { energy: Math.round(r.energy * 1.35), regen: Math.round(r.regen * 1.35), heatCap: Math.round(r.heatCap * 0.9) });
   return { ...r, cool: r.cool + cdCut * 4 * CONFIG.gear.rxScale };
@@ -909,15 +929,19 @@ export function enemyMech(nodeType, archetype, floor, rnd = Math.random, { atkMu
   const spread = CONFIG.gear.enemyGunShare[tier];
   const scale = G.dmgScale * G.enemyDmgScale * spread * (1 + 0.1 * (f - 1)) * (ELEMENT_DMG[el] ?? 1);
   const frac = (v) => Math.round(v * 100) / 100; // enemy numbers stay fractional: Risk and floor % always count
-  // Heat pumped in and energy drained grow +5% per floor (in the Abyss `rxOut`, main.js, replaces it)
-  // and with Risk (`rxMult`, gearComp.rx); `load` does the same for hits that heat / drain by their size
+  // Heat pumped in and energy drained come from the gun's FULL numbers (its own, else dtypeLoad x its
+  // player-scale hit), not the softer enemy hit: an Explosive enemy heats you like your own gun would.
+  // They grow +5% per floor (in the Abyss `rxOut`, main.js, replaces it), with Risk (`rxMult`,
+  // gearComp.rx) and by CONFIG.gear.enemyRx
   const fxOf = (base) => {
     const typed = base.dtype === 'heat' || base.dtype === 'energy';
-    if (!(base.fx && (base.fx.heat || base.fx.drain)) && !(typed && rxMult !== 1)) return base.fx;
+    if (!typed && !(base.fx && (base.fx.heat || base.fx.drain))) return base.fx;
     const fx = { ...(base.fx || {}) };
+    if (base.dtype === 'heat' && typeof fx.heat !== 'number' && !fx.meltdown) fx.heat = (base.dmg || 0) * G.dmgScale * G.dtypeLoad.heat;
+    if (base.dtype === 'energy' && typeof fx.drain !== 'number') fx.drain = (base.dmg || 0) * G.dmgScale * G.dtypeLoad.energy;
     const grow = (rxOut ?? 1 + 0.05 * (f - 1)) * rxMult;
-    for (const t of ['heat', 'drain']) if (typeof fx[t] === 'number') fx[t] = Math.round(fx[t] * grow);
-    if (typed && rxMult !== 1) fx.load = rxMult;
+    if (typeof fx.heat === 'number') fx.heat = Math.round(fx.heat * grow * (G.enemyRx?.heat ?? 1));
+    if (typeof fx.drain === 'number') fx.drain = Math.round(fx.drain * grow * (G.enemyRx?.energy ?? 1));
     return fx;
   };
   const weapons = gunIds.map((id) => {

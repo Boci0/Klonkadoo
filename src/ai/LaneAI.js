@@ -2,13 +2,15 @@
 // LaneAI — plans an enemy's turn on the lane.
 //
 // It tries every sequence of its actions this turn (walk / jump to each
-// reachable position, fire each ready gun, VENT, pass), simulates what each
+// reachable position, fire each ready gun, COOLDOWN, pass), simulates what each
 // does to both mechs, then scores the result looking one turn further:
 //   + damage dealt now (a kill is worth everything)
-//   + a foe left over its heat cap (it loses its next turn)
+//   + a foe left over its heat cap (a forced cooldown eats an action, a shutdown its turn)
 //   - the best damage the foe can answer with next turn (move + fire, or two guns)
 //   + what it can do next turn from where it stands
-//   - ending over its own heat cap (its next turn is lost)
+//   - ending over its own heat cap, or running hot toward it
+// SuperMechs rules: heat never cools by itself (COOLDOWN is an action) and
+// energy refills at the end of a mech's own turn.
 // STOMP kicks a mech right next to you.
 // Difficulty (0..1) = how often it takes the best line; otherwise it picks
 // a close second that still deals most of the damage (never a wasted turn). Everything runs on plain snapshots, never on the
@@ -16,9 +18,7 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
-
-const DEF_PER_POINT = 0.04;
-const DEF_CAP = 15;
+import { flatResist } from '../meta/Mech.js';
 
 const clone = (u) => ({ ...u, res: { ...u.res }, guns: u.guns.map((g) => ({ ...g })), specials: (u.specials || []).map((x) => ({ ...x })) });
 
@@ -42,10 +42,27 @@ function slam(s, foe) {
 }
 const cloneState = (s) => ({ ...s, me: clone(s.me), foe: clone(s.foe), mines: s.mines.map((m) => ({ ...m })) });
 
-/** HP damage one gun hit would do to `target` (burst included), before crits. `apCut`: share of resist left (AP Rounds). */
+/** HP damage one gun hit would do to `target` (burst included), before crits: flat resist per round. `apCut`: share of resist left (AP Rounds). */
 function hitDamage(g, target, apCut = 1) {
-  const resist = g.pierce ? 0 : Math.min(DEF_CAP, ((target.def || 0) + (target.res?.[g.dtype] || 0)) * apCut);
-  return Math.max(0.1, g.dmg * g.burst * (1 - resist * DEF_PER_POINT)); // fractional, like the game
+  const resist = g.pierce ? 0 : ((target.def || 0) + (target.res?.[g.dtype] || 0)) * apCut;
+  return Math.max(0.1, (g.burst || 1) * flatResist(g.dmg, resist, g.burst || 1)); // fractional, like the game
+}
+
+/** How much of its next turn `u` loses to heat (plus `extra` still to come): 0, 1 (forced cooldown) or 2 (shutdown). */
+function heatLoss(u, extra = 0) {
+  const heat = u.heat + extra;
+  if (!(heat > u.heatCap)) return 0;
+  return heat - u.heatCap > u.cool * (1 - (u.heatLock || 0)) ? 2 : 1;
+}
+
+/** Heat `u` can push into a target on its next turn: its two hottest guns it can pay for. */
+function heatThreat(u) {
+  const load = CONFIG.gear.dtypeLoad.heat;
+  const hot = u.guns
+    .filter((g) => !(g.ammo && g.ammoLeft <= 0) && !g.meltdown && u.energy >= g.en && (g.dtype === 'heat' || g.heatFx))
+    .map((g) => (g.heatFx ?? g.dmg * load * (g.load || 1)) * (g.burst || 1))
+    .sort((a, b) => b - a);
+  return (hot[0] || 0) + (hot[1] || 0);
 }
 
 /** Positions `u` can move to, given the other mech at `otherPos`: [{ pos, how }]. */
@@ -76,9 +93,9 @@ export function laneMoves(u, otherPos, size) {
   return out;
 }
 
+/** Heat never stops a gun (SuperMechs): only its energy cost, ammo, once a turn and range. */
 function canFire(u, g, dist) {
-  if (g.used || u.jammed || (g.ammo && g.ammoLeft <= 0)) return false;
-  if (u.heat > u.heatCap || u.energy < g.en) return false;
+  if (g.used || (g.ammo && g.ammoLeft <= 0) || u.energy < g.en) return false;
   return dist >= g.reach[0] && dist <= g.reach[1];
 }
 
@@ -158,12 +175,12 @@ function apply(s, a) {
     const b = me.bfx || {};
     let boost = 1;
     if (b.closeDmg && Math.abs(me.pos - foe.pos) <= 2) boost += b.closeDmg;
-    if (b.lowHpDmg && foe.hp < (foe.maxHp || foe.hp) * 0.3) boost += b.lowHpDmg;
+    if (b.farDmg && Math.abs(me.pos - foe.pos) >= 4) boost += b.farDmg;
+    if (b.lowHpDmg && foe.hp < (foe.maxHp || foe.hp) * 0.5) boost += b.lowHpDmg;
     let dmg = hitDamage(shot, foe, g.dtype === 'phys' ? 1 - (b.physPierce || 0) : 1) * (me.enrage || 1) * boost; // raid boss enrage (Game._weaponHit)
-    // Resists cut heat and drain too (Game._reactorKeep)
-    const keep = (type) => 1 - Math.min(DEF_CAP, (foe.def || 0) + (foe.res?.[type] || 0)) * DEF_PER_POINT;
+    // Heat in and drain are the gun's own numbers: resists don't cut them (Game._reactorFx)
     if ((g.dtype === 'heat' || g.heatFx) && !g.meltdown) {
-      foe.heat += Math.round((g.heatFx ?? g.dmg * CONFIG.gear.dtypeLoad.heat * (g.load || 1)) * keep('heat') * (1 + (b.heatOut || 0)));
+      foe.heat += Math.round((g.heatFx ?? g.dmg * CONFIG.gear.dtypeLoad.heat * (g.load || 1)) * (1 + (b.heatOut || 0)));
       if (b.heatLock) foe.heatLock = b.heatLock; // Thermal Lock (Game._upkeep)
       if (b.capCut && !foe.capCut) {
         foe.capCut = true; // Flashpoint (Game._reactorFx)
@@ -171,7 +188,7 @@ function apply(s, a) {
       }
     }
     if (g.dtype === 'energy' || g.drain) {
-      const want = Math.round((g.drain ?? g.dmg * CONFIG.gear.dtypeLoad.energy * (g.load || 1)) * keep('energy') * (1 + (b.drainOut || 0)));
+      const want = Math.round((g.drain ?? g.dmg * CONFIG.gear.dtypeLoad.energy * (g.load || 1)) * (1 + (b.drainOut || 0)));
       const took = Math.min(foe.energy, want);
       foe.energy -= took;
       dmg += (want - took) * CONFIG.gear.breakHp; // energy break
@@ -180,10 +197,7 @@ function apply(s, a) {
     }
     if (g.coolDmg) foe.cool = Math.max(2 * CONFIG.gear.rxScale, foe.cool - g.coolDmg);
     if (g.regenDmg) foe.regen = Math.max(3 * CONFIG.gear.rxScale, foe.regen - g.regenDmg);
-    if ((g.jam || (CONFIG.gear.blackoutAll && (g.dtype === 'energy' || g.drain))) && foe.energy <= 0) {
-      foe.jamNext = true;
-      if (b.regenLock) foe.noRegen = true; // Short Circuit (Game._upkeep)
-    }
+    if (b.physStrip && g.dtype === 'phys') foe.res.phys = (foe.res.phys || 0) - b.physStrip; // Sledge Rounds
     if (foe.shield) {
       foe.shield = false; // forcefield eats the hit
       dmg = 0;
@@ -191,14 +205,6 @@ function apply(s, a) {
     dmg = soak(foe, dmg);
     foe.hp -= dmg;
     s.dealt += dmg;
-    // STAGGER (Game._stagger): your physical hits fill a bar; past a share of max HP it loses its next turn
-    if (me.team === 'player' && g.dtype === 'phys' && foe.hp > 0 && dmg > 0) {
-      foe.stagger = (foe.stagger || 0) + dmg * (1 + (b.staggerMult || 0));
-      if (foe.stagger >= foe.maxHp * CONFIG.gear.stagger.frac) {
-        foe.stagger = 0;
-        foe.staggered = true;
-      }
-    }
     if (g.freeze) foe.frozen = true;
     for (const [t, n] of Object.entries(g.resDrain || {})) foe.res[t] = (foe.res[t] || 0) - n;
     if (g.push || g.pull) {
@@ -226,7 +232,7 @@ function apply(s, a) {
   }
   if (a.type === 'special') {
     const sp = me.specials[a.i];
-    if (!sp || sp.uses <= 0 || me.energy < sp.en || me.heat > me.heatCap) return false;
+    if (!sp || sp.uses <= 0 || me.energy < sp.en) return false;
     me.energy -= sp.en;
     me.heat += sp.heat;
     sp.uses -= 1;
@@ -236,8 +242,8 @@ function apply(s, a) {
     if (sp.kind === 'hook') {
       foe.pos = slide(s, foe, me.pos + dir, true);
       if (sp.drain) {
-        // Mag Tether drains like a gun (Game._reactorFx): resists cut it, past empty it comes off HP
-        const want = Math.round(sp.drain * (1 - Math.min(DEF_CAP, (foe.def || 0) + (foe.res?.energy || 0)) * DEF_PER_POINT));
+        // Mag Tether drains like a gun (Game._reactorFx): past empty it comes off HP
+        const want = Math.round(sp.drain);
         const took = Math.min(Math.max(0, foe.energy), want);
         foe.energy -= took;
         foe.hp -= (want - took) * CONFIG.gear.breakHp;
@@ -280,8 +286,10 @@ function apply(s, a) {
     return true;
   }
   if (a.type === 'vent') {
-    me.heat = Math.max(0, me.heat - me.cool * 2);
-    me.actions = 0;
+    // COOLDOWN (Game._vent): one action, your cooling's worth (less under Thermal Lock)
+    me.heat = Math.max(0, me.heat - Math.round(me.cool * (1 - (me.lockNow || 0))));
+    me.actions -= 1;
+    s.cools = (s.cools || 0) + 1;
     return true;
   }
   me.actions = 0; // pass
@@ -290,7 +298,7 @@ function apply(s, a) {
 
 function canStomp(s) {
   const me = s.me;
-  return me.stompDmg > 0 && !me.stomped && me.heat <= me.heatCap && me.energy >= (me.legs.stompEn || 0) && Math.abs(me.pos - s.foe.pos) === 1;
+  return me.stompDmg > 0 && !me.stomped && me.energy >= (me.legs.stompEn || 0) && Math.abs(me.pos - s.foe.pos) === 1;
 }
 
 /** Every action `me` could take right now. */
@@ -304,14 +312,14 @@ function actionsFor(s) {
   });
   if (canStomp(s)) list.push({ type: 'stomp' });
   (me.specials || []).forEach((sp, i) => {
-    if (sp.uses <= 0 || me.energy < sp.en || me.heat > me.heatCap) return;
+    if (sp.uses <= 0 || me.energy < sp.en) return;
     if (sp.kind === 'hook' && dist >= 2 && dist <= sp.range) list.push({ type: 'special', i });
     if (sp.kind === 'charge' && (dist >= 2 || sp.away) && !me.legs?.anchored) list.push({ type: 'special', i });
     if (sp.kind === 'shield' && !(me.bubble > 0)) list.push({ type: 'special', i });
     if (sp.kind === 'teleport') for (let q = 1; q <= s.size; q++) if (q !== me.pos && q !== s.foe.pos) list.push({ type: 'special', i, pos: q });
   });
   for (const m of laneMoves(me, s.foe.pos, s.size)) list.push({ type: 'move', pos: m.pos, how: m.how });
-  if (me.actions === me.maxActions && me.heat > 0) list.push({ type: 'vent' });
+  if (me.heat > 0) list.push({ type: 'vent' });
   return list;
 }
 
@@ -329,24 +337,27 @@ function sequences(s, prefix = [], out = []) {
 }
 
 /**
- * Best damage `u` can deal to `target` on its next turn, starting its turn
- * with regen and cooling: two different guns from here, or a move then a gun.
- * Returns 0 if it would start over its heat cap (turn lost).
+ * Best damage `u` can deal to `target` on its next turn: two different guns
+ * from here, or a move then a gun. `own`: `u` is the mech whose turn is
+ * ending, so its battery refills first. Over its heat cap, a forced cooldown
+ * leaves one shot; a shutdown leaves nothing.
  */
-function threat(u, target, size) {
-  if (u.heat > u.heatCap || u.jamNext || u.staggered) return 0; // overheated or jammed: no shots next turn
-  const v = clone(u);
-  v.energy = Math.min(v.energyMax, v.energy + v.regen);
-  v.heat = Math.max(0, v.heat - v.cool);
+function threat(u, target, size, own = false) {
+  const lost = heatLoss(u);
+  if (lost >= 2) return 0; // shutdown: the whole turn
+  // (read-only: a shallow copy for the refilled battery, no gun copies; this runs for every line the planner scores)
+  const v = own ? { ...u, energy: Math.min(u.energyMax, u.energy + u.regen) } : u;
   const fireable = (from) => v.guns
     .filter((g) => !(g.ammo && g.ammoLeft <= 0) && !g.mine && Math.abs(from - target.pos) >= g.reach[0] && Math.abs(from - target.pos) <= g.reach[1] && v.energy >= g.en)
     .map((g) => hitDamage(g, target))
     .sort((a, b) => b - a);
   const here = fireable(v.pos);
+  const stomp = v.stompDmg > 0 && Math.abs(v.pos - target.pos) === 1 ? hitDamage({ dmg: v.stompDmg, burst: 1, dtype: v.legs?.stompType || 'phys' }, target) : 0;
+  if (lost === 1) return Math.max(here[0] || 0, stomp); // the forced cooldown takes one action
   let best = (here[0] || 0) + (here[1] || 0);
   for (const m of laneMoves(v, target.pos, size)) best = Math.max(best, fireable(m.pos)[0] || 0);
   // Stomp from right next to it
-  if (v.stompDmg > 0 && Math.abs(v.pos - target.pos) === 1) best = Math.max(best, (here[0] || 0) + hitDamage({ dmg: v.stompDmg, burst: 1, dtype: v.legs?.stompType || 'phys' }, target));
+  if (stomp) best = Math.max(best, (here[0] || 0) + stomp);
   return best;
 }
 
@@ -364,17 +375,24 @@ function score(start, end, aggression, stall = 0) {
   const U = CONFIG.gear.hpScale; // the fixed weights below are in damage units
   // Pressure first: damage now is worth more than the damage it might dodge
   let s = end.dealt * 1.2;
-  // Their answer next turn (none if they're over their heat cap: overheat)
-  const foeLocked = foe.heat > foe.heatCap || foe.jamNext;
-  const reply = Math.max(0, (foeLocked ? 0 : threat(foe, me, end.size)) - (me.bubble || 0)); // a SHIELD soaks their answer
+  // Their answer next turn (shorter if they start it over their heat cap)
+  const reply = Math.max(0, threat(foe, me, end.size) - (me.bubble || 0)); // a SHIELD soaks their answer
   s -= reply * (0.5 - 0.3 * aggression) * (1 - 0.8 * commit);
-  if (foeLocked) s += 12 * U;
-  // Our own next turn
-  const mine = threat(me, foe, end.size);
-  if (me.heat > me.heatCap) s -= 15 * U + 0.8 * threat({ ...me, heat: 0 }, foe, end.size);
-  else s += 0.35 * mine;
+  s += heatLoss(foe) * 6 * U; // each action they'll spend on a forced cooldown
+  // Our own next turn (our battery refills as this turn ends). What heat takes from it counts in full:
+  // a forced cooldown costs an action, a shutdown the whole turn
+  // Their Explosive guns will add heat before our turn comes back: plan with most of it
+  const incoming = heatLoss(foe) >= 2 ? 0 : heatThreat(foe) * 0.75;
+  const hot = { ...me, heat: me.heat + incoming };
+  const mine = threat(hot, foe, end.size, true);
+  const cool = hot.heat > me.heatCap ? threat({ ...me, heat: Math.min(me.heat, me.heatCap) }, foe, end.size, true) : mine; // (the same line when it isn't over)
+  const myLoss = heatLoss(hot);
+  s -= myLoss * 6 * U + (cool - mine) * 1.1;
+  s += 0.35 * mine;
+  // Running hot: heat past 60% of the cap is a cooldown we'll owe soon (an action's worth of damage)
+  s -= (Math.max(0, hot.heat - me.heatCap * 0.6) / Math.max(1, me.cool)) * (2 * U + 0.25 * cool);
   // Nothing to shoot next turn (out of reach): close in
-  if (!mine) s -= Math.abs(me.pos - foe.pos) * 1.2 * U * (1 + 4 * commit);
+  if (!mine && !myLoss) s -= Math.abs(me.pos - foe.pos) * 1.2 * U * (1 + 4 * commit);
   // Stuck: end as close as it can (knockback eats the margin), and backing away
   // (or leapfrogging to the far side) only drags the fight out
   if (commit > 0) {

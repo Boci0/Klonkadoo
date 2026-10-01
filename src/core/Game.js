@@ -28,7 +28,7 @@ import { soundEngine } from '../utils/SoundEngine.js';
 import { saveSystem } from '../meta/SaveSystem.js';
 import { haptics } from '../platform/haptics.js';
 import { getBall } from '../meta/Balls.js';
-import { DEFAULT_LEGS, DTYPES, dtypeOf, resistOf, getPart, legsRules, droneUpkeep, meleeOf, signatureOf } from '../meta/Mech.js';
+import { DEFAULT_LEGS, DTYPES, dtypeOf, resistOf, flatResist, getPart, legsRules, droneUpkeep, meleeOf, signatureOf } from '../meta/Mech.js';
 import { pickArena } from './Arenas.js';
 import { boonFx } from '../rogue/Boons.js';
 
@@ -311,7 +311,8 @@ export class Game {
       cool: rig.cool,
       weapons: (mech.weapons || []).map((w) => {
         const g = laneGun(w);
-        return { ...g, reach: [g.reach[0], Math.min(L.size - 1, g.reach[1] + reachUp)], dmg: w.dmg * G.dmgScale, backfire: (w.backfire || 0) * G.dmgScale, ammoLeft: w.ammo || 0 };
+        const en = dtypeOf(w) === 'energy' && this.bfx.elecCost ? Math.round((g.en || 0) * (1 - this.bfx.elecCost)) : g.en; // Short Circuit
+        return { ...g, en, reach: [g.reach[0], Math.min(L.size - 1, g.reach[1] + reachUp)], dmg: w.dmg * G.dmgScale, backfire: (w.backfire || 0) * G.dmgScale, ammoLeft: w.ammo || 0 };
       }),
       freeShot: !!mech.freeFirstShot, // Phantom frame: the first gun fired costs no energy
       // Drones start docked: DEPLOY (an action) launches one for the rest of the battle
@@ -324,7 +325,7 @@ export class Game {
     };
   }
 
-  static MEMBER_FIELDS = ['fx', 'windUsed', 'maxHp', 'hp', 'def', 'res', 'legs', 'stompDmg', 'parts', 'forcefield', 'energyMax', 'energy', 'regen', 'heatCap', 'heat', 'cool', 'burnTicks', 'burnDmg', 'isFrozen', 'coolLost', 'regenLost', 'jamNext', 'jammed'];
+  static MEMBER_FIELDS = ['fx', 'windUsed', 'maxHp', 'hp', 'def', 'res', 'legs', 'stompDmg', 'parts', 'forcefield', 'energyMax', 'energy', 'regen', 'heatCap', 'heat', 'cool', 'burnTicks', 'burnDmg', 'isFrozen', 'coolLost', 'regenLost', 'heatLock', 'lockNow'];
 
   /** Put the active mech's state back into its team record. */
   _saveMember() {
@@ -531,7 +532,7 @@ export class Game {
     if (!mine) return;
     this.hazards.splice(this.hazards.indexOf(mine), 1);
     const raw = mine.dmg || 15 * G.hpScale;
-    const dmg = u.team === 'player' ? this.collisionSystem.calculatePlayerDamage(raw) : Math.max(1, Math.round(raw * (1 - Math.min(15, resistOf(u, 'phys')) * CONFIG.damage.defensePerPoint)));
+    const dmg = u.team === 'player' ? this.collisionSystem.calculatePlayerDamage(raw) : Math.max(1, Math.round(flatResist(raw, resistOf(u, 'phys'))));
     const killed = u.takeDamage(dmg);
     this.particles.push({ type: 'shockwave', x: u.x, y: W.groundY, radius: 10, maxRadius: 160, life: 0.35, maxLife: 0.35 });
     this._spawnDefeatParticles(u.x, W.groundY, '#ef7d57');
@@ -574,54 +575,58 @@ export class Game {
   // ---------- Turn flow ----------
 
   /**
-   * Start of a unit's turn: energy regenerates and heat cools. Over the heat
-   * cap BEFORE cooling means the turn is lost (overheat); still over after
-   * cooling means a shutdown (the next turn is lost too). Returns true if
-   * the unit can act.
+   * Start of a unit's turn (SuperMechs rules). Heat never cools by itself and
+   * energy refills at the END of a turn (_regen). Over the heat cap now, the
+   * turn opens with a forced cooldown (your cooling's worth) that uses one of
+   * your two actions; over by more than your cooling, it's a double cooldown
+   * (twice your cooling) and the whole turn is lost. Thermal Lock cuts the
+   * cooling this turn. Returns true if the unit can act.
    */
   _upkeep(u) {
     u.turnNo = (u.turnNo || 0) + 1; // guns remember the turn they fired on
-    if (!u.noRegen) u.energy = Math.min(u.energyMax, u.energy + u.regen);
-    else this._callout(u, 'SHORT CIRCUIT: NO REGEN', DTYPES.energy.color);
-    u.noRegen = false;
     u.actionsLeft = G.actions;
     u._freeMoveUsed = false;
     u.bubble = 0; // a SHIELD lasts until your next turn
-    u.jammed = !!u.jamNext; // Blackout Cannon: guns jam for this turn
-    u.jamNext = false;
-    if (u.jammed) this._callout(u, 'GUNS JAMMED', DTYPES.energy.color);
-    u.stagger = (u.stagger || 0) * (1 - G.stagger.decay);
-    const cool = Math.round(u.cool * (1 - (u.heatLock || 0))); // Thermal Lock: this turn's cooling is cut
-    if (u.heatLock) this._callout(u, 'THERMAL LOCK', DTYPES.heat.color);
+    u.lockNow = u.heatLock || 0; // Thermal Lock: this turn's cooldowns are cut
     u.heatLock = 0;
-    if (u.staggered) {
-      u.staggered = false;
-      u.actionsLeft = 0;
-      u.heat = Math.max(0, u.heat - cool);
-      this._callout(u, 'STAGGERED: TURN LOST', '#f4f4f4');
-      this.addHitStop(0.12);
-      soundEngine.playOverheat();
-      return false;
-    }
-    const over = u.heat > u.heatCap;
-    u.heat = Math.max(0, u.heat - cool);
+    if (u.lockNow) this._callout(u, 'THERMAL LOCK', DTYPES.heat.color);
     if (this.hazards.some((h) => h.type === 'fire' && h.pos === u.pos)) this._burnPlate(u);
-    if (!over) return true;
-    u.actionsLeft = 0;
-    const shut = u.heat > u.heatCap;
-    this._callout(u, shut ? 'SHUTDOWN: TURN LOST' : 'OVERHEATED: TURN LOST', '#ff5d73');
+    if (!(u.heat > u.heatCap)) return true;
+    const cool = this._coolOf(u);
+    const shut = u.heat - u.heatCap > cool;
+    u.heat = Math.max(0, u.heat - cool * (shut ? 2 : 1));
     this.addHitStop(0.12);
     soundEngine.playOverheat();
     if (u === this.player) haptics.impact('heavy');
-    return false;
+    if (shut) {
+      u.actionsLeft = 0;
+      this._callout(u, 'SHUTDOWN: TURN LOST', '#ff5d73');
+      return false;
+    }
+    u.actionsLeft = 1;
+    this._callout(u, 'OVERHEATED: FORCED COOLDOWN', '#ff5d73');
+    return true;
   }
 
-  /** Run boons on one of your hits: Point Blank (range 1-2), Executioner (under 30% HP). */
+  /** One cooldown's worth of heat for `u` right now (its cooling, cut by Thermal Lock). */
+  _coolOf(u) {
+    return Math.round(u.cool * (1 - (u.lockNow || 0)));
+  }
+
+  /** End of a unit's turn (after its drones): the battery refills (SuperMechs). */
+  _regen(u) {
+    if (!u || u.hp <= 0) return;
+    u.energy = Math.min(u.energyMax, u.energy + u.regen);
+  }
+
+  /** Run boons on one of your hits: Point Blank (range 1-2), Long Barrel (range 4+), Executioner (under half HP). */
   _boonDmgMult(owner, target) {
     const b = this.bfx;
     let m = 1;
-    if (b.closeDmg && Math.abs(owner.pos - target.pos) <= 2) m += b.closeDmg;
-    if (b.lowHpDmg && target.hp < target.maxHp * 0.3) m += b.lowHpDmg;
+    const d = Math.abs(owner.pos - target.pos);
+    if (b.closeDmg && d <= 2) m += b.closeDmg;
+    if (b.farDmg && d >= 4) m += b.farDmg;
+    if (b.lowHpDmg && target.hp < target.maxHp * 0.5) m += b.lowHpDmg;
     return m;
   }
 
@@ -633,15 +638,6 @@ export class Game {
     if (p.forcefield) return;
     p.forcefield = true;
     this._callout(p, 'SECOND WIND: FORCEFIELD', '#a7f070');
-  }
-
-  /** STAGGER: physical damage fills a bar; when it passes a share of max HP the target loses its next turn. */
-  _stagger(target, dmg) {
-    target.stagger = (target.stagger || 0) + dmg;
-    if (target.stagger < target.maxHp * G.stagger.frac) return;
-    target.stagger = 0;
-    target.staggered = true;
-    this._callout(target, 'STAGGERED', '#f4f4f4');
   }
 
   /** An enemy's damage multiplier: the raid boss's enrage, times the Abyss's insanity. */
@@ -692,7 +688,6 @@ export class Game {
     this.turnSystem.startPlayerTurn();
     const p = this.player;
     p.idleTurns = (p.idleTurns || 0) + 1; // reset when it lands a hit (anti-stall, LaneAI.score)
-    for (const x of this.enemies) x.jammed = false; // a jam lasts one turn
     if (!this._tickInsanity()) return;
     // Napalm fires burn out after their turns
     for (const h of this.hazards) if (h.type === 'fire') h.turns -= 1;
@@ -729,7 +724,6 @@ export class Game {
     this.moveMap = new Map();
     if (!this._tickBurn(e)) return this._afterAction(e, 1.1); // burned out: your turn (the next one drops in on theirs)
     if (!this._upkeep(e)) return this._afterAction(e, 1.1);
-    this.player.jammed = false; // a jam lasts one turn
     for (const d of e.drones || []) {
       if (!d.off || e.actionsLeft <= 0) continue;
       d.off = false;
@@ -776,13 +770,17 @@ export class Game {
       }
       if (u === this.player) this._endPlayerTurn();
       else if (u.hp > 0 && (u.drones || []).some((d) => !d.off)) {
-        // Their deployed drones act, then your turn
+        // Their deployed drones act, their battery refills, then your turn
         this._gearDrones(u);
         if (this.turnSystem.phase === TurnPhase.GAME_OVER) return;
+        this._regen(u);
         this.turnSystem.phase = TurnPhase.ENEMY_FLY;
         this.waitTimer = L.settle;
         this.waitThen = () => this._startPlayerTurn();
-      } else this._startPlayerTurn();
+      } else {
+        this._regen(u);
+        this._startPlayerTurn();
+      }
     };
   }
 
@@ -790,6 +788,7 @@ export class Game {
   _endPlayerTurn() {
     this.battleStats.turns += 1;
     this._gearDrones();
+    this._regen(this.player);
     this.turnSystem.phase = TurnPhase.PLAYER_FLY;
     this.waitTimer = L.settle;
     this.waitThen = () => this._startEnemyTurn();
@@ -874,7 +873,6 @@ export class Game {
     if (!u || !(u.stompDmg > 0)) return { ok: false, reason: 'NO STOMP' };
     if (!(u.actionsLeft > 0)) return { ok: false, reason: 'NO ACTIONS' };
     if (u.stompedOn === u.turnNo) return { ok: false, reason: 'USED' };
-    if (u.heat > u.heatCap) return { ok: false, reason: 'HOT' };
     if ((u.legs?.stompEn || 0) > u.energy) return { ok: false, reason: 'ENERGY' };
     if (!target || this.distance(u, target) !== 1) return { ok: false, reason: 'NOT ADJACENT' };
     return { ok: true, reason: '', dmg: Math.round(u.stompDmg) };
@@ -931,8 +929,6 @@ export class Game {
     if (!(shooter.actionsLeft > 0)) return { ok: false, reason: 'NO ACTIONS' };
     if (w.ammo && w.ammoLeft <= 0) return { ok: false, reason: 'EMPTY' };
     if (w.usedOn === shooter.turnNo) return { ok: false, reason: 'USED' };
-    if (shooter.jammed) return { ok: false, reason: 'JAMMED' };
-    if (shooter.heat > shooter.heatCap) return { ok: false, reason: 'HOT' };
     if (shooter.energy < (w.en || 0) && !this._freeShot(shooter)) return { ok: false, reason: 'ENERGY' };
     if (!target) return { ok: false, reason: 'NO TARGET' };
     const d = this.distance(shooter, target);
@@ -957,10 +953,10 @@ export class Game {
   }
 
   _previewDamage(w, target) {
-    let dmg = w.dmg * (w.fx?.burst || 1) * (this.collisionSystem.stats.playerAtk || 1) * this._condAtkMult();
+    let dmg = w.dmg * (this.collisionSystem.stats.playerAtk || 1) * this._condAtkMult();
     if (w.fx?.execute && target.hp < target.maxHp * w.fx.execute) dmg *= EXECUTE_MULT;
-    if (!w.fx?.pierce) dmg *= 1 - Math.min(CONFIG.run.maxDefCap || 15, resistOf(target, dtypeOf(w))) * CONFIG.damage.defensePerPoint;
-    return Math.max(1, Math.round(dmg));
+    if (!w.fx?.pierce) dmg = flatResist(dmg, resistOf(target, dtypeOf(w)), w.fx?.burst || 1);
+    return Math.max(1, Math.round(dmg * (w.fx?.burst || 1)));
   }
 
   /** Overdrive Governor (hot) and Last Stand (low HP): extra damage from the active mech right now. */
@@ -1000,11 +996,11 @@ export class Game {
     }
   }
 
-  /** VENT (the cooldown): cool 2x your cooling; it takes the rest of your turn. */
+  /** COOLDOWN (SuperMechs): one action, your cooling's worth of heat. */
   _vent(u) {
-    const cooled = Math.min(u.heat, u.cool * G.vent.coolMult);
+    const cooled = Math.min(u.heat, this._coolOf(u));
     u.heat -= cooled;
-    u.actionsLeft = 0;
+    u.actionsLeft -= 1;
     const exch = u === this.player ? this.rigStats?.mech?.ventEnergy || 0 : 0;
     if (exch && cooled > 0) {
       const got = Math.min(u.energyMax - u.energy, Math.round(cooled * exch));
@@ -1020,7 +1016,7 @@ export class Game {
     }
     this.particles.push({ type: 'shockwave', x: u.x, y: u.y, radius: 10, maxRadius: 90, life: 0.35, maxLife: 0.35 });
     soundEngine.playVent();
-    this._callout(u, `VENT -${Math.round(cooled)} HEAT`, '#73eff7');
+    this._callout(u, `COOLDOWN -${Math.round(cooled)} HEAT`, '#73eff7');
   }
 
   /** One gun firing at one target: queues its projectile(s); hits land on arrival. */
@@ -1113,7 +1109,6 @@ export class Game {
     if (!sp) return { ok: false, reason: '' };
     if (!(u.actionsLeft > 0)) return { ok: false, reason: 'NO ACTIONS' };
     if (!(sp.usesLeft > 0)) return { ok: false, reason: 'EMPTY' };
-    if (u.heat > u.heatCap) return { ok: false, reason: 'HOT' };
     if (u.energy < (sp.en || 0)) return { ok: false, reason: 'ENERGY' };
     const d = target ? this.distance(u, target) : 99;
     if (sp.special === 'hook') {
@@ -1242,16 +1237,11 @@ export class Game {
     this.particles.push({ type: 'shockwave', x: posX(pos), y: W.groundY, radius: 8, maxRadius: 70, life: 0.3, maxLife: 0.3 });
   }
 
-  /** Standing or landing on a burning plate: +8 heat (resists soften it). */
+  /** Standing or landing on a burning plate: +8 heat. */
   _burnPlate(u) {
-    const add = Math.max(1, Math.round(8 * G.rxScale * this._reactorKeep(u, 'heat')));
+    const add = Math.round(8 * G.rxScale);
     u.heat += add;
     this._callout(u, `ON FIRE +${add} HEAT`, DTYPES.heat.color);
-  }
-
-  /** How much of a heat / drain effect gets through the target's resist. */
-  _reactorKeep(target, type) {
-    return 1 - Math.min(CONFIG.run.maxDefCap || 15, resistOf(target, type)) * CONFIG.damage.defensePerPoint;
   }
 
   /** Mine Launcher: a mine on a free position next to the target (their side of it first). */
@@ -1287,10 +1277,11 @@ export class Game {
       let dmg = rawDmg * (crit ? 1.75 : 1);
       if (yours) dmg *= (this.collisionSystem.stats.playerAtk || 1) * this._condAtkMult() * this._boonDmgMult(owner, target);
       const apCut = yours && type === 'phys' ? 1 - (this.bfx.physPierce || 0) : 1; // AP Rounds
-      if (!w.fx?.pierce) dmg *= 1 - Math.min(CONFIG.run.maxDefCap || 15, resistOf(target, type) * apCut) * CONFIG.damage.defensePerPoint;
+      if (!w.fx?.pierce) dmg = flatResist(dmg, resistOf(target, type) * apCut, w.fx?.burst || 1);
       dmg = Math.max(1, Math.round(dmg)) + this._reactorFx(target, w, w.dmg ?? rawDmg, owner); // heat / drain from the base hit, not specialist bonuses
       const killed = target.takeDamage(dmg);
-      if (yours && !killed && type === 'phys' && !target.giant) this._stagger(target, dmg * (1 + (this.bfx.staggerMult || 0))); // Sledge Rounds
+      // Sledge Rounds: your physical hits strip its physical resist for the fight
+      if (yours && type === 'phys' && this.bfx.physStrip && !killed) strip.phys = (strip.phys || 0) + this.bfx.physStrip;
       if (w.fx?.burn) {
         target.burnTicks = Math.max(target.burnTicks || 0, w.fx.burn);
         target.burnDmg = Math.max(target.burnDmg || 0, 6 * G.hpScale);
@@ -1312,7 +1303,7 @@ export class Game {
       this._callout(this.player, 'BLOCKED', '#a7f070');
       return;
     }
-    const dmg = this.collisionSystem.calculatePlayerDamage(rawDmg, { dtype: type, bypassDef: !!w.fx?.pierce }) + this._reactorFx(this.player, w, w.dmg ?? rawDmg, owner);
+    const dmg = this.collisionSystem.calculatePlayerDamage(rawDmg, { dtype: type, bypassDef: !!w.fx?.pierce, rounds: w.fx?.burst || 1 }) + this._reactorFx(this.player, w, w.dmg ?? rawDmg, owner);
     const killed = this.player.takeDamage(dmg);
     if (w.fx?.burn) {
       this.player.burnTicks = Math.max(this.player.burnTicks || 0, w.fx.burn);
@@ -1338,7 +1329,7 @@ export class Game {
     let extra = 0;
     // (Meltdown vents the target instead of heating it)
     if ((type === 'heat' || w.fx?.heat) && !w.fx?.meltdown) {
-      const add = Math.round((w.fx?.heat ?? dmg * G.dtypeLoad.heat * (w.fx?.load || 1)) * this._reactorKeep(target, 'heat') * (1 + (bfx.heatOut || 0)));
+      const add = Math.round((w.fx?.heat ?? dmg * G.dtypeLoad.heat * (w.fx?.load || 1)) * (1 + (bfx.heatOut || 0)));
       target.heat += add;
       this._callout(target, target.heat > target.heatCap ? 'OVERHEATING' : `+${add} HEAT`, DTYPES.heat.color);
       if (bfx.heatLock) target.heatLock = bfx.heatLock; // Thermal Lock (_upkeep)
@@ -1350,7 +1341,7 @@ export class Game {
       }
     }
     if (type === 'energy' || w.fx?.drain) {
-      const want = Math.round((w.fx?.drain ?? dmg * G.dtypeLoad.energy * (w.fx?.load || 1)) * this._reactorKeep(target, 'energy') * (1 + (bfx.drainOut || 0)));
+      const want = Math.round((w.fx?.drain ?? dmg * G.dtypeLoad.energy * (w.fx?.load || 1)) * (1 + (bfx.drainOut || 0)));
       const took = Math.min(target.energy, want);
       target.energy -= took;
       extra = Math.round((want - took) * G.breakHp); // energy it could not drain comes off HP
@@ -1377,18 +1368,14 @@ export class Game {
         this._callout(target, `COOLING -${cut}`, '#ff5d73');
       }
     }
-    if (w.fx?.regenDmg) {
-      const cut = Math.min(w.fx.regenDmg, Math.max(0, target.regen - 3 * G.rxScale));
+    const regenDmg = w.fx?.regenDmg || 0;
+    if (regenDmg) {
+      const cut = Math.min(regenDmg, Math.max(0, target.regen - 3 * G.rxScale));
       if (cut) {
         target.regen -= cut;
         target.regenLost = (target.regenLost || 0) + cut;
         this._callout(target, `REGEN -${cut}`, '#ff5d73');
       }
-    }
-    if ((w.fx?.jam || (G.blackoutAll && (type === 'energy' || w.fx?.drain))) && target.energy <= 0 && !target.jamNext) {
-      target.jamNext = true;
-      if (owner === this.player && this.bfx.regenLock) target.noRegen = true; // Short Circuit (_upkeep)
-      this._callout(target, 'BLACKOUT: GUNS JAM', DTYPES.energy.color);
     }
     return extra;
   }
@@ -1478,7 +1465,8 @@ export class Game {
       enrage: this._dmgMult(u), // raid enrage x Abyss insanity (LaneAI multiplies its hits)
       bfx: u === this.player ? this.bfx : null, // run boons (LaneAI applies them to your hits)
       capCut: !!u.capCut, // Flashpoint already lowered its heat cap
-      stagger: u.stagger || 0, // STAGGER bar so far (LaneAI fills it with your physical hits)
+      heatLock: u.heatLock || 0, // Thermal Lock waiting for its next turn
+      lockNow: u.lockNow || 0, // ...or cutting this turn's cooldowns
       pos: u.pos,
       hp: u.hp,
       maxHp: u.maxHp,
@@ -1492,8 +1480,6 @@ export class Game {
       maxActions: G.actions,
       freeUsed: !!u._freeMoveUsed,
       frozen: !!u.isFrozen,
-      jammed: !!u.jammed,
-      jamNext: !!u.jamNext,
       bubble: u.bubble || 0,
       specials: (u === this.player ? this.playerSpecials || [] : u.specials || []).map((sp) => ({ kind: sp.special, uses: sp.usesLeft, en: sp.en || 0, heat: sp.heat || 0, range: sp.range || 0, dist: sp.dist || 0, ram: sp.ram || 0, absorb: sp.absorb || 0, away: !!sp.away, drain: sp.drain || 0 })),
       shield: !!u.forcefield,
@@ -1525,7 +1511,6 @@ export class Game {
         execute: w.fx?.execute || 0,
         meltdown: !!w.fx?.meltdown,
         steal: !!w.fx?.steal,
-        jam: !!w.fx?.jam,
         coolDmg: w.fx?.coolDmg || 0,
         regenDmg: w.fx?.regenDmg || 0,
         dump: !!w.fx?.dump,
@@ -1552,7 +1537,7 @@ export class Game {
     const phase = this.turnSystem.phase;
     if (!e || e.hp <= 0 || p.hp <= 0 || (phase !== TurnPhase.PLAYER_AIM && phase !== TurnPhase.PLAYER_FLY)) return null;
     if (phase === TurnPhase.PLAYER_FLY) return this._intent || null; // mid-action: keep the last forecast
-    const key = [this.turnId, this.teamIndex, p.pos, e.pos, p.hp, e.hp, p.heat, e.heat, p.energy, e.energy, e.heatCap, p.actionsLeft, !!e.jamNext, !!e.staggered, !!p.forcefield, p.bubble || 0, this.hazards.length].join('|');
+    const key = [this.turnId, this.teamIndex, p.pos, e.pos, p.hp, e.hp, p.heat, e.heat, p.energy, e.energy, e.heatCap, p.actionsLeft, e.heatLock || 0, !!p.forcefield, p.bubble || 0, this.hazards.length].join('|');
     if (this._intentKey !== key || !this._intent) {
       this._intentKey = key;
       this._intent = this._forecast(e, p);
@@ -1562,18 +1547,19 @@ export class Game {
 
   /**
    * The enemy's next turn on a copy of the battle (see `intent`), in game order:
-   * your deployed drones act as your turn ends (_gearDrones), its turn starts
-   * (burn, overheat / stagger, regen, cooling, a blackout jam, docked drones
-   * launch), it acts like _enemyAct, its drones shoot, and your next turn opens
-   * with a burn tick if you're on fire.
+   * your deployed drones act as your turn ends (_gearDrones) and your battery
+   * refills (_regen); its turn starts (burn, a burning plate, a forced or double
+   * cooldown if it's over its heat cap, docked drones launch); it acts like
+   * _enemyAct, its drones shoot, and your next turn opens with a burn tick if
+   * you're on fire.
    */
   _forecast(e, p) {
     const st = this.collisionSystem.stats;
     // A drone's shot from state.me at state.foe, through the planner's own hit rules
     const droneHit = (state, d, dmg) => {
       const me = state.me;
-      const keep = { actions: me.actions, jammed: me.jammed, heat: me.heat };
-      Object.assign(me, { actions: 1, jammed: false, heat: 0 }); // drones fire whatever state their mech is in
+      const keep = { actions: me.actions, heat: me.heat };
+      Object.assign(me, { actions: 1, heat: 0 }); // drones fire whatever state their mech is in
       me.guns.push({ dmg, burst: 1, en: 0, heat: 0, reach: [0, L.size], ammo: 0, used: false, dtype: dtypeOf(d), pierce: !!d.fx?.pierce, heatFx: d.fx?.heat, drain: d.fx?.drain, load: d.fx?.load || 1, resDrain: {} });
       applyAction(state, { type: 'fire', gun: me.guns.length - 1 });
       me.guns.pop();
@@ -1606,29 +1592,36 @@ export class Game {
         else if (d.forcefieldEvery) foe.shield = true;
         else if (d.dmg) droneHit({ size: L.size, me: foe, foe: me, mines: [], dealt: 0 }, d, d.dmg * (st.playerAtk || 1));
       }
+      if (foe.hp > 0) foe.energy = Math.min(foe.energyMax, foe.energy + foe.regen); // your refill (_regen)
       // Its turn start (_startEnemyTurn, _upkeep)
       if (e.burnTicks > 0) me.hp -= e.burnDmg || 6 * G.hpScale;
-      let lost = null;
-      if (me.hp <= 0) lost = 'DOWN';
-      else if (e.staggered || me.staggered) lost = 'STAGGERED';
-      else if (me.heat > me.heatCap) lost = 'OVERHEATED';
-      if (!e.noRegen) me.energy = Math.min(me.energyMax, me.energy + me.regen);
-      me.heat = Math.max(0, me.heat - Math.round(me.cool * (1 - (e.heatLock || 0))));
       me.actions = G.actions;
       me.freeUsed = false;
-      me.jammed = !!(e.jamNext || me.jamNext);
-      me.jamNext = false;
       me.bubble = 0;
       me.stomped = false;
+      me.lockNow = me.heatLock || 0;
+      me.heatLock = 0;
+      if (this.hazards.some((h) => h.type === 'fire' && h.pos === me.pos)) me.heat += Math.round(8 * G.rxScale);
+      let lost = me.hp <= 0 ? 'DOWN' : null;
+      let forced = false;
+      if (!lost && me.heat > me.heatCap) {
+        const cool = Math.round(me.cool * (1 - me.lockNow));
+        const shut = me.heat - me.heatCap > cool;
+        me.heat = Math.max(0, me.heat - cool * (shut ? 2 : 1));
+        if (shut) lost = 'SHUTDOWN';
+        else {
+          me.actions = 1;
+          forced = true;
+        }
+      }
       for (const g of me.guns) g.used = false;
       for (const d of e.drones || []) if (d.off && me.actions > 0) me.actions -= 1;
       const mines = this.hazards.filter((h) => h.type === 'mine').map((h) => ({ pos: h.pos, owner: h.owner, dmg: h.dmg }));
-      return { size: L.size, me, foe, lost, mines, stompHeat: G.stompHeat, dealt: 0 };
+      return { size: L.size, me, foe, lost, forced, mines, stompHeat: G.stompHeat, dealt: 0 };
     };
     const think = start(false); // what it sees (it plans on this)
     if (think.lost === 'DOWN') return { lost: 'DOWN', desc: 'NEXT TURN: none. Your drones finish it before its turn.' };
-    if (think.lost === 'STAGGERED') return { lost: 'STAGGERED', desc: 'NEXT TURN: lost. Your physical hits staggered it.' };
-    if (think.lost === 'OVERHEATED') return { lost: 'OVERHEATED', desc: 'NEXT TURN: lost. It will be over its heat cap and spends the turn cooling.' };
+    if (think.lost === 'SHUTDOWN') return { lost: 'SHUTDOWN', desc: 'NEXT TURN: lost. It is over its heat cap by more than its cooling: a double cooldown takes the whole turn.' };
     const sim = { ...start(true), slam: 8 * G.hpScale }; // what it does to you (knockbacks into the edge slam: _shove)
     // Like _enemyAct: plan, take the first action, plan again, with the rolls it will use
     const rnd = seededRng(this._enemySeed ?? 0);
@@ -1636,7 +1629,10 @@ export class Game {
     let burns = p.burnTicks > 0 ? p.burnDmg || 6 * G.hpScale : 0; // your next turn opens with a tick
     const steps = (e.drones || []).filter((d) => d.off).slice(0, G.actions).map((d) => ({ kind: 'drone', part: d }));
     const said = steps.map((st) => `launches ${st.part.name || 'its drone'}`);
-    if (think.me.jammed) steps.unshift({ kind: 'jammed' });
+    if (think.forced) {
+      steps.unshift({ kind: 'vent' });
+      said.unshift('is forced to cool down (over its heat cap)');
+    }
     for (let guard = 0; guard < 8 && think.me.actions > 0; guard++) {
       const a = planTurn(think, { difficulty: Math.min(0.95, e.aiDifficulty ?? 0.5), aggression: this.aggression, rnd, stall })[0] || { type: 'end' };
       if (a.type === 'end') break;
@@ -1684,11 +1680,10 @@ export class Game {
     const sure = dmg > 0 && dmg * (1 - G.dmgSpread) >= life;
     const lethal = dmg > 0 && dmg * (1 + G.dmgSpread) >= life;
     if (!said.length) said.push('holds its position');
-    const jam = think.me.jammed ? ' Its guns are jammed (blackout).' : '';
     const burn = burns ? ', your burn tick included' : '';
     const ko = sure ? ': enough to knock you out' : lethal ? ': a high roll knocks you out' : '';
     const hurt = dmg > 0 ? ` About ${dmg} damage to you before you act again${burn}${ko}.` : ' No damage to you.';
-    return { lost: null, steps, dmg, lethal, desc: `NEXT TURN, if you end yours now: it ${said.join(', ')}.${hurt}${jam} Move, hit, heat or drain it and it plans again.` };
+    return { lost: null, steps, dmg, lethal, desc: `NEXT TURN, if you end yours now: it ${said.join(', ')}.${hurt} Move, hit, heat or drain it and it plans again.` };
   }
 
   /** Plan the rest of the enemy's turn and take its first action (it re-plans after each). */

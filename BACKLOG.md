@@ -1,6 +1,42 @@
 # Backlog
 
-## Enemy intent (2026-10-01, built, not released)
+## SuperMechs battle rules, mastery 50, drones and boons (2026-10-01, built, v2.10)
+
+The user: heat / energy / physical were "totally not like" SuperMechs, "not just damage, but how the mech
+actually handle it". Rules read from the community SuperMechs simulators (ctrlraul/supermechs-workshop,
+Tankaregmi/workshop-unlimited, which agree). The user picked full rules, no STAGGER / BLACKOUT, flat resists.
+- **Turns:** heat never cools by itself; COOLDOWN is a 1-action button (heat - cooling). Over the cap at
+  turn start: a forced cooldown eats 1 action; over by more than the cooling: double cooldown, turn lost.
+  Energy refills at the END of your turn (after drones). Heat never blocks firing; energy does.
+- **Damage:** flat resists, taken once per shot (burst guns share it), at least 40% of a round gets through
+  (resScale 7, resFloor 0.4). Heat-in and drain are flat per gun, not resisted (dtypeLoad heat 0.2,
+  energy 0.45); enemy heat / drain from their gun's full numbers (enemyRx heat 1, energy 0.33), enemy
+  reactors grow with floor and Risk (enemyRig rx). Energy break 1:1. Hits roll +-20%.
+- **Costs (gunCost):** Physical guns run on heat (energy x0.4), like Reloaded.
+- **Planner:** values forced cooldowns / shutdowns, anticipates incoming heat, cools before it overheats.
+  The sim, the intent forecast and Game share the rules (intent: guns 99.6%, damage 97%, KOs 8/8 warned).
+- **Difficulty (sim, skill 1, draft):** Risk curve [.., 1.1, 1.6, 2.45]: starter R0 ~95%, mid gear R8 98% /
+  R9 ~58% / R10 0%, a maxed single mech R10 40-54%, and **R11 tuned to a maxed TEAM of three: the user's
+  real save wins ~36%** (was 98-100%); a lone mech hardly survives XI. Miniboss base HP 345 -> 240 (it was
+  bigger than the whole boss fight).
+- **The user's save** (3x double Phoenix Claw + Medic, mech 1 ascended): v2.9.0 sim R11 98% wins but
+  0% past Abyss 4 = KLONKADOO PRIME (all-Electric) blacking out their guns (v2.8.1 blackout); matches
+  the user ("stuck at abyss 4"). BLACKOUT is gone in 2.10.
+- **Abyss strength 1.5 -> 2.4:** without the Prime wall that team went deeper than on 2.9 (Risk X median
+  floor 17-19 vs 14). x2.4 brings it back (median 13, 53% past floor 13, 20% past 16, 0% past 20).
+- **Mastery:** PILOT tile + screen (off the Deploy screen), max 50, slower curve (L20 ~24 strong runs,
+  L50 ~200), L2-20 as before, L21-50 small steps + 8 milestones, GRANDMASTER paint. Old saves keep their
+  level (banked XP past 20 dropped: the user chose that).
+- **Drones:** damage drones ~1.6x (enemy drones unchanged via foeDmg), Medic cap 20% -> 14% of max HP per
+  battle (Hornet = Medic at mid gear, Reaper > Medic at endgame).
+- **Boons** (gain on the kit they suit, sim): general +8..+26, Physical AP +14 / Sledge (strip 0.5 PHY)
+  +12, Explosive Flashpoint +20 / Thermal Lock +17 / Incinerator +13 / Coolant +10, Electric Siphon +15 /
+  Overdrain +11 / Cells +10 / Short Circuit (Electric guns -40% energy) +4. Greed is economy.
+- **Tools:** tools/sim-batch.mjs (configs in parallel, one per core); balance-sim --draft, --enemyHeat,
+  --enemyDrain, --resScale, --resFloor, heat / cooldown / shots-per-turn lines in --fights.
+- **Open:** Short Circuit is the weakest Electric pick; Napalm deals a bit more than intent forecasts.
+
+## Enemy intent (2026-10-01, released in v2.9.0)
 
 During your turn a badge over the enemy shows its next turn if you ended yours now: icons for each action
 (move, the gun it fires, stomp, vent, drone launch / shots, jammed) and the damage you'd take before you act
@@ -16,7 +52,7 @@ LOST". Hover / tap for the words. Game.intent / _forecast, Renderer._drawIntent.
   guns it fires match 97-99%, damage within 20% on 93-96%, lost turns 100% (the misses: a real damage roll
   shifts a later re-plan). `_aiUnit` now passes the stagger bar to the planner (AUTO sees it too).
 
-## Boon draft (2026-10-01, built, not released)
+## Boon draft (2026-10-01, released in v2.9.0)
 
 Runs gave few choices (7 boons, random single drops), so wins now offer a **pick of 3** (UIManager.showBoonDraft),
 **one draft per floor**: the first elite or miniboss win, or a 12% normal win (CONFIG.run.boonDraftChance,

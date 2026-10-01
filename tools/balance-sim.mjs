@@ -15,7 +15,7 @@
 import { CONFIG } from '../src/config.js';
 import { planTurn, applyAction } from '../src/ai/LaneAI.js';
 import { boonFx, getBoon, draftBoons, pickBoon } from '../src/rogue/Boons.js';
-import { PARTS, gearComp, enemyMech, enemyRig, enemyTier, pickEnemyElement, elementLean, roleElements, riskShred, withMech, getPart, legsRules, riskEase, tierRange, maxLevel, RARITY_ORDER, ELEMENT_DMG, GUN_TYPE_DMG } from '../src/meta/Mech.js';
+import { flatResist, PARTS, gearComp, enemyMech, enemyRig, enemyTier, pickEnemyElement, elementLean, roleElements, riskShred, withMech, getPart, legsRules, riskEase, tierRange, maxLevel, RARITY_ORDER, ELEMENT_DMG, GUN_TYPE_DMG } from '../src/meta/Mech.js';
 import { withMastery } from '../src/meta/Mastery.js';
 import { raidBoss } from '../src/meta/Raid.js';
 
@@ -39,8 +39,10 @@ if (args.abyssHp != null || args.abyssAtk != null) CONFIG.abyss.strength = { hp:
 // --fxHeat=1.5 --fxDrain=1: every part's own heat-in / drain x this
 if (args.heatLoad != null) G.dtypeLoad.heat = Number(args.heatLoad);
 if (args.gunDmg) for (const kv of args.gunDmg.split(',')) { const [k, v] = kv.split(':'); GUN_TYPE_DMG[k] = Number(v); } // --gunDmg=energy:1.0: player gun damage by type
-if (args.stagger != null) G.stagger.frac = Number(args.stagger); // --stagger=0.3: share of max HP in physical damage that staggers (9 = off)
-if (args.blackoutAll != null) G.blackoutAll = args.blackoutAll === "1"; // --blackoutAll=1: every energy hit that empties the target jams it
+if (args.resScale != null) G.resScale = Number(args.resScale); // --resScale=7: flat damage per resist point
+if (args.enemyHeat != null) G.enemyRx.heat = Number(args.enemyHeat); // --enemyHeat=1: heat enemy guns push into you
+if (args.enemyDrain != null) G.enemyRx.energy = Number(args.enemyDrain); // --enemyDrain=1: energy enemy guns drain from you
+if (args.resFloor != null) G.resFloor = Number(args.resFloor); // --resFloor=0.25: share of a round resists can't stop
 if (args.breakHp != null) G.breakHp = Number(args.breakHp); // --breakHp=2.5: HP per point of drain an empty battery can't cover
 if (args.drainLoad != null) G.dtypeLoad.energy = Number(args.drainLoad);
 for (const [flag, k] of [['fxHeat', 'heat'], ['fxDrain', 'drain']]) if (args[flag] != null) for (const p of PARTS) if (typeof p.fx?.[k] === 'number') p.fx[k] = Math.round(p.fx[k] * Number(args[flag]));
@@ -109,7 +111,11 @@ function playerUnit(perm, hp, maxHp) {
     def: (perm.defBonus || 0) * (1 - riskData().defPierce), res: Object.fromEntries(Object.entries({ phys: 0, heat: 0, energy: 0, ...(perm.res || {}) }).map(([k, v]) => [k, v * (1 - riskData().defPierce)])),
     stompDmg: (legs.stomp || 0) * G.dmgScale * atk,
     shield: !!m.startForcefield, specials: m.specials.map((sp) => ({ kind: sp.special, uses: sp.uses, en: sp.en || 0, heat: sp.heat || 0, range: sp.range || 0, dist: sp.dist || 0, ram: (sp.ram || 0) * G.dmgScale * atk, away: !!sp.away, drain: sp.drain || 0 })),
-    guns: m.weapons.map((w) => gunOf(w, w.dmg * G.dmgScale * atk * 1.0375)), // +5% crit x1.75
+    guns: m.weapons.map((w) => {
+      const g = gunOf(w, w.dmg * G.dmgScale * atk * 1.0375); // +5% crit x1.75
+      if (bfx.elecCost && g.dtype === 'energy') g.en = Math.round(g.en * (1 - bfx.elecCost)); // Short Circuit
+      return g;
+    }),
     drones: m.drones.map((d) => ({ dmg: (d.dmg || 0) * G.dmgScale * atk, heal: d.heal || 0, chill: d.chill || 0, en: d.upkeep?.en ?? 4, dtype: d.dtype || 'phys' })),
     killHeal: m.killHeal || 0,
   };
@@ -120,7 +126,7 @@ function gunOf(w, dmg) {
     dmg, burst: w.fx?.burst || 1, en: w.en || 0, heat: w.heat || 0, reach: w.reach, ammo: w.ammo || 0, ammoLeft: w.ammo || 0, used: false,
     dtype: w.dtype || 'phys', pierce: !!w.fx?.pierce, heatFx: w.fx?.heat, drain: w.fx?.drain, push: w.fx?.push || 0, pull: w.fx?.pull || 0,
     drag: w.fx?.drag || 0, freeze: !!w.fx?.freeze, mine: !!w.fx?.mine, hotBonus: !!w.fx?.hotBonus, lowEnBonus: !!w.fx?.lowEnBonus, execute: w.fx?.execute || 0,
-    meltdown: !!w.fx?.meltdown, steal: !!w.fx?.steal, jam: !!w.fx?.jam, coolDmg: w.fx?.coolDmg || 0, regenDmg: w.fx?.regenDmg || 0,
+    meltdown: !!w.fx?.meltdown, steal: !!w.fx?.steal, coolDmg: w.fx?.coolDmg || 0, regenDmg: w.fx?.regenDmg || 0,
     dump: !!w.fx?.dump, load: w.fx?.load || 1, dumpScale: G.dmgScale / G.rxScale, backfire: Math.round((w.backfire || 0) * G.dmgScale),
     resDrain: { ...(w.fx?.resDrain || {}), ...(w.fx?.corrode ? { phys: w.fx.corrode } : {}) },
   };
@@ -167,8 +173,8 @@ function enemyTeam(type, floor, rnd, playerRes = {}, depth = 0) {
     const arch = CONFIG.enemyArchetypes[archetype];
     const boss = type === 'boss' && i === 0;
     const final = boss && depth === ABYSS_FINAL_DEPTH; // Klonkadoo Prime
-    const mech = enemyMech(type, archetype, floor, rnd, { atkMult, boss, final, element, shredChance: riskShred(RISK).gun, rxOut, rxMult: gearComp(RISK).rx });
-    const rig = { ...enemyRig(type, { cdCut: risk.gunCdCut || 0, element: mech.element }) };
+    const mech = enemyMech(type, archetype, floor, rnd, { atkMult, boss, final, element, shredChance: riskShred(RISK).gun, rxOut, rxMult: ease.rx ?? gearComp(RISK).rx });
+    const rig = { ...enemyRig(type, { cdCut: risk.gunCdCut || 0, element: mech.element, floor, rx: gearComp(RISK).rx }) };
     for (const k of ['heatCap', 'energy']) rig[k] = Math.round(rig[k] * rxCap);
     // --rxCap=1.24 --rxRate=1.24: try Abyss-style reactor growth (capacity: heat cap + battery; rate: cooling + regen)
     if (args.rxCap) for (const k of ['heatCap', 'energy']) rig[k] = Math.round(rig[k] * Number(args.rxCap));
@@ -214,35 +220,33 @@ function ownedPart(id) {
 }
 
 // ---------- One battle ----------
-const DEF_PER_POINT = 0.04;
 
-/** Start of a unit's turn (Game._upkeep). Returns false when the turn is lost. */
+/**
+ * Start of a unit's turn (Game._upkeep, SuperMechs): no regen, no cooling.
+ * Over its heat cap: a forced cooldown (1 action left), or a double cooldown
+ * when it's over by more than its cooling (the turn is lost: returns false).
+ */
 function upkeep(u) {
-  if (!u.noRegen) u.energy = Math.min(u.energyMax, u.energy + u.regen); // Short Circuit
-  u.noRegen = false;
   u.actions = u.maxActions;
   u.freeUsed = false;
   u.stomped = false;
-  u.jammed = !!u.jamNext;
-  u.jamNext = false;
+  u.bubble = 0;
   for (const g of u.guns) g.used = false;
-  u.stagger = (u.stagger || 0) * (1 - G.stagger.decay);
-  const cool = Math.round(u.cool * (1 - (u.heatLock || 0))); // Thermal Lock
+  u.lockNow = u.heatLock || 0; // Thermal Lock
   u.heatLock = 0;
-  if (u.staggered) {
-    u.staggered = false;
-    u.heat = Math.max(0, u.heat - cool);
-    return false;
-  }
-  const over = u.heat > u.heatCap;
-  u.heat = Math.max(0, u.heat - cool);
-  return !over;
+  if (!(u.heat > u.heatCap)) return true;
+  const cool = Math.round(u.cool * (1 - u.lockNow));
+  const shut = u.heat - u.heatCap > cool;
+  u.heat = Math.max(0, u.heat - cool * (shut ? 2 : 1));
+  if (shut) return false;
+  u.actions = 1;
+  if (u.st) u.st[u.team === 'player' ? 'youForced' : 'foeForced'] += 1;
+  return true;
 }
 
-/** End of a unit's turn: its drones act (from its second turn on). */
+/** End of a unit's turn: its drones act (from its second turn on), then its battery refills (Game._regen). */
 function drones(me, foe, turn, heal) {
-  if (turn < 2 && !me.droneOn) return;
-  for (const d of me.drones) {
+  for (const d of turn < 2 && !me.droneOn ? [] : me.drones) {
     if (me.energy < d.en) continue;
     if (d.heal) {
       if (me.hp >= me.maxHp || (d.healed || 0) >= me.maxHp * G.droneHealCap) continue;
@@ -253,11 +257,11 @@ function drones(me, foe, turn, heal) {
       if (me.heat <= 0) continue;
       me.heat = Math.max(0, me.heat - d.chill);
     } else if (d.dmg && foe.hp > 0) {
-      const resist = Math.min(15, (foe.def || 0) + (foe.res?.[d.dtype] || 0));
-      foe.hp -= Math.max(1, Math.round(d.dmg * (1 - resist * DEF_PER_POINT)));
+      foe.hp -= Math.max(1, Math.round(flatResist(d.dmg, (foe.def || 0) + (foe.res?.[d.dtype] || 0))));
     } else continue;
     me.energy -= d.en;
   }
+  if (me.hp > 0) me.energy = Math.min(me.energyMax, me.energy + me.regen);
 }
 
 /** Plays one side's turn with the planner, one action at a time (it re-plans after each, like Game). */
@@ -270,6 +274,8 @@ function playTurn(me, foe, mines, difficulty, rnd) {
     const a = plan[0] || { type: 'end' };
     const st = { size: SIZE, me, foe, mines, stompHeat: G.stompHeat, dealt: 0 };
     if (!applyAction(st, a)) break;
+    if (a.type === 'vent' && me.st) me.st[me.team === 'player' ? 'youCools' : 'foeCools'] += 1;
+    if (a.type === 'fire' && me.st) me.st[me.team === 'player' ? 'youShots' : 'foeShots'] += 1;
     // Second Wind (Game._secondWind): your mech's first drop under 30% HP gives it a forcefield
     if (foe.bfx?.secondWind && !foe.windUsed && foe.hp > 0 && foe.hp < foe.maxHp * 0.3) {
       foe.windUsed = true;
@@ -312,9 +318,11 @@ function battle(team, type, floor, rnd, rules, depth = 0) {
   const writeBack = () => (team[idx].hp = Math.max(0, p.hp));
   let turns = 0;
   // --fights: what each side did per turn (the numbers rework's ratios)
-  const stat = { yourTurns: 0, foeTurns: 0, youLost: 0, foeLost: 0, dealt: 0, taken: 0, foeHp: 0 };
+  const stat = { yourTurns: 0, foeTurns: 0, youLost: 0, foeLost: 0, dealt: 0, taken: 0, foeHp: 0, youForced: 0, foeForced: 0, youCools: 0, foeCools: 0, youShots: 0, foeShots: 0 };
+  p.st = stat;
   for (const e of foes) {
     stat.foeHp += e.hp;
+    e.st = stat;
     const mines = [];
     p.pos = 3;
     e.pos = Math.min(SIZE, p.pos + 6);
@@ -354,6 +362,7 @@ function battle(team, type, floor, rnd, rules, depth = 0) {
         const pos = p.pos;
         idx = next;
         p = playerUnit(team[idx].perm, team[idx].hp, team[idx].maxHp);
+        p.st = stat;
         p.pos = pos;
         first = true;
         pt = 0;
@@ -438,16 +447,16 @@ function addBoon(p, b) {
   if (p.boonIds.includes('boon_' + b)) return 0;
   p.boonIds.push('boon_' + b); // battle effects: Boons.boonFx (playerUnit)
   let hp = 0;
-  if (b === 'atk') p.atkBonus = (p.atkBonus || 0) + 0.1;
-  else if (b === 'swift') p.atkBonus = (p.atkBonus || 0) + 0.08; // (+1 walk not modelled)
-  else if (b === 'def') p.defBonus = (p.defBonus || 0) + 2;
+  if (b === 'atk') p.atkBonus = (p.atkBonus || 0) + 0.06;
+  else if (b === 'swift') p.atkBonus = (p.atkBonus || 0) + 0.04; // (+1 walk not modelled)
+  else if (b === 'def') p.defBonus = (p.defBonus || 0) + 1.5;
   else if (b === 'hp') hp = 400;
   else if (b === 'greed') hp = -50; // (gold not modelled)
   else if (b === 'glass') {
-    p.atkBonus = (p.atkBonus || 0) + 0.2;
+    p.atkBonus = (p.atkBonus || 0) + 0.15;
     hp = -300;
   } else if (b === 'power') p.mech.weapons = p.mech.weapons.map((w) => ({ ...w, reach: [w.reach[0], Math.min(SIZE - 1, w.reach[1] + 1)] }));
-  else if (b === 'regen') p.boonRegen = (p.boonRegen || 0) + 0.06;
+  else if (b === 'regen') p.boonRegen = (p.boonRegen || 0) + 0.1;
   p.hpBonus = (p.hpBonus || 0) + hp;
   return hp;
 }
@@ -633,7 +642,7 @@ if (args.fights) {
     for (const [type, floor] of FIGHTS) {
       const rnd = mulberry(7);
       let won = 0, lost = 0, turns = 0, timeouts = 0;
-      const S = { yourTurns: 0, foeTurns: 0, youLost: 0, foeLost: 0, dealt: 0, taken: 0, foeHp: 0 };
+      const S = { yourTurns: 0, foeTurns: 0, youLost: 0, foeLost: 0, dealt: 0, taken: 0, foeHp: 0, youForced: 0, foeForced: 0, youCools: 0, foeCools: 0, youShots: 0, foeShots: 0 };
       for (let i = 0; i < RUNS; i++) {
         const team = makeTeam(LOADOUTS[g]);
         const r = battle(team, type, floor, rnd, NEW, Number(args.depth || 0)); // --depth=N: an Abyss floor
@@ -650,6 +659,8 @@ if (args.fights) {
       }
       console.log(`F${floor} ${type.padEnd(8)} win ${String(Math.round((won / RUNS) * 100)).padStart(3)}% | HP lost when won ${won ? Math.round((lost / won) * 100) : '-'}% | turns ${(turns / RUNS).toFixed(1)}${timeouts ? ` | timeouts ${timeouts}` : ''}`);
       console.log(`           you ${per(S.dealt, S.yourTurns)} dmg/turn, lost ${Math.round((S.youLost / Math.max(1, S.yourTurns)) * 100)}% of turns to heat | foe HP ${per(S.foeHp, RUNS)}, ${per(S.taken, S.foeTurns)} dmg/turn, lost ${Math.round((S.foeLost / Math.max(1, S.foeTurns)) * 100)}% of turns | your HP ${maxHp}: ${per(maxHp, per(S.taken, S.foeTurns))} of its turns to kill you, ${per(per(S.foeHp, RUNS), per(S.dealt, S.yourTurns))} of yours to kill it`);
+      const pc = (a, b) => `${Math.round((a / Math.max(1, b)) * 100)}%`;
+      console.log(`           heat: you shut down ${pc(S.youLost, S.yourTurns)} / forced cooldown ${pc(S.youForced, S.yourTurns)} of turns, COOLDOWN on ${pc(S.youCools, S.yourTurns)}, ${(S.youShots / Math.max(1, S.yourTurns)).toFixed(2)} shots/turn; foe ${pc(S.foeLost, S.foeTurns)} / ${pc(S.foeForced, S.foeTurns)} / ${pc(S.foeCools, S.foeTurns)}, ${(S.foeShots / Math.max(1, S.foeTurns)).toFixed(2)} shots/turn`);
     }
   }
   process.exit(0);

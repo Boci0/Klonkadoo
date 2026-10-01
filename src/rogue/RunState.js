@@ -125,10 +125,10 @@ export class RunState {
 
     switch (boonId) {
       case 'boon_atk':
-        this.atkMult += 0.1;
+        this.atkMult += 0.06;
         break;
       case 'boon_def':
-        this.def += 2;
+        this.def += 1.5;
         break;
       case 'boon_hp':
         this.addMaxHp(400);
@@ -138,10 +138,10 @@ export class RunState {
         if (this.hp > this.maxHp) this.hp = this.maxHp;
         break;
       case 'boon_swift':
-        this.atkMult += 0.08;
+        this.atkMult += 0.04;
         break;
       case 'boon_glass':
-        this.atkMult += 0.2;
+        this.atkMult += 0.15;
         this.maxHp = Math.max(1, this.maxHp - 300);
         if (this.hp > this.maxHp) this.hp = this.maxHp;
         break;
@@ -302,7 +302,7 @@ export class RunState {
     this.combatsWon += 1;
     const regenCount = this.getBoonCount('boon_regen');
     if (regenCount > 0) {
-      this.healFlat(Math.round(this.maxHp * 0.06 * regenCount));
+      this.healFlat(Math.round(this.maxHp * 0.1 * regenCount));
     }
     if (regenBonus) this.healFlat(regenBonus);
   }

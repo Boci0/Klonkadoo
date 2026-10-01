@@ -3150,7 +3150,7 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 
 .menu-tiles {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
 }
 
@@ -4082,20 +4082,7 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 
 .deploy-hint .bad { color: var(--p-red, #ff5d73); }
 
-.deploy-mastery {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 8px;
-  font-size: 11px;
-  color: var(--text-dim);
-  white-space: nowrap;
-  overflow: hidden;
-}
 
-.deploy-mastery b { display: flex; align-items: center; gap: 4px; color: var(--p-yellow); }
-.deploy-mastery .bm-bar { flex: 0 0 60px; }
-.deploy-mastery span { overflow: hidden; text-overflow: ellipsis; }
 
 /* Newest Risk rule + the full list (Risk itself is stepped next to START) */
 .deploy-risk {
@@ -4829,9 +4816,6 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
 }
 
 /* Mastery: totals on the deploy line, every perk in the hover card */
-.deploy-mastery .bm-now { display: inline-flex; align-items: center; gap: 3px; color: var(--p-white, #f4f4f4); }
-.deploy-mastery .bm-next { color: var(--p-yellow); }
-.deploy-mastery { cursor: help; }
 .mastery-card .pcard-head strong { display: flex; align-items: center; gap: 4px; }
 .mastery-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; font-size: 12px; }
 .mastery-list li { display: grid; grid-template-columns: 42px 1fr; gap: 6px; color: #566c86; }
@@ -5009,3 +4993,11 @@ body.reduce-motion *, body.reduce-motion *::before, body.reduce-motion *::after 
   .raid-body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
   .raid-boss .raid-portrait { min-height: 80px; }
 }
+
+/* PILOT screen (UIManager.showPilot): level bar, what it gives now, the milestone road */
+.pilot-head { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+.pilot-head .pilot-bar { height: 10px; }
+.pilot-head > span { font-family: var(--font-mono); font-size: 13px; color: var(--p-yellow); }
+.pilot-head > b { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 13px; }
+.pilot-head > b em { font-style: normal; opacity: 0.7; }
+.medal-row.pilot-next { border-color: var(--p-yellow); }

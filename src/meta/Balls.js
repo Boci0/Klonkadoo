@@ -48,6 +48,7 @@ export const SKINS = {
     { id: 'sovereign', name: 'SOVEREIGN', color: '#7d4ec2', darkColor: '#3a1e6b', accent: '#ffcd75', pattern: 'crown', unlock: { stat: 'bestRiskWin', value: 6 }, hint: 'Win on Risk 6+' },
     { id: 'supernova', name: 'SUPERNOVA', color: '#ff5d73', darkColor: '#6b1530', accent: '#ffcd75', pattern: 'star', unlock: { stat: 'bestRiskWin', value: 9 }, hint: 'Win on Risk 9+' },
     { id: 'master', name: 'MASTER', color: '#ffcd75', darkColor: '#b86f2a', accent: '#f4f4f4', pattern: 'chevron', unlock: { stat: 'masteryLevel', value: 20 }, hint: 'Reach mastery 20' },
+    { id: 'grandmaster', name: 'GRANDMASTER', color: '#f4f4f4', darkColor: '#29366f', accent: '#ffcd75', pattern: 'crown', unlock: { stat: 'masteryLevel', value: 50 }, hint: 'Reach mastery 50' },
   ],
 };
 

@@ -1,6 +1,6 @@
 // ============================================================
 // battleTips — hover a battle button (mouse) to see exactly what it
-// will do right now: VENT's heat / energy numbers, END TURN's upkeep,
+// will do right now: COOLDOWN's heat numbers, END TURN's upkeep,
 // STOMP, SWAP, and each gun / drone chip (damage vs the target,
 // range, costs, ammo, why it can't fire). Numbers refresh while you
 // hover, so they follow the fight.
@@ -12,16 +12,17 @@ import { ico, partIcon } from '../rendering/pixelIcons.js';
 
 const G = CONFIG.gear;
 
-const WHY = { ACTIVE: 'Your shield is already up', ANCHORED: 'Anchored legs can\'t charge', JAMMED: 'Guns jammed: you were drained to 0 energy (you can still move, stomp and vent)', USED: 'Already fired this turn: each gun fires once per turn', EMPTY: 'Out of ammo', HOT: 'Over your heat cap: VENT, or your next turn is lost', ENERGY: 'Not enough energy', RANGE: 'Out of reach: move closer', 'TOO CLOSE': 'Too close for this gun', 'NO TARGET': 'No target', 'NO ACTIONS': 'No actions left', WAIT: 'Wait for your turn' };
+const WHY = { ACTIVE: 'Your shield is already up', ANCHORED: 'Anchored legs can\'t charge', USED: 'Already fired this turn: each gun fires once per turn', EMPTY: 'Out of ammo', ENERGY: 'Not enough energy', RANGE: 'Out of reach: move closer', 'TOO CLOSE': 'Too close for this gun', 'NO TARGET': 'No target', 'NO ACTIONS': 'No actions left', WAIT: 'Wait for your turn' };
 
 const row = (label, value, color = '') => `<div class="tip-row"><span>${label}</span><b${color ? ` style="color:${color}"` : ''}>${value}</b></div>`;
 
 function ventTip(game) {
   const p = game.player;
-  const cooled = Math.round(Math.min(p.heat, p.cool * G.vent.coolMult));
-  return `<h4>VENT <em>[V] · ends your turn</em></h4>
+  const cool = game._coolOf(p);
+  const cooled = Math.round(Math.min(p.heat, cool));
+  return `<h4>COOLDOWN <em>[V] · 1 action</em></h4>
     ${row('Heat', `${Math.ceil(p.heat)} → ${Math.ceil(p.heat - cooled)} (-${cooled})`, '#ef7d57')}
-    <p>The cooldown: cools ${p.cool * G.vent.coolMult} heat (2× your cooling). Energy only comes back from regeneration.</p>`;
+    <p>Heat never goes down by itself: each COOLDOWN takes your cooling's worth (${cool}). Start a turn over your heat cap and a forced cooldown uses one of your two actions; over it by more than your cooling, you shut down for the whole turn.</p>`;
 }
 
 function endTip(game) {
@@ -32,10 +33,9 @@ function endTip(game) {
   return `<h4>END TURN <em>[Space]</em></h4>
     ${left ? `<p>${left} action${left > 1 ? 's' : ''} left unused.</p>` : ''}
     ${drones ? `<p>Drones act now:</p>${drones}` : ''}
-    <p>Your next turn starts with:</p>
-    ${row('Energy', `+${p.regen} (max ${p.energyMax})`, '#73eff7')}
-    ${row('Heat', `-${p.cool}`, '#ef7d57')}
-    ${p.heat > p.heatCap ? `<p class="tip-bad">Over your heat cap: your next turn is lost (overheat)${p.heat - p.cool > p.heatCap ? ', and the one after (shutdown)' : ''}.</p>` : ''}`;
+    ${row('Energy refill', `+${p.regen} (max ${p.energyMax})`, '#73eff7')}
+    ${row('Heat', `${Math.ceil(p.heat)}/${p.heatCap} (no cooling unless you COOLDOWN)`, '#ef7d57')}
+    ${p.heat > p.heatCap ? `<p class="tip-bad">${p.heat - p.heatCap > game._coolOf(p) ? 'Over your heat cap by more than your cooling: next turn is a SHUTDOWN (lost).' : 'Over your heat cap: next turn opens with a forced cooldown (1 action left).'}</p>` : ''}`;
 }
 
 /** An icon row: symbol, value, what it means on hover. */
@@ -46,7 +46,7 @@ function stompTip(game) {
   const st = game.stompStatus(p, game.activeEnemy);
   const legs = p.legs || {};
   const t = DTYPES[legs.stompType] || DTYPES.phys;
-  const why = { 'NOT ADJACENT': 'Get right next to the enemy', USED: 'Once per turn', HOT: 'Too hot', ENERGY: 'Not enough energy' }[st.reason] || '';
+  const why = { 'NOT ADJACENT': 'Get right next to the enemy', USED: 'Once per turn', ENERGY: 'Not enough energy' }[st.reason] || '';
   return `<h4>${ico('stomp')} STOMP <em>[F] · 1 action</em></h4>
     ${irow(t.icon, dmgLabel(p.stompDmg || 0), `${t.name} damage`, t.color)}
     ${irow('range', '1', 'Range: right next to you')}
@@ -78,7 +78,7 @@ function gunTip(game, i) {
     ${w.fx?.push ? irow('push', w.fx.push, 'Knocks back') : ''}
     ${w.fx?.pull ? irow('pull', w.fx.pull, 'Pulls in') : ''}
     ${w.desc ? `<p>${w.desc}</p>` : ''}
-    ${st.ok && st.overheats ? `<p class="tip-bad">${ico('heat')} ${Math.ceil(p.heat + (w.heat || 0))}/${p.heatCap}: overheats you, next turn lost</p>` : ''}
+    ${st.ok && st.overheats ? `<p class="tip-bad">${ico('heat')} ${Math.ceil(p.heat + (w.heat || 0))}/${p.heatCap}: over your cap, next turn opens with a forced cooldown</p>` : ''}
     ${st.ok ? '' : `<p class="tip-bad">${WHY[st.reason] || st.reason}</p>`}`;
 }
 

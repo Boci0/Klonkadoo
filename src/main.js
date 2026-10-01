@@ -243,7 +243,7 @@ function bindAbilityButtons() {
     });
   });
 
-  // Gear combat: END TURN (skip the actions you have left) and VENT (1 action)
+  // Gear combat: END TURN (skip the actions you have left) and COOLDOWN (1 action)
   document.getElementById('btn-end-turn')?.addEventListener('click', () => {
     if (state !== State.BATTLE || battlePaused) return;
     takeControl();
@@ -304,7 +304,7 @@ function bindAbilityButtons() {
     setAutoBattle(!autoBattle);
   });
 
-  // Keyboard hotkeys: [1-6] (or [Q] [E]) guns, [Z] [X] [C] specials, [F] stomp, [V] vent, [Space] end turn, [A] auto
+  // Keyboard hotkeys: [1-6] (or [Q] [E]) guns, [Z] [X] [C] specials, [F] stomp, [V] cooldown, [Space] end turn, [A] auto
   window.addEventListener('keydown', (e) => {
     if (state !== State.BATTLE || battlePaused) return;
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
@@ -592,7 +592,7 @@ function updateGearHud(el, endBtn, ventBtn) {
     const ready = live && st.ok;
     const why = !st.ok ? GUN_BLOCK_LABEL[st.reason] || '' : '';
     const ammo = w.ammo ? `<b class="gun-ammo">${w.ammoLeft}/${w.ammo}</b>` : '';
-    // A shot that takes you over the heat cap is allowed, but flagged: next turn starts with a forced vent
+    // A shot that takes you over the heat cap is allowed, but flagged: next turn starts with a forced cooldown
     const hot = ready && st.overheats;
     return `<button class="mech-chip gear-gun ${ready ? 'ready' : 'cooling'} ${hot ? 'overheat' : ''}" data-gun="${i}" style="--c:${w.color}" aria-label="${w.name}">
       <img src="${partIcon(w.id)}" alt="">${ammo}
@@ -1280,7 +1280,7 @@ function startCombat(node) {
     const arch = CONFIG.enemyArchetypes[archetype];
     const isBoss = node.type === 'boss' && i === 0;
     const isFinal = isBoss && abyssDepth === ABYSS_FINAL_DEPTH; // the true final boss
-    const mech = enemyMech(node.type, archetype, run.floor + 1, Math.random, { atkMult: atkMult * waveAtkScale, boss: isBoss, final: isFinal, element, shredChance: riskShred(riskLevel).gun, rxOut, rxMult: gearComp(riskLevel).rx });
+    const mech = enemyMech(node.type, archetype, run.floor + 1, Math.random, { atkMult: atkMult * waveAtkScale, boss: isBoss, final: isFinal, element, shredChance: riskShred(riskLevel).gun, rxOut, rxMult: ease.rx ?? gearComp(riskLevel).rx });
 
     const finalHp = Math.round(tier.hp * CONFIG.gear.enemyHpScale * arch.hpMult * hpMult * floorHp * devHp * waveHpScale * (isFinal ? 1.5 : 1) * (node.type === 'boss' && i > 0 ? 0.55 : 1)); // boss escorts are lighter
     const finalAtk = Math.round((tier.atk * arch.atkMult * atkMult * floorAtk * devAtk * waveAtkScale) * 100) / 100;
@@ -1301,7 +1301,7 @@ function startCombat(node) {
       // Risk: RANGEFINDERS
       weapons: mech.weapons.map((w) => (riskData.enemyReach ? { ...w, reach: [w.reach[0], Math.min(CONFIG.lane.size - 1, w.reach[1] + riskData.enemyReach)] } : w)),
       droneOut: !!riskData.droneOut, // Risk: NIGHTMARE
-      rig: scaleRig(enemyRig(node.type, { cdCut: riskData.gunCdCut || 0, element: mech.element }), rxCap),
+      rig: scaleRig(enemyRig(node.type, { cdCut: riskData.gunCdCut || 0, element: mech.element, floor: floorKey, rx: gearComp(riskLevel).rx }), rxCap),
       element: mech.element,
       legs: mech.legs,
       res: mech.res,
