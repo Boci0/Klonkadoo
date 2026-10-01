@@ -155,7 +155,7 @@ function apply(s, a) {
     }
     if (g.coolDmg) foe.cool = Math.max(2 * CONFIG.gear.rxScale, foe.cool - g.coolDmg);
     if (g.regenDmg) foe.regen = Math.max(3 * CONFIG.gear.rxScale, foe.regen - g.regenDmg);
-    if (g.jam && foe.energy <= 0) foe.jamNext = true;
+    if ((g.jam || (CONFIG.gear.blackoutAll && (g.dtype === 'energy' || g.drain))) && foe.energy <= 0) foe.jamNext = true;
     if (foe.shield) {
       foe.shield = false; // forcefield eats the hit
       dmg = 0;

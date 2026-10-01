@@ -39,6 +39,7 @@ if (args.abyssHp != null || args.abyssAtk != null) CONFIG.abyss.strength = { hp:
 if (args.heatLoad != null) G.dtypeLoad.heat = Number(args.heatLoad);
 if (args.gunDmg) for (const kv of args.gunDmg.split(',')) { const [k, v] = kv.split(':'); GUN_TYPE_DMG[k] = Number(v); } // --gunDmg=energy:1.0: player gun damage by type
 if (args.stagger != null) G.stagger.frac = Number(args.stagger); // --stagger=0.3: share of max HP in physical damage that staggers (9 = off)
+if (args.blackoutAll != null) G.blackoutAll = args.blackoutAll === "1"; // --blackoutAll=1: every energy hit that empties the target jams it
 if (args.breakHp != null) G.breakHp = Number(args.breakHp); // --breakHp=2.5: HP per point of drain an empty battery can't cover
 if (args.drainLoad != null) G.dtypeLoad.energy = Number(args.drainLoad);
 for (const [flag, k] of [['fxHeat', 'heat'], ['fxDrain', 'drain']]) if (args[flag] != null) for (const p of PARTS) if (typeof p.fx?.[k] === 'number') p.fx[k] = Math.round(p.fx[k] * Number(args[flag]));

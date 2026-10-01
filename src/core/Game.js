@@ -1326,7 +1326,7 @@ export class Game {
         this._callout(target, `REGEN -${cut}`, '#ff5d73');
       }
     }
-    if (w.fx?.jam && target.energy <= 0 && !target.jamNext) {
+    if ((w.fx?.jam || (G.blackoutAll && (type === 'energy' || w.fx?.drain))) && target.energy <= 0 && !target.jamNext) {
       target.jamNext = true;
       this._callout(target, 'BLACKOUT: GUNS JAM', DTYPES.energy.color);
     }

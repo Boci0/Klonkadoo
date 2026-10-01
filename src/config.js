@@ -87,10 +87,11 @@ export const CONFIG = {
     exposedMult: 1.25, // rammed targets take +25% gun damage until their next turn
     // Damage types (Mech.DTYPES): Explosive hits add heat and Electric hits drain energy,
     // dtypeLoad x the hit (or the gun's own amount); drain past an empty battery comes off HP (breakHp)
-    dtypeLoad: { heat: 0.2, energy: 0.1 }, // heat / drain per point of battle damage, by damage type
+    dtypeLoad: { heat: 0.2, energy: 0.3 }, // heat / drain per point of battle damage, by damage type
     // STAGGER (Physical): your physical hits fill a bar on the target (their HP damage); past frac x its max HP the bar
     // empties and the target loses its next turn, like an overheat. It bleeds off by decay every turn of its own; giants are immune.
     stagger: { frac: 0.3, decay: 0.5 },
+    blackoutAll: true, // BLACKOUT for every Electric hit that leaves the target at 0 energy (else only guns with fx.jam)
     breakHp: 1.5, // ENERGY BREAK: HP per point of drain the target's empty battery can't cover (Reloaded: about the drain itself)
     ramSpeed: 380, // impact speed (px/s) that counts as a ram
     shotGap: 0.45, // seconds between an enemy's actions, so you can follow them
