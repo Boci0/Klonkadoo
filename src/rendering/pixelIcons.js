@@ -1983,7 +1983,7 @@ function paint(grid, colors) {
 }
 
 /** Plating modules show as plating on a steel torso, like the mech wears it. */
-const PLATING = new Set(['md_plating', 'md_heavyplate', 'md_composite', 'md_insulated', 'md_aegis', 'md_titanplate', 'md_voidcore']);
+const PLATING = new Set(['md_plating', 'md_heavyplate', 'md_composite', 'md_insulated', 'md_aegis', 'md_titanplate', 'md_voidcore', 'md_reboundplate', 'md_wardmesh']);
 
 const canvasCache = new Map();
 const urlCache = new Map();
