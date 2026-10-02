@@ -2,7 +2,7 @@
 
 ## Second wave of gear (2026-10-02, draft)
 
-31 new parts, all built from fields and effects the game already handles (no new battle rules), so they
+35 new parts, all built from fields and effects the game already handles (no new battle rules), so they
 drop from pods by rarity and level and transform like the rest. Designs are original.
 - **Frames (4):** Hauler (common, hull over reactor), Warden (rare, +1 to every resist), Gunner (epic,
   +6% damage), Zenith (mythic, +10% damage on a deep reactor). New torso sprites and on-field sizes.
