@@ -126,6 +126,11 @@ export const PARTS = [
   { id: 'fr_capacitor', type: 'frame', name: 'CAPACITOR FRAME', rarity: 'epic', weight: 318, hp: 24, energy: 90, regen: 4, heatCap: 28, cool: 12, color: '#41a6f6', desc: 'A huge battery that hardly recharges: a big opening, then you sip.' },
   { id: 'fr_rampart', type: 'frame', name: 'RAMPART FRAME', rarity: 'legendary', weight: 385, hp: 84, energy: 20, regen: 8, heatCap: 34, cool: 12, color: '#94b0c2', desc: 'Enormous HP on a tiny reactor: only cheap guns fit its battery.' },
   { id: 'fr_revenant', type: 'frame', name: 'REVENANT FRAME', rarity: 'mythic', weight: 358, hp: 62, energy: 50, regen: 22, heatCap: 56, cool: 22, killHeal: 0.05, freeFirstShot: true, color: '#c46fd6', desc: 'Repairs a little with every kill and the first gun each battle is free: built to chain fights.' },
+  // Field frames: the second wave, each one bends the reactor or the armor a different way
+  { id: 'fr_hauler', type: 'frame', name: 'HAULER FRAME', rarity: 'common', weight: 314, hp: 26, energy: 22, regen: 10, heatCap: 28, cool: 10, color: '#c2a56a', desc: 'A cargo rig with a lot of hull and a tired reactor: tough, but only cheap guns keep up.' },
+  { id: 'fr_warden', type: 'frame', name: 'WARDEN FRAME', rarity: 'rare', weight: 335, hp: 28, energy: 32, regen: 13, heatCap: 38, cool: 13, res: { phys: 1, heat: 1, energy: 1 }, color: '#41a6f6', desc: 'Shielded plates across the whole hull: +1 resist to every damage type.' },
+  { id: 'fr_gunner', type: 'frame', name: 'GUNNER FRAME', rarity: 'epic', weight: 334, hp: 38, energy: 44, regen: 18, heatCap: 46, cool: 17, atkPct: 0.06, color: '#ef7d57', desc: 'A gun platform with its own fire control: +6% damage.' },
+  { id: 'fr_zenith', type: 'frame', name: 'ZENITH FRAME', rarity: 'mythic', weight: 364, hp: 66, energy: 66, regen: 28, heatCap: 70, cool: 27, atkPct: 0.1, color: '#ffcd75', desc: 'A flagship chassis tuned for the opening salvo: +10% damage on a deep reactor.' },
 
   // Legs decide how you move on the lane and how you STOMP (range 1, knocks back 1):
   // walk = up to N positions along the ground (not through mechs);
@@ -143,6 +148,12 @@ export const PARTS = [
   { id: 'lg_bulwark', type: 'legs', name: 'BULWARK LEGS', rarity: 'legendary', weight: 145, hp: 26, walk: 1, jump: [2, 2], stomp: 14, stompHeat: 6, desc: 'Slow and heavy: lots of HP and a hard stomp.' },
   { id: 'lg_thrusters', type: 'legs', name: 'THRUSTERS', rarity: 'legendary', weight: 125, hp: 10, walk: 3, jump: [1, 3], stomp: 10, stompType: 'heat', stompHeat: 4, moveEn: 4, desc: 'Go anywhere, but each move costs energy. The stomp scorches.' },
   { id: 'lg_phase', type: 'legs', name: 'PHASE STRIDERS', rarity: 'mythic', weight: 121, hp: 14, walk: 2, jump: [1, 3], stomp: 12, stompType: 'energy', stompEn: 4, stompHeat: 1, freeMove: true, color: '#ff5d73', desc: 'Your first move each turn uses no action. The stomp shocks.' },
+  // Field legs: the second wave
+  { id: 'lg_pogo', type: 'legs', name: 'POGO LEGS', rarity: 'common', weight: 112, hp: 4, walk: 0, jump: [1, 3], stomp: 9, desc: "Spring legs: hops only, no walking. Cheap and light." },
+  { id: 'lg_quad', type: 'legs', name: 'QUAD WALKER', rarity: 'rare', weight: 132, hp: 16, walk: 2, stomp: 12, desc: 'Four legs, steady footing: a sturdier Strider.' },
+  { id: 'lg_greaves', type: 'legs', name: 'GROUNDED GREAVES', rarity: 'rare', weight: 136, hp: 16, res: { heat: 1, energy: 1 }, walk: 2, stomp: 10, desc: 'Insulated boots: +1 EXP and ELEC resist, and you still walk.' },
+  { id: 'lg_piston', type: 'legs', name: 'PISTON LEGS', rarity: 'epic', weight: 140, hp: 20, walk: 1, stomp: 22, stompHeat: 6, color: '#ffcd75', desc: 'Hydraulic rams: a slow walker with the hardest stomp in the garage.' },
+  { id: 'lg_stalker', type: 'legs', name: 'STALKER LEGS', rarity: 'legendary', weight: 130, hp: 12, walk: 3, jump: [1, 2], stomp: 12, color: '#a7f070', desc: 'Fast on the ground and nimble over mines, with no energy cost to move.' },
 
   // SIDE guns
   { id: 'wp_blaster', type: 'weapon', name: 'PULSE BLASTER', rarity: 'common', dtype: 'phys', weight: 31, reach: [1, 3], dmg: 12, en: 5, heat: 5, color: '#73eff7' },
@@ -168,6 +179,13 @@ export const PARTS = [
   { id: 'wp_needler', type: 'weapon', name: 'NEEDLE RIFLE', rarity: 'epic', dtype: 'phys', weight: 41, reach: [2, 5], dmg: 9, en: 8, heat: 5, fx: { pierce: true }, color: '#94b0c2', icon: 'wp_rifle', desc: 'Tungsten needles: ignores resists. The side-mount answer to armored mechs.' },
   { id: 'wp_siphon', type: 'weapon', name: 'SIPHON RAY', rarity: 'epic', dtype: 'energy', weight: 47, reach: [1, 3], dmg: 11, en: 9, heat: 4, fx: { line: true, drain: 6, steal: true }, color: '#a7f070', icon: 'wp_beam', desc: 'What it drains goes into your battery (energy only, never HP).' },
   { id: 'wp_omega', type: 'weapon', name: 'OMEGA REPEATER', rarity: 'mythic', dtype: 'phys', weight: 57, reach: [1, 3], dmg: 7, en: 10, heat: 8, fx: { burst: 4, crit: 0.15 }, color: '#ff5d73', icon: 'wp_smg', desc: 'Every round has +15% crit chance.' },
+  { id: 'wp_stinger', type: 'weapon', name: 'STINGER', rarity: 'common', dtype: 'phys', weight: 24, reach: [2, 4], dmg: 11, en: 4, heat: 5, color: '#ffcd75', icon: 'wp_blaster', desc: 'A light mid-range pistol.' },
+  { id: 'wp_arcwelder', type: 'weapon', name: 'ARC WELDER', rarity: 'rare', dtype: 'energy', weight: 39, reach: [1, 2], dmg: 12, en: 8, heat: 3, fx: { line: true, drain: 5 }, color: '#73eff7', icon: 'wp_tesla', desc: 'A short arc that drains a little energy.' },
+  { id: 'wp_slagger', type: 'weapon', name: 'SLAG GUN', rarity: 'rare', dtype: 'heat', weight: 41, reach: [1, 3], dmg: 9, en: 3, heat: 8, fx: { burn: 1, resDrain: { heat: 1 } }, color: '#ffcd75', icon: 'wp_flamer', desc: 'Molten slag: burns for 1 turn and strips 1 EXP resist per hit.' },
+  { id: 'wp_cutter', type: 'weapon', name: 'PLASMA CUTTER', rarity: 'epic', dtype: 'heat', weight: 52, reach: [2, 4], dmg: 14, en: 4, heat: 9, fx: { line: true, burn: 2 }, color: '#ef7d57', icon: 'wp_beam', desc: 'A cutting beam that leaves the target burning for 2 turns.' },
+  { id: 'wp_judge', type: 'weapon', name: 'VERDICT PISTOL', rarity: 'legendary', dtype: 'phys', weight: 54, reach: [1, 3], dmg: 19, en: 8, heat: 8, fx: { execute: 0.5 }, color: '#ff5d73', icon: 'wp_breacher', desc: 'A finisher: x1.8 damage against a target below 50% HP.' },
+  { id: 'wp_voltarc', type: 'weapon', name: 'VOLT ARC', rarity: 'legendary', dtype: 'energy', weight: 58, reach: [1, 3], dmg: 17, en: 11, heat: 4, fx: { line: true, drain: 12 }, color: '#c46fd6', icon: 'wp_arclash', desc: 'A heavy arc that drains hard as it cuts.' },
+  { id: 'wp_helix', type: 'weapon', name: 'HELIX CHAINGUN', rarity: 'mythic', dtype: 'energy', weight: 56, reach: [1, 3], dmg: 8, en: 11, heat: 4, fx: { burst: 3, crit: 0.15, drain: 5 }, color: '#ff5d73', icon: 'wp_omega', desc: 'Three rounds a shot, each draining energy, +15% crit chance on every round.' },
   // Explosive specialists: cook the target until it locks up, then cash the heat in
   { id: 'wp_blowtorch', type: 'weapon', name: 'BLOWTORCH', rarity: 'common', dtype: 'heat', weight: 18, reach: [1, 2], dmg: 5, en: 3, heat: 7, fx: { heat: 16 }, color: '#ef7d57', desc: 'Weak hit, but pumps a lot of heat into the target.' },
   { id: 'wp_dragon', type: 'weapon', name: 'DRAGON SHOTGUN', rarity: 'rare', dtype: 'heat', weight: 41, reach: [1, 2], dmg: 6, en: 4, heat: 7, fx: { burst: 2, burn: 2 }, color: '#ef7d57', icon: 'wp_scatter', desc: 'The target burns for 2 turns.' },
@@ -216,6 +234,15 @@ export const PARTS = [
   { id: 'wp_faultline', type: 'weapon', mount: 'top', name: 'FAULT LINE MORTAR', rarity: 'legendary', dtype: 'phys', weight: 60, reach: [3, 6], dmg: 30, foeDmg: 22, en: 11, heat: 9, ammo: 2, arc: true, fx: { splash: 1, push: 1 }, color: '#ffcd75', desc: 'A shell that cracks the ground: it splashes and shoves the target back.' },
   { id: 'wp_stormcaller', type: 'weapon', mount: 'top', name: 'STORMCALLER', rarity: 'legendary', dtype: 'energy', weight: 55, reach: [3, 6], dmg: 14, foeDmg: 12, en: 10, heat: 5, fx: { drain: 16, pierce: true }, color: '#c46fd6', desc: 'Chain lightning: ignores resists and drains hard.' },
   { id: 'wp_supercon', type: 'weapon', mount: 'top', name: 'SUPERCONDUCTOR', rarity: 'epic', dtype: 'energy', weight: 72, reach: [2, 5], dmg: 15, en: 10, heat: 0, fx: { line: true }, color: '#c46fd6', icon: 'wp_beam', desc: 'Supercooled coil: makes no heat at all, but it drinks energy. Heavy.' },
+  // Field top guns: the second wave
+  { id: 'wp_slingshot', type: 'weapon', mount: 'top', name: 'SLINGSHOT', rarity: 'common', dtype: 'phys', weight: 24, reach: [3, 6], dmg: 10, en: 5, heat: 6, arc: true, color: '#ffcd75', icon: 'wp_mortar', desc: 'A cheap lobbed shot.' },
+  { id: 'wp_chainmortar', type: 'weapon', mount: 'top', name: 'CHAIN MORTAR', rarity: 'rare', dtype: 'phys', weight: 38, reach: [4, 7], dmg: 7, en: 7, heat: 8, arc: true, fx: { burst: 2 }, color: '#ef7d57', icon: 'wp_mortar', desc: 'Two shells a shot.' },
+  { id: 'wp_tracer', type: 'weapon', mount: 'top', name: 'TRACER BEAM', rarity: 'rare', dtype: 'energy', weight: 38, reach: [5, 8], dmg: 12, en: 9, heat: 3, fx: { line: true }, color: '#73eff7', icon: 'wp_rail', desc: 'A long, steady energy beam.' },
+  { id: 'wp_brimstone', type: 'weapon', mount: 'top', name: 'BRIMSTONE MORTAR', rarity: 'epic', dtype: 'heat', weight: 47, reach: [3, 6], dmg: 10, en: 4, heat: 10, arc: true, fx: { splash: 1, heat: 9 }, color: '#ef7d57', icon: 'wp_cluster', desc: 'A lobbed shell that splashes and pumps heat into the target.' },
+  { id: 'wp_gravwell', type: 'weapon', mount: 'top', name: 'GRAVITY WELL', rarity: 'epic', dtype: 'phys', weight: 45, reach: [4, 8], dmg: 12, en: 8, heat: 8, arc: true, fx: { pull: 2, splash: 1 }, color: '#94b0c2', icon: 'wp_harpoon', desc: 'A lobbed shell that splashes and drags the target 2 toward you.' },
+  { id: 'wp_orbital', type: 'weapon', mount: 'top', name: 'ORBITAL LANCE', rarity: 'legendary', dtype: 'energy', weight: 46, reach: [5, 9], dmg: 26, foeDmg: 19, en: 12, heat: 5, ammo: 2, backfire: 4, fx: { pierce: true }, color: '#41a6f6', icon: 'wp_nova', desc: 'A long-range strike from above: ignores resists.' },
+  { id: 'wp_pyre', type: 'weapon', mount: 'top', name: 'PYRE LAUNCHER', rarity: 'legendary', dtype: 'heat', weight: 50, reach: [4, 8], dmg: 14, en: 5, heat: 11, arc: true, fx: { splash: 1, napalm: 3, heat: 12 }, color: '#ff5d73', icon: 'wp_napalm', desc: 'Sets the target\'s plate on fire for 3 turns and splashes.' },
+  { id: 'wp_citadel', type: 'weapon', mount: 'top', name: 'CITADEL BREAKER', rarity: 'mythic', dtype: 'phys', weight: 64, reach: [4, 8], dmg: 42, foeDmg: 28, en: 12, heat: 11, ammo: 2, backfire: 6, arc: true, fx: { splash: 1 }, color: '#ff5d73', icon: 'wp_howitzer', desc: 'A siege shell that levels the lane: splashes, and it hurts you to fire.' },
 
   // Specials: one slot each (CHARGE / TELEPORT / HOOK), an action each, a few uses per battle
   { id: 'sp_charge', type: 'special', name: 'CHARGE BOOSTER', rarity: 'common', weight: 14, special: 'charge', dist: 4, ram: 10, uses: 2, en: 4, heat: 7, color: '#ffcd75', desc: 'Dash toward the enemy. End next to it and you ram it: Physical damage and a knockback.' },
@@ -237,6 +264,12 @@ export const PARTS = [
   { id: 'dr_guardian', type: 'drone', name: 'GUARDIAN DRONE', rarity: 'epic', weight: 41, upkeep: { en: 7, heat: 0 }, forcefieldEvery: 3, color: '#a7f070', desc: 'Forcefield every 3rd turn.' },
   { id: 'dr_reaper', type: 'drone', name: 'REAPER DRONE', rarity: 'legendary', dtype: 'energy', weight: 52, upkeep: { en: 6, heat: 2 }, dmg: 13, foeDmg: 7, fx: { crit: 0.2 }, color: '#ffcd75', desc: '20% crit chance.' },
   { id: 'dr_seraph', type: 'drone', name: 'SERAPH DRONE', rarity: 'mythic', dtype: 'energy', weight: 57, upkeep: { en: 7, heat: 2 }, dmg: 18, foeDmg: 8, fx: { crit: 0.25 }, color: '#ff5d73', desc: '25% crit chance.' },
+  // Field drones: the second wave
+  { id: 'dr_patcher', type: 'drone', name: 'PATCHER DRONE', rarity: 'common', weight: 24, upkeep: { en: 4, heat: 0 }, heal: 4, color: '#a7f070', icon: 'dr_medic', desc: 'Repairs you a little every turn it is deployed, up to a share of your max HP per battle. It never attacks.' },
+  { id: 'dr_lancer', type: 'drone', name: 'LANCER DRONE', rarity: 'rare', dtype: 'phys', weight: 38, upkeep: { en: 5, heat: 2 }, dmg: 6, foeDmg: 4, fx: { pierce: true }, color: '#94b0c2', icon: 'dr_hornet', desc: 'Tungsten darts: its hits ignore resists.' },
+  { id: 'dr_cinder', type: 'drone', name: 'CINDER DRONE', rarity: 'epic', dtype: 'heat', weight: 38, upkeep: { en: 4, heat: 1 }, dmg: 10, foeDmg: 6, fx: { burn: 2, heat: 6 }, color: '#ef7d57', icon: 'dr_firefly', desc: 'Explosive hits that leave the target burning for 2 turns.' },
+  { id: 'dr_bastion', type: 'drone', name: 'BASTION DRONE', rarity: 'legendary', weight: 55, upkeep: { en: 9, heat: 0 }, forcefieldEvery: 2, color: '#41a6f6', icon: 'dr_guardian', desc: 'Forcefield every 2nd turn.' },
+  { id: 'dr_wraith', type: 'drone', name: 'WRAITH DRONE', rarity: 'mythic', dtype: 'energy', weight: 54, upkeep: { en: 7, heat: 2 }, dmg: 16, foeDmg: 8, fx: { pierce: true, drain: 8 }, color: '#c46fd6', icon: 'dr_reaper', desc: 'Electric hits that ignore resists and drain energy.' },
 
   // Modules: stat modules stack; `unique` ones fit once per mech
   { id: 'md_plating', type: 'module', name: 'PLATING', rarity: 'common', weight: 26, hp: 10 },
@@ -270,6 +303,12 @@ export const PARTS = [
   { id: 'md_titanplate', type: 'module', name: 'TITAN PLATE', rarity: 'legendary', weight: 46, hp: 28, res: { phys: 2, heat: 2 } },
   { id: 'md_overclock', type: 'module', name: 'OVERCLOCK CORE', rarity: 'legendary', weight: 32, atkPct: 0.1, weaponDmgPct: 0.12, unique: true },
   { id: 'md_voidcore', type: 'module', name: 'VOID CORE', rarity: 'mythic', weight: 52, hp: 37, res: { phys: 2, heat: 2, energy: 2 }, startForcefield: true, unique: true, color: '#ff5d73', desc: 'Start each battle with a Forcefield.' },
+  { id: 'md_gunsight', type: 'module', name: 'GUNSIGHT', rarity: 'common', weight: 16, weaponDmgPct: 0.05, unique: true, icon: 'md_target', desc: '+5% gun damage.' },
+  { id: 'md_reboundplate', type: 'module', name: 'REBOUND PLATE', rarity: 'rare', weight: 34, hp: 8, res: { phys: 1.5, energy: 1.5 }, icon: 'md_physres' },
+  { id: 'md_adrenal', type: 'module', name: 'ADRENAL INJECTOR', rarity: 'epic', weight: 20, lowHpAtk: 0.15, killHeal: 0.03, unique: true, icon: 'md_laststand', desc: '+15% damage below 35% HP, and repairs 3% of max HP per kill.' },
+  { id: 'md_pressure', type: 'module', name: 'PRESSURE VALVE', rarity: 'epic', weight: 28, hotAtk: 0.2, heatCap: 16, unique: true, icon: 'md_governor', desc: '+20% damage while above half your heat cap, and a bigger cap (grows with level).' },
+  { id: 'md_wardmesh', type: 'module', name: 'WARD MESH', rarity: 'legendary', weight: 50, hp: 28, res: { phys: 1.5, heat: 1.5, energy: 1.5 }, icon: 'md_physres' },
+  { id: 'md_rebirth', type: 'module', name: 'REBIRTH CORE', rarity: 'mythic', weight: 46, hp: 32, killHeal: 0.06, healAfterWin: 0.08, unique: true, color: '#ff5d73', icon: 'md_repair', desc: 'Repairs 6% of max HP per kill and heals after every win.' },
   { id: 'md_singularity', type: 'module', name: 'SINGULARITY CHIP', rarity: 'mythic', weight: 32, atkPct: 0.12, weaponDmgPct: 0.15, crit: 0.03, unique: true, color: '#ff5d73' },
 ];
 

@@ -78,7 +78,7 @@ const stompGun = (legs) => ({ ...STOMP_GUN, dtype: legs?.stompType || 'phys' });
 
 /** On-screen size by frame: heavier frames stand bigger on the lane. */
 const MECH_R = 32;
-const FRAME_SIZE = { fr_scout: 0.9, fr_phantom: 0.95, fr_conduit: 0.95, fr_brawler: 1, fr_furnace: 1.05, fr_titan: 1.1, fr_reclaimer: 1.15, fr_colossus: 1.2, fr_leviathan: 1.28, fr_kiln: 1.05, fr_capacitor: 0.95, fr_rampart: 1.25, fr_revenant: 1.15 };
+const FRAME_SIZE = { fr_scout: 0.9, fr_phantom: 0.95, fr_conduit: 0.95, fr_brawler: 1, fr_furnace: 1.05, fr_titan: 1.1, fr_reclaimer: 1.15, fr_colossus: 1.2, fr_leviathan: 1.28, fr_kiln: 1.05, fr_capacitor: 0.95, fr_rampart: 1.25, fr_revenant: 1.15, fr_hauler: 1.02, fr_warden: 1.08, fr_gunner: 1.05, fr_zenith: 1.22 };
 const GIANT_SCALE = 2.4; // the weekly raid boss (meta/Raid.js)
 export const mechRadius = (parts) => Math.round(MECH_R * (FRAME_SIZE[(parts || []).find((id) => FRAME_SIZE[id])] || 1));
 

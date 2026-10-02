@@ -27,7 +27,7 @@
 - **Physical / Explosive / Electric Damage**: Explosive hits pile on heat, Electric hits drain energy, and resist mods cover each type separately. Legs stomp with their own damage type.
 - **Enemy Mechs**: No special abilities. Every hostile is a loadout of real parts, from Scattergun Wall Units to the bolted-down Sector Commander, and at the bottom of the Abyss, KLONKADOO PRIME.
 - **Branching Tactical Node Map**: Procedurally generated 5-floor campaign with Combat, Elite, Boss, Encounter, Shop, Rest and Cache nodes, then 5 Abyss floors and an endless descent.
-- **Progression Through Gear**: Win Keys to open supply pods one at a time or in packs of five (87 parts, odds shown), level parts with scrap, then TRANSFORM them up a tier by melting spare parts of the same tier. Never real money.
+- **Progression Through Gear**: Win Keys to open supply pods one at a time or in packs of five (169 parts, odds shown), level parts with scrap, then TRANSFORM them up a tier by melting spare parts of the same tier. Never real money.
 - **AUTO**: Let the planner play your turns in battle, and farm a Risk you have already won with AUTO RUN (it stops at the Abyss).
 
 ---

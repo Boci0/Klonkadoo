@@ -1,5 +1,26 @@
 # Backlog
 
+## Second wave of gear (2026-10-02, draft)
+
+31 new parts, all built from fields and effects the game already handles (no new battle rules), so they
+drop from pods by rarity and level and transform like the rest. Designs are original.
+- **Frames (4):** Hauler (common, hull over reactor), Warden (rare, +1 to every resist), Gunner (epic,
+  +6% damage), Zenith (mythic, +10% damage on a deep reactor). New torso sprites and on-field sizes.
+- **Legs (5):** Pogo (hop only), Quad Walker, Grounded Greaves (+1 EXP / ELEC resist), Piston (stomp 22),
+  Stalker (walk 3 + hop 1-2, no move cost). New leg sprites.
+- **Side guns (7):** Stinger, Arc Welder, Slag Gun, Plasma Cutter, Verdict Pistol (execute below 50%),
+  Volt Arc, Helix Chaingun.
+- **Top guns (8):** Slingshot, Chain Mortar, Tracer Beam, Brimstone Mortar, Gravity Well, Orbital Lance,
+  Pyre Launcher, Citadel Breaker.
+- **Drones (5):** Patcher (small repair), Lancer (ignores resists), Cinder (burns), Bastion (forcefield
+  every 2nd turn), Wraith (pierce + drain).
+- **Modules (6):** Gunsight, Rebound Plate, Adrenal Injector, Pressure Valve, Ward Mesh, Rebirth Core.
+- **Checked:** tools/tier-report.mjs (new parts rank with their rarity, except ammo / splash guns and
+  perk frames, which the report already flags the same way for older parts), tools/weight-report.mjs,
+  vite build, a stat / chip sweep over every part at every tier.
+- **Open:** enemies do not use the new parts yet (loadouts unchanged, so Risk tuning is untouched); the new
+  guns, drones and modules reuse existing icons in a new colour, only frames and legs have new art.
+
 ## SuperMechs battle rules, mastery 50, drones and boons (2026-10-01, built, v2.10)
 
 The user: heat / energy / physical were "totally not like" SuperMechs, "not just damage, but how the mech
