@@ -43,6 +43,8 @@ if (args.resScale != null) G.resScale = Number(args.resScale); // --resScale=7: 
 if (args.enemyHeat != null) G.enemyRx.heat = Number(args.enemyHeat); // --enemyHeat=1: heat enemy guns push into you
 if (args.enemyDrain != null) G.enemyRx.energy = Number(args.enemyDrain); // --enemyDrain=1: energy enemy guns drain from you
 if (args.resFloor != null) G.resFloor = Number(args.resFloor); // --resFloor=0.25: share of a round resists can't stop
+if (args.stagger != null) G.stagger.frac = Number(args.stagger); // --stagger=0.33: share of max HP in physical damage that staggers (9 = off)
+if (args.staggerDmg != null) G.stagger.dmg = Number(args.staggerDmg); // --staggerDmg=0.05: the bonus hit, as a share of max HP
 if (args.breakHp != null) G.breakHp = Number(args.breakHp); // --breakHp=2.5: HP per point of drain an empty battery can't cover
 if (args.drainLoad != null) G.dtypeLoad.energy = Number(args.drainLoad);
 for (const [flag, k] of [['fxHeat', 'heat'], ['fxDrain', 'drain']]) if (args[flag] != null) for (const p of PARTS) if (typeof p.fx?.[k] === 'number') p.fx[k] = Math.round(p.fx[k] * Number(args[flag]));
@@ -77,6 +79,8 @@ const LOADOUTS = {
     .map(([k, md]) => [k, ['fr_brawler', 'lg_strider', 'wp_blaster', 'wp_scatter', 'wp_rifle', 'wp_mortar', 'dr_hornet', ...Array(8).fill(md)]])),
   resMixed: ['fr_brawler', 'lg_strider', 'wp_blaster', 'wp_scatter', 'wp_rifle', 'wp_mortar', 'dr_hornet', 'md_physres', 'md_physres', 'md_heatres', 'md_heatres', 'md_elecres', 'md_elecres', 'md_plating', 'md_plating'],
   // ...and one damage type on offense (mixed defense), to see which guns carry and which get walled
+  // Heat Ray vs Phoenix Claw: the same heat kit, one gun swapped
+  gunsPhoenix: ['fr_brawler', 'lg_strider', 'wp_flamer', 'wp_phoenix', 'wp_scorcher', 'wp_napalm', 'dr_hornet', 'md_physres', 'md_physres', 'md_heatres', 'md_heatres', 'md_elecres', 'md_elecres', 'md_plating', 'md_plating'],
   gunsHeat: ['fr_brawler', 'lg_strider', 'wp_flamer', 'wp_heatray', 'wp_scorcher', 'wp_napalm', 'dr_hornet', 'md_physres', 'md_physres', 'md_heatres', 'md_heatres', 'md_elecres', 'md_elecres', 'md_plating', 'md_plating'],
   gunsPhys: ['fr_brawler', 'lg_strider', 'wp_gauss', 'wp_rifle', 'wp_missiles', 'wp_rocket', 'dr_hornet', 'md_physres', 'md_physres', 'md_heatres', 'md_heatres', 'md_elecres', 'md_elecres', 'md_plating', 'md_plating'],
   newKit: ['fr_rampart', 'lg_strider', 'wp_piledriver', 'wp_arclash', 'wp_faultline', 'wp_stormcaller', 'dr_hornet', 'md_physres', 'md_physres', 'md_heatres', 'md_elecres', 'md_plating', 'md_plating'],
@@ -231,21 +235,25 @@ function ownedPart(id) {
  * when it's over by more than its cooling (the turn is lost: returns false).
  */
 function upkeep(u) {
-  u.actions = u.maxActions;
+  const S = G.stagger;
+  u.stagger = (u.stagger || 0) * (1 - S.decay);
+  u.staggerSafe = !!u.staggered;
+  u.actions = Math.max(0, u.maxActions - (u.staggered ? S.actions : 0));
+  u.staggered = false;
   u.freeUsed = false;
   u.stomped = false;
   u.bubble = 0;
   for (const g of u.guns) g.used = false;
   u.lockNow = u.heatLock || 0; // Thermal Lock
   u.heatLock = 0;
-  if (!(u.heat > u.heatCap)) return true;
+  if (!(u.heat > u.heatCap)) return u.actions > 0;
   const cool = Math.round(u.cool * (1 - u.lockNow));
   const shut = u.heat - u.heatCap > cool;
   u.heat = Math.max(0, u.heat - cool * (shut ? 2 : 1));
   if (shut) return false;
-  u.actions = 1;
+  u.actions = Math.max(0, u.actions - 1);
   if (u.st) u.st[u.team === 'player' ? 'youForced' : 'foeForced'] += 1;
-  return true;
+  return u.actions > 0;
 }
 
 /** End of a unit's turn: its drones act (from its second turn on), then its battery refills (Game._regen). */

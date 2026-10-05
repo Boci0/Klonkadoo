@@ -84,6 +84,10 @@ export const CONFIG = {
     enemyGunShare: { combat: 0.675, elite: 0.445, miniboss: 0.45, boss: 0.36 },
     droneHealCap: 0.14, // repair drones fix at most this share of max HP per battle (2.10: was 0.2, a must-pick)
     enemyHpScale: 4.46, // every enemy's HP (2.6: normal fights 3-5 of your turns, elites 5-8, bosses 10-12; tools/balance-sim.mjs --fights)
+    // STAGGER (Physical): your physical hits fill a bar on the target (their HP damage); past frac x its max HP the bar
+    // empties: the target takes dmg x its max HP on top and loses `actions` of its next turn. The bar bleeds off by decay
+    // every turn of its own, a staggered target cannot be staggered again until its next turn after, giants are immune.
+    stagger: { frac: 1 / 3, decay: 0.5, dmg: 0.05, actions: 1 },
     exposedMult: 1.25, // rammed targets take +25% gun damage until their next turn
     // SuperMechs rules (2.10). Heat never cools on its own: COOLDOWN is an action (heat - your cooling).
     // A turn that starts over the heat cap opens with a forced cooldown (1 action left), or, when it's over

@@ -21,6 +21,18 @@ drop from pods by rarity and level and transform like the rest. Designs are orig
 - **Open:** enemies do not use the new parts yet (loadouts unchanged, so Risk tuning is untouched); the new
   guns, drones and modules reuse existing icons in a new colour, only frames and legs have new art.
 
+## Physical STAGGER (2026-10-05, built, v2.13)
+
+Physical's identity was raw damage only; now it also **controls**. Your physical hits fill a stagger bar on the
+target (their HP damage); at 1/3 of its max HP the bar empties: a bonus hit (5% max HP) and it loses 1 action next
+turn. The bar bleeds 50% per turn of its own, a staggered target can't be staggered again until the turn after,
+giants are immune. CONFIG.gear.stagger; Game._staggerFill, LaneAI.apply / upkeepSnap and the intent forecast share it.
+- **UI:** white strip on top of the enemy HP bar (full = next hit staggers), `STAGGER n%` tag, `STAGGERED` tag.
+- **Sim (skill 1, max gear):** heat kits unchanged (identical runs); Physical kit at Risk X reaches the boss 7% -> 26%
+  (still 0% wins, XI stays brutal); starter kit (skill 0.3) 74% -> 89%, so physical starters are friendlier.
+  Flags: `--stagger=9` turns it off, `--staggerDmg`.
+- **Open:** Piledriver's text mentions it; other heavy physical guns could say so too.
+
 ## SuperMechs battle rules, mastery 50, drones and boons (2026-10-01, built, v2.10)
 
 The user: heat / energy / physical were "totally not like" SuperMechs, "not just damage, but how the mech

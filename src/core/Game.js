@@ -584,14 +584,19 @@ export class Game {
    */
   _upkeep(u) {
     u.turnNo = (u.turnNo || 0) + 1; // guns remember the turn they fired on
-    u.actionsLeft = G.actions;
+    u.stagger = (u.stagger || 0) * (1 - G.stagger.decay); // the STAGGER bar bleeds off
+    u.staggerSafe = !!u.staggered; // the turn after a stagger it cannot be staggered again
+    const stun = u.staggered ? G.stagger.actions : 0;
+    u.staggered = false;
+    u.actionsLeft = Math.max(0, G.actions - stun);
+    if (stun) this._callout(u, `STAGGERED: -${stun} ACTION`, '#f4f4f4');
     u._freeMoveUsed = false;
     u.bubble = 0; // a SHIELD lasts until your next turn
     u.lockNow = u.heatLock || 0; // Thermal Lock: this turn's cooldowns are cut
     u.heatLock = 0;
     if (u.lockNow) this._callout(u, 'THERMAL LOCK', DTYPES.heat.color);
     if (this.hazards.some((h) => h.type === 'fire' && h.pos === u.pos)) this._burnPlate(u);
-    if (!(u.heat > u.heatCap)) return true;
+    if (!(u.heat > u.heatCap)) return u.actionsLeft > 0;
     const cool = this._coolOf(u);
     const shut = u.heat - u.heatCap > cool;
     u.heat = Math.max(0, u.heat - cool * (shut ? 2 : 1));
@@ -603,9 +608,9 @@ export class Game {
       this._callout(u, 'SHUTDOWN: TURN LOST', '#ff5d73');
       return false;
     }
-    u.actionsLeft = 1;
+    u.actionsLeft = Math.max(0, u.actionsLeft - 1);
     this._callout(u, 'OVERHEATED: FORCED COOLDOWN', '#ff5d73');
-    return true;
+    return u.actionsLeft > 0;
   }
 
   /** One cooldown's worth of heat for `u` right now (its cooling, cut by Thermal Lock). */
@@ -638,6 +643,21 @@ export class Game {
     if (p.forcefield) return;
     p.forcefield = true;
     this._callout(p, 'SECOND WIND: FORCEFIELD', '#a7f070');
+  }
+
+  /**
+   * STAGGER: your physical hits fill a bar; past a share of max HP it empties, and the target takes a bonus hit
+   * and loses an action next turn. Returns the bonus damage (0 most hits).
+   */
+  _staggerFill(target, dmg) {
+    const S = G.stagger;
+    if (target.giant || target.staggered || target.staggerSafe) return 0;
+    target.stagger = (target.stagger || 0) + dmg;
+    if (target.stagger < target.maxHp * S.frac) return 0;
+    target.stagger = 0;
+    target.staggered = true;
+    this._callout(target, 'STAGGERED', '#f4f4f4');
+    return Math.round(target.maxHp * S.dmg);
   }
 
   /** An enemy's damage multiplier: the raid boss's enrage, times the Abyss's insanity. */
@@ -1279,6 +1299,7 @@ export class Game {
       const apCut = yours && type === 'phys' ? 1 - (this.bfx.physPierce || 0) : 1; // AP Rounds
       if (!w.fx?.pierce) dmg = flatResist(dmg, resistOf(target, type) * apCut, w.fx?.burst || 1);
       dmg = Math.max(1, Math.round(dmg)) + this._reactorFx(target, w, w.dmg ?? rawDmg, owner); // heat / drain from the base hit, not specialist bonuses
+      if (yours && type === 'phys') dmg += this._staggerFill(target, dmg);
       const killed = target.takeDamage(dmg);
       // Sledge Rounds: your physical hits strip its physical resist for the fight
       if (yours && type === 'phys' && this.bfx.physStrip && !killed) strip.phys = (strip.phys || 0) + this.bfx.physStrip;
@@ -1465,6 +1486,10 @@ export class Game {
       enrage: this._dmgMult(u), // raid enrage x Abyss insanity (LaneAI multiplies its hits)
       bfx: u === this.player ? this.bfx : null, // run boons (LaneAI applies them to your hits)
       capCut: !!u.capCut, // Flashpoint already lowered its heat cap
+      giant: !!u.giant,
+      stagger: u.stagger || 0, // STAGGER bar so far (LaneAI fills it with your physical hits)
+      staggered: !!u.staggered, // loses an action next turn
+      staggerSafe: !!u.staggerSafe,
       heatLock: u.heatLock || 0, // Thermal Lock waiting for its next turn
       lockNow: u.lockNow || 0, // ...or cutting this turn's cooldowns
       pos: u.pos,
@@ -1537,7 +1562,7 @@ export class Game {
     const phase = this.turnSystem.phase;
     if (!e || e.hp <= 0 || p.hp <= 0 || (phase !== TurnPhase.PLAYER_AIM && phase !== TurnPhase.PLAYER_FLY)) return null;
     if (phase === TurnPhase.PLAYER_FLY) return this._intent || null; // mid-action: keep the last forecast
-    const key = [this.turnId, this.teamIndex, p.pos, e.pos, p.hp, e.hp, p.heat, e.heat, p.energy, e.energy, e.heatCap, p.actionsLeft, e.heatLock || 0, !!p.forcefield, p.bubble || 0, this.hazards.length].join('|');
+    const key = [this.turnId, this.teamIndex, p.pos, e.pos, p.hp, e.hp, p.heat, e.heat, p.energy, e.energy, e.heatCap, p.actionsLeft, e.heatLock || 0, !!e.staggered, !!p.forcefield, p.bubble || 0, this.hazards.length].join('|');
     if (this._intentKey !== key || !this._intent) {
       this._intentKey = key;
       this._intent = this._forecast(e, p);
@@ -1595,7 +1620,11 @@ export class Game {
       if (foe.hp > 0) foe.energy = Math.min(foe.energyMax, foe.energy + foe.regen); // your refill (_regen)
       // Its turn start (_startEnemyTurn, _upkeep)
       if (e.burnTicks > 0) me.hp -= e.burnDmg || 6 * G.hpScale;
-      me.actions = G.actions;
+      const stun = me.staggered ? G.stagger.actions : 0;
+      me.stagger = (me.stagger || 0) * (1 - G.stagger.decay);
+      me.staggerSafe = !!me.staggered;
+      me.staggered = false;
+      me.actions = Math.max(0, G.actions - stun);
       me.freeUsed = false;
       me.bubble = 0;
       me.stomped = false;
@@ -1610,14 +1639,14 @@ export class Game {
         me.heat = Math.max(0, me.heat - cool * (shut ? 2 : 1));
         if (shut) lost = 'SHUTDOWN';
         else {
-          me.actions = 1;
+          me.actions = Math.max(0, me.actions - 1);
           forced = true;
         }
       }
       for (const g of me.guns) g.used = false;
       for (const d of e.drones || []) if (d.off && me.actions > 0) me.actions -= 1;
       const mines = this.hazards.filter((h) => h.type === 'mine').map((h) => ({ pos: h.pos, owner: h.owner, dmg: h.dmg }));
-      return { size: L.size, me, foe, lost, forced, mines, stompHeat: G.stompHeat, dealt: 0 };
+      return { size: L.size, me, foe, lost, forced, stun, mines, stompHeat: G.stompHeat, dealt: 0 };
     };
     const think = start(false); // what it sees (it plans on this)
     if (think.lost === 'DOWN') return { lost: 'DOWN', desc: 'NEXT TURN: none. Your drones finish it before its turn.' };
@@ -1633,6 +1662,7 @@ export class Game {
       steps.unshift({ kind: 'vent' });
       said.unshift('is forced to cool down (over its heat cap)');
     }
+    if (think.stun) said.unshift(`is staggered (${think.stun} action lost)`);
     for (let guard = 0; guard < 8 && think.me.actions > 0; guard++) {
       const a = planTurn(think, { difficulty: Math.min(0.95, e.aiDifficulty ?? 0.5), aggression: this.aggression, rnd, stall })[0] || { type: 'end' };
       if (a.type === 'end') break;

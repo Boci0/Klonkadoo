@@ -54,8 +54,9 @@ function hitDamage(g, target, apCut = 1) {
 /** How much of its next turn `u` loses to heat (plus `extra` still to come): 0, 1 (forced cooldown) or 2 (shutdown). */
 function heatLoss(u, extra = 0) {
   const heat = u.heat + extra;
-  if (!(heat > u.heatCap)) return 0;
-  return heat - u.heatCap > u.cool * (1 - (u.heatLock || 0)) ? 2 : 1;
+  const stun = u.staggered ? CONFIG.gear.stagger.actions : 0; // a stagger costs actions too
+  if (!(heat > u.heatCap)) return stun;
+  return Math.min(2, stun + (heat - u.heatCap > u.cool * (1 - (u.heatLock || 0)) ? 2 : 1));
 }
 
 /** Heat `u` can push into a target on its next turn: its two hottest guns it can pay for. */
@@ -208,6 +209,18 @@ function apply(s, a) {
     dmg = soak(foe, dmg);
     foe.hp -= dmg;
     s.dealt += dmg;
+    // STAGGER (Game._staggerFill): your physical hits fill a bar; past a share of max HP: a bonus hit and a lost action
+    if (me.team === 'player' && g.dtype === 'phys' && foe.hp > 0 && dmg > 0 && !foe.giant && !foe.staggered && !foe.staggerSafe) {
+      const S = CONFIG.gear.stagger;
+      foe.stagger = (foe.stagger || 0) + dmg;
+      if (foe.stagger >= foe.maxHp * S.frac) {
+        const bonus = Math.round(foe.maxHp * S.dmg);
+        foe.stagger = 0;
+        foe.staggered = true;
+        foe.hp -= bonus;
+        s.dealt += bonus;
+      }
+    }
     if (g.freeze) foe.frozen = true;
     for (const [t, n] of Object.entries(g.resDrain || {})) foe.res[t] = (foe.res[t] || 0) - n;
     if (g.push || g.pull) {
@@ -427,20 +440,24 @@ export function planLines(state, { aggression = 0, stall = 0 } = {}) {
 
 /** The start of a mech's next turn on a snapshot (Game._upkeep): fresh actions and guns, then heat's toll. False = shutdown, the turn is lost. */
 function upkeepSnap(u) {
-  u.actions = u.maxActions;
+  const S = CONFIG.gear.stagger;
+  u.stagger = (u.stagger || 0) * (1 - S.decay);
+  u.staggerSafe = !!u.staggered;
+  u.actions = Math.max(0, u.maxActions - (u.staggered ? S.actions : 0));
+  u.staggered = false;
   u.freeUsed = false;
   u.stomped = false;
   u.bubble = 0;
   for (const g of u.guns) g.used = false;
   u.lockNow = u.heatLock || 0;
   u.heatLock = 0;
-  if (!(u.heat > u.heatCap)) return true;
+  if (!(u.heat > u.heatCap)) return u.actions > 0;
   const cool = Math.round(u.cool * (1 - u.lockNow));
   const shut = u.heat - u.heatCap > cool;
   u.heat = Math.max(0, u.heat - cool * (shut ? 2 : 1));
   if (shut) return false;
-  u.actions = 1;
-  return true;
+  u.actions = Math.max(0, u.actions - 1);
+  return u.actions > 0;
 }
 
 /** `me`'s whole turn against `foe` (snapshots, changed in place), one best action at a time like the game. */

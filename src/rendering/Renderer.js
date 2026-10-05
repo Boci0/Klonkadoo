@@ -1722,6 +1722,13 @@ export class Renderer {
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
     ctx.fillRect(x, y, Math.round(w * pct), 2);
 
+    // STAGGER bar: a white strip along the top, full = the next hit staggers it (physical hits fill it)
+    if (ball.team !== 'player' && ball.stagger > 0 && !ball.staggered) {
+      const S = CONFIG.gear.stagger;
+      ctx.fillStyle = '#f4f4f4';
+      ctx.fillRect(x, y, Math.round(w * Math.min(1, ball.stagger / (ball.maxHp * S.frac))), 3);
+    }
+
     const shieldHp = ball.team === 'player' ? (ball.shieldHp || 0) : 0;
     if (shieldHp > 0) {
       ctx.fillStyle = 'rgba(115, 239, 247, 0.8)';
@@ -1847,6 +1854,12 @@ export class Renderer {
       tags.push({ label: 'CHILLED', color: '#73eff7', desc: 'Chilled: its next move is 1 position shorter.' });
     if (ball.exposed)
       tags.push({ label: 'EXPOSED', color: '#ffcd75', desc: 'Rammed! Takes +25% gun damage until its next turn.' });
+    if (ball.team !== 'player' && ball.stagger > 0 && !ball.staggered && !ball.giant) {
+      const pct = Math.min(99, Math.round((ball.stagger / (ball.maxHp * CONFIG.gear.stagger.frac)) * 100));
+      tags.push({ label: `STAGGER ${pct}%`, color: '#f4f4f4', desc: 'Physical hits wear it down (the white strip on its health bar). At 100% it takes a bonus hit and loses an action. The bar bleeds off every turn.' });
+    }
+    if (ball.staggered)
+      tags.push({ label: 'STAGGERED', color: '#f4f4f4', desc: 'Battered by physical hits: it took a bonus hit and loses an action next turn. Heavy physical damage fills a stagger bar that bleeds off each turn, and a staggered mech cannot be staggered again right after.' });
     if (ball.heatCap && ball.heat > ball.heatCap) {
       const shut = ball.heat - ball.heatCap > ball.cool * (1 - (ball.heatLock || ball.lockNow || 0));
       tags.push(shut
